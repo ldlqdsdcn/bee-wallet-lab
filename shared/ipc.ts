@@ -1,0 +1,107 @@
+/**
+ * IPC 通道契约。
+ *
+ * 安全约定：
+ * 1. 渲染进程只能通过本文件列出的白名单通道调用主进程；
+ * 2. 返回值禁止包含助记词、私钥、KEK、JWT 原文，
+ *    唯一例外是 `wallet:exportMnemonic` / `account:revealPrivateKey`，
+ *    它们必须在主进程内二次校验主密码后才返回。
+ */
+
+export const IPC = {
+  /* 保险库 / 主密码 */
+  vaultStatus: 'vault:status',
+  vaultInitialize: 'vault:initialize',
+  vaultUnlock: 'vault:unlock',
+  vaultLock: 'vault:lock',
+  vaultChangePassword: 'vault:changePassword',
+  vaultTouch: 'vault:touch',
+
+  /* 设置 */
+  settingsGet: 'settings:get',
+  settingsUpdate: 'settings:update',
+
+  /* 钱包 */
+  walletList: 'wallet:list',
+  walletListPage: 'wallet:listPage',
+  walletCurrent: 'wallet:current',
+  walletCreateDraft: 'wallet:createDraft',
+  walletConfirmDraft: 'wallet:confirmDraft',
+  walletImportMnemonic: 'wallet:importMnemonic',
+  walletValidateMnemonic: 'wallet:validateMnemonic',
+  walletExportMnemonic: 'wallet:exportMnemonic',
+  walletRename: 'wallet:rename',
+  walletSetDefault: 'wallet:setDefault',
+  walletSetAuthWallet: 'wallet:setAuthWallet',
+  walletRemove: 'wallet:remove',
+
+  /* 账户 */
+  accountList: 'account:list',
+  accountDerive: 'account:derive',
+  accountImportPrivateKey: 'account:importPrivateKey',
+  accountRevealPrivateKey: 'account:revealPrivateKey',
+  accountRename: 'account:rename',
+  accountRemove: 'account:remove',
+  accountPreviewDerivation: 'account:previewDerivation',
+
+  /* 后端接入 */
+  backendStatus: 'backend:status',
+  backendAuthenticate: 'backend:authenticate',
+  backendPing: 'backend:ping',
+
+  /* 目录同步 */
+  catalogNetworks: 'catalog:networks',
+  catalogTokens: 'catalog:tokens',
+  catalogCurrencies: 'catalog:currencies',
+  catalogSync: 'catalog:sync',
+
+  /* 资产 */
+  portfolioSnapshot: 'portfolio:snapshot',
+  portfolioRefresh: 'portfolio:refresh',
+
+  /* 收发转账 */
+  transferPreview: 'transfer:preview',
+  transferSubmit: 'transfer:submit',
+  transferReceiveInfo: 'transfer:receiveInfo',
+  transactionList: 'transaction:list',
+  transactionSync: 'transaction:sync',
+
+  /* 消息签名 */
+  signMessage: 'sign:message',
+  verifyMessage: 'sign:verify',
+
+  /* 地址簿 */
+  addressBookList: 'addressBook:list',
+  addressBookUpsert: 'addressBook:upsert',
+  addressBookRemove: 'addressBook:remove',
+  addressBookTouch: 'addressBook:touch',
+} as const
+
+export type IpcChannel = (typeof IPC)[keyof typeof IPC]
+
+export const IPC_CHANNELS: readonly IpcChannel[] = Object.values(IPC)
+
+/** 主进程主动推送给渲染进程的事件 */
+export const IPC_EVENT = {
+  vaultLocked: 'event:vaultLocked',
+  vaultUnlocked: 'event:vaultUnlocked',
+  catalogUpdated: 'event:catalogUpdated',
+  backendStatusChanged: 'event:backendStatusChanged',
+  balanceUpdated: 'event:balanceUpdated',
+  addressBookUpdated: 'event:addressBookUpdated',
+  walletsChanged: 'event:walletsChanged',
+} as const
+
+export type IpcEventName = (typeof IPC_EVENT)[keyof typeof IPC_EVENT]
+
+export const IPC_EVENTS: readonly IpcEventName[] = Object.values(IPC_EVENT)
+
+/** 统一的调用结果包装，避免 Error 对象跨进程丢失信息 */
+export interface IpcResult<T> {
+  ok: boolean
+  data?: T
+  error?: {
+    code: string
+    message: string
+  }
+}

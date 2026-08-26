@@ -1,30 +1,43 @@
-# React + TypeScript + Vite
+# Bee Wallet Lab
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Electron 桌面端 Web3 钱包实验项目。助记词与私钥只存在于主进程，渲染进程通过白名单 IPC 访问。
 
-Currently, two official plugins are available:
+对照实现：移动端 `onewallet-app`。第一版网络 / 代币列表打包在 `data/catalog/`，启动时写入本地 SQLite，不请求后台。链上请求由钱包进程直连 Infura / Blockstream / TronGrid，密钥写在本地 `.env`。
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 功能
 
-## Expanding the ESLint configuration
+1. **安全基座**：scrypt KDF + AES-256-GCM，主密码锁屏，空闲自动锁定
+2. **派生内核**：BIP-39/32；BTC 四种地址格式、EVM、TRON
+3. **内置目录**：Bitcoin / Ethereum / Arbitrum / TRON / BSC 写入本地库
+4. **钱包管理**：创建（抄写校验）/ 导入助记词 / 导出 / 多钱包 / 多账户派生 / 私钥导入
+5. **资产总览**：本机直连 RPC 取余额；BTC 原生币按四种地址格式展开
+6. **收款转账**：BTC（Esplora）、EVM（Infura JSON-RPC）、TRON（TronGrid）；本地签名后直连广播
+7. **消息签名**：EVM/TRON 为 EIP-191 `personal_sign`；Bitcoin 为 BIP-137
+8. **地址簿**：本地 SQLite，转账页可选择收款人
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+## 开发
 
-- Configure the top-level `parserOptions` property like this:
-
-```js
-export default {
-  // other rules...
-  parserOptions: {
-    ecmaVersion: 'latest',
-    sourceType: 'module',
-    project: ['./tsconfig.json', './tsconfig.node.json'],
-    tsconfigRootDir: __dirname,
-  },
-}
+```bash
+npm install
+npm test
+npm run typecheck
+npm run dev
 ```
 
-- Replace `plugin:@typescript-eslint/recommended` to `plugin:@typescript-eslint/recommended-type-checked` or `plugin:@typescript-eslint/strict-type-checked`
-- Optionally add `plugin:@typescript-eslint/stylistic-type-checked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and add `plugin:react/recommended` & `plugin:react/jsx-runtime` to the `extends` list
+```bash
+cp .env.example .env
+```
+
+在 `.env` 填写 `VITE_INFURA_API_KEY`（EVM）。可选 TronGrid key、Bitcoin Esplora 地址。首次进入先设置主密码，再创建或导入钱包。设置页「重新装入本地目录」会把 `data/catalog/` 再写进 SQLite。
+
+## 数据位置
+
+SQLite 文件在 Electron `userData` 目录下的 `bee-wallet.db`。助记词、passphrase、导入私钥均为 AES-256-GCM 密文。忘记主密码只能用助记词重新导入。
+
+## 安全约束
+
+- 渲染进程 `contextIsolation: true`，`nodeIntegration: false`
+- preload 只暴露 `shared/ipc.ts` 白名单通道
+- 导出助记词 / 揭示私钥需要再次输入主密码
+- 锁定后内存 KEK 清零
+- Infura / TronGrid 密钥只存在本机 `.env`，不进 git

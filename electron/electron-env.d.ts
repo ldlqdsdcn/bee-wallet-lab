@@ -1,5 +1,22 @@
 /// <reference types="vite-plugin-electron/electron-env" />
 
+interface ImportMetaEnv {
+  readonly VITE_CATALOG_BASE_URL?: string
+  /** 兼容旧名，等同 VITE_CATALOG_BASE_URL */
+  readonly VITE_API_BASE_URL?: string
+  readonly VITE_INFURA_API_KEY?: string
+  readonly VITE_INFURA_PROJECT_ID?: string
+  readonly VITE_BTC_MAINNET_API?: string
+  readonly VITE_BTC_TESTNET_API?: string
+  readonly VITE_TRON_MAINNET_API?: string
+  readonly VITE_TRON_TESTNET_API?: string
+  readonly VITE_TRONGRID_API_KEY?: string
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv
+}
+
 declare namespace NodeJS {
   interface ProcessEnv {
     /**
@@ -23,5 +40,5 @@ declare namespace NodeJS {
 
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
-  ipcRenderer: import('electron').IpcRenderer
+  beeWallet: import('./preload').BeeWalletBridge
 }

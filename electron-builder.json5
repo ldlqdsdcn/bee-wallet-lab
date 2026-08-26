@@ -1,9 +1,9 @@
 // @see - https://www.electron.build/configuration/configuration
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "YourAppID",
+  "appId": "org.bee.wallet.lab",
   "asar": true,
-  "productName": "YourAppName",
+  "productName": "Bee Wallet Lab",
   "directories": {
     "output": "release/${version}"
   },
@@ -11,13 +11,34 @@
     "dist",
     "dist-electron"
   ],
+  // better-sqlite3 13.x 自带全平台 N-API 预编译产物（darwin/linux/win32 × x64/arm64），
+  // ABI 与 Node/Electron 版本无关，所以无需 rebuild，也能在单机交叉打包三平台。
+  // 但 .node 二进制必须从 asar 中解包才能被 require。
+  "asarUnpack": [
+    "**/node_modules/better-sqlite3/**"
+  ],
+  "npmRebuild": false,
+  // build/icon.png 为 1024x1024 源图，icns / ico 由 electron-builder 自动生成
   "mac": {
+    "icon": "build/icon.png",
     "target": [
-      "dmg"
+      {
+        "target": "dmg",
+        // Intel + Apple Silicon 各出一份
+        "arch": [
+          "x64",
+          "arm64"
+        ]
+      }
     ],
-    "artifactName": "${productName}-Mac-${version}-Installer.${ext}"
+    "category": "public.app-category.finance",
+    "darkModeSupport": true,
+    // 没有开发者证书时跳过签名，避免打包直接失败
+    "identity": null,
+    "artifactName": "${name}-${version}-mac-${arch}.${ext}"
   },
   "win": {
+    "icon": "build/icon.png",
     "target": [
       {
         "target": "nsis",
@@ -26,18 +47,38 @@
         ]
       }
     ],
-    "artifactName": "${productName}-Windows-${version}-Setup.${ext}"
+    "artifactName": "${name}-${version}-win-${arch}-setup.${ext}"
   },
   "nsis": {
     "oneClick": false,
     "perMachine": false,
     "allowToChangeInstallationDirectory": true,
+    // 卸载不删钱包数据（助记词密文在 userData 目录）
     "deleteAppDataOnUninstall": false
   },
   "linux": {
+    "icon": "build/icon.png",
     "target": [
-      "AppImage"
+      {
+        "target": "AppImage",
+        "arch": [
+          "x64"
+        ]
+      },
+      {
+        // Ubuntu / Debian 安装包
+        "target": "deb",
+        "arch": [
+          "x64"
+        ]
+      }
     ],
-    "artifactName": "${productName}-Linux-${version}.${ext}"
+    "category": "Utility",
+    "maintainer": "Bee Wallet Lab",
+    "synopsis": "开源区块链钱包实验室",
+    "desktop": {
+      "StartupWMClass": "bee-wallet-lab"
+    },
+    "artifactName": "${name}-${version}-linux-${arch}.${ext}"
   }
 }
