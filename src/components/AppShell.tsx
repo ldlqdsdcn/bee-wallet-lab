@@ -16,6 +16,7 @@ const navItems = [
   { to: '/nodes', label: '节点维护' },
   { to: '/networks', label: '网络维护' },
   { to: '/tokens', label: '代币维护' },
+  { to: '/faucets', label: '水龙头' },
   { to: '/proxy', label: '代理' },
   { to: '/settings', label: '设置' },
 ]

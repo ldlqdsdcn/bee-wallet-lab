@@ -256,12 +256,14 @@ export function replaceNetworks(records: NetworkRecord[]): void {
       .all()
     const dropTokens = db.prepare('DELETE FROM catalog_tokens WHERE network_pk = ?')
     const dropNodes = db.prepare('DELETE FROM rpc_nodes WHERE network_pk = ?')
+    const dropFaucets = db.prepare('DELETE FROM faucets WHERE network_pk = ?')
     const dropBalances = db.prepare('DELETE FROM balances_cache WHERE network_pk = ?')
     const drop = db.prepare('DELETE FROM catalog_networks WHERE id = ?')
     for (const row of existing) {
       if (keep.has(row.id) || row.source === 'custom') continue
       dropTokens.run(row.id)
       dropNodes.run(row.id)
+      dropFaucets.run(row.id)
       dropBalances.run(row.id)
       drop.run(row.id)
     }

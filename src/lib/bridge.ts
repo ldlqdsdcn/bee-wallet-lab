@@ -39,6 +39,8 @@ import type {
   VaultStatus,
   VerifyMessageInput,
   VerifyMessageResult,
+  FaucetRecord,
+  FaucetUpsertInput,
   RpcNodeCreateInput,
   RpcNodeRecord,
   RpcPingResult,
@@ -178,6 +180,13 @@ export const proxyApi = {
   ping: (id: string) => call<ProxyTestResult>(IPC.proxyPing, { id }),
   pingAll: () => call<ProxyTestResult[]>(IPC.proxyPingAll),
   setEnabled: (enabled: boolean) => call<ProxyListState>(IPC.proxySetEnabled, { enabled }),
+}
+
+export const faucetApi = {
+  list: (networkPk: string) => call<FaucetRecord[]>(IPC.faucetList, { networkPk }),
+  upsert: (input: FaucetUpsertInput) => call<FaucetRecord>(IPC.faucetUpsert, input),
+  remove: (id: string) => call<true>(IPC.faucetRemove, { id }),
+  restore: (networkPk: string) => call<FaucetRecord[]>(IPC.faucetRestore, { networkPk }),
 }
 
 export const rpcApi = {

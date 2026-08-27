@@ -328,6 +328,26 @@ const migrations: Migration[] = [
       `)
     },
   },
+  {
+    version: 8,
+    description: 'testnet faucet URL list, builtin/custom for later catalog sync',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE faucets (
+          id         TEXT PRIMARY KEY,
+          network_pk TEXT NOT NULL,
+          url        TEXT NOT NULL,
+          label      TEXT,
+          source     TEXT NOT NULL CHECK (source IN ('builtin','custom')),
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE UNIQUE INDEX idx_faucets_url ON faucets(network_pk, url);
+        CREATE INDEX idx_faucets_network ON faucets(network_pk, sort_order, created_at);
+      `)
+    },
+  },
 ]
 
 export const LATEST_SCHEMA_VERSION = migrations[migrations.length - 1].version

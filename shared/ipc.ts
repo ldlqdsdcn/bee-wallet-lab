@@ -100,6 +100,12 @@ export const IPC = {
   rpcPing: 'rpc:ping',
   rpcPingAll: 'rpc:pingAll',
   rpcRestore: 'rpc:restore',
+
+  /* 测试网水龙头 */
+  faucetList: 'faucet:list',
+  faucetUpsert: 'faucet:upsert',
+  faucetRemove: 'faucet:remove',
+  faucetRestore: 'faucet:restore',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]
@@ -117,6 +123,7 @@ export const IPC_EVENT = {
   walletsChanged: 'event:walletsChanged',
   rpcNodesChanged: 'event:rpcNodesChanged',
   proxiesChanged: 'event:proxiesChanged',
+  faucetsChanged: 'event:faucetsChanged',
 } as const
 
 export type IpcEventName = (typeof IPC_EVENT)[keyof typeof IPC_EVENT]

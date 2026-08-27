@@ -13,6 +13,7 @@ import {
 import { loadSettings, saveSettings } from '../db/repos/metaRepo'
 import { loadBuiltinCatalog } from './builtin'
 import { ensureMissingNativeTokens } from './maintain'
+import { seedFaucetsForCatalog } from './faucet'
 import type { CatalogSyncResult } from '@shared/types'
 
 function applyBuiltin(now: number): CatalogSyncResult {
@@ -21,6 +22,7 @@ function applyBuiltin(now: number): CatalogSyncResult {
   replaceTokens(tokens)
   replaceCurrencies(currencies)
   ensureMissingNativeTokens()
+  seedFaucetsForCatalog()
   upsertSyncMeta({ name: 'all', lastSyncAt: now, itemCount: networks.length + tokens.length, lastError: null })
   upsertSyncMeta({ name: 'networks', lastSyncAt: now, itemCount: networks.length, lastError: null })
   upsertSyncMeta({ name: 'tokens', lastSyncAt: now, itemCount: tokens.length, lastError: null })

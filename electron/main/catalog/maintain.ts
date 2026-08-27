@@ -32,6 +32,8 @@ import {
 } from '../db/repos/catalogRepo'
 import { deleteBalancesForNetwork, deleteBalancesForToken } from '../db/repos/balanceRepo'
 import { deleteRpcNodesByNetwork } from '../db/repos/rpcNodeRepo'
+import { deleteFaucetsByNetwork } from '../db/repos/faucetRepo'
+import { ensureFaucetsSeeded } from './faucet'
 import { loadSettings, saveSettings } from '../db/repos/metaRepo'
 import { invalidArg, notFound } from '../ipc/registry'
 import { ensureRpcSeeded } from '../rpc/nodes'
@@ -251,6 +253,7 @@ export async function upsertCatalogNetwork(input: NetworkUpsertInput): Promise<N
   const saved = getNetwork(record.id)
   if (!saved) throw notFound('网络写入失败')
   ensureRpcSeeded(saved)
+  ensureFaucetsSeeded(saved)
   return saved
 }
 
@@ -263,6 +266,7 @@ export function removeCatalogNetwork(id: string): true {
   if (!existing) throw notFound('网络不存在')
   deleteTokensByNetwork(id)
   deleteRpcNodesByNetwork(id)
+  deleteFaucetsByNetwork(id)
   deleteBalancesForNetwork(id)
   deleteNetwork(id)
   setPreferredRpc(id, null)

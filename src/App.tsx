@@ -12,6 +12,7 @@ import SignPage from './pages/SignPage'
 import RpcNodesPage from './pages/RpcNodesPage'
 import NetworksPage from './pages/NetworksPage'
 import TokensPage from './pages/TokensPage'
+import FaucetsPage from './pages/FaucetsPage'
 import ProxyPage from './pages/ProxyPage'
 import { subscribeVaultEvents, useVaultStore } from './store/vaultStore'
 import { subscribeWalletEvents } from './store/walletStore'
@@ -69,6 +70,7 @@ export default function App() {
             <Route path="nodes" element={<RpcNodesPage />} />
             <Route path="networks" element={<NetworksPage />} />
             <Route path="tokens" element={<TokensPage />} />
+            <Route path="faucets" element={<FaucetsPage />} />
             <Route path="proxy" element={<ProxyPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

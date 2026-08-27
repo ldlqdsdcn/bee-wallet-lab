@@ -54,7 +54,7 @@ export default function SettingsPage() {
       <Card title="网络与代币">
         <div className="space-y-3">
           <p className="text-xs text-ink-400">
-            第一版目录打包在应用内。添加自定义网络时：设置了目录站会请求 `GET /api/network/lookup` 拿主币和热门代币；没填或失败则用本地预设。自定义项在重新装入时会保留。
+            第一版目录打包在应用内。添加自定义网络时：设置了目录站会请求 `GET /api/network/lookup` 拿主币和热门代币；没填或失败则用本地预设。自定义项在重新装入时会保留。测试网水龙头目前本地维护，后续目录站可同步内置项。
           </p>
           <Button
             variant="ghost"

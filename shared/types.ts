@@ -270,7 +270,7 @@ export interface AssetEntry {
   addressType: BitcoinAddressType | null
   address: string | null
   accountId: string | null
-  /** 最小单位余额 */
+  /** 可读余额（已按 decimals 换算，不是 lamports/wei） */
   balance: string
   /** 未确认余额（仅 BTC） */
   unconfirmed: string | null
@@ -497,6 +497,23 @@ export interface RpcNodeRecord {
 }
 
 export interface RpcNodeCreateInput {
+  networkPk: string
+  url: string
+  label?: string
+}
+
+/** 测试网水龙头。主网不应有记录。source 留给后续目录站同步。 */
+export interface FaucetRecord {
+  id: string
+  networkPk: string
+  url: string
+  label: string | null
+  source: CatalogSource
+  createdAt: number
+}
+
+export interface FaucetUpsertInput {
+  id?: string
   networkPk: string
   url: string
   label?: string

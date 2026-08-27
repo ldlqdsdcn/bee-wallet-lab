@@ -15,7 +15,7 @@ Electron 桌面端 Web3 钱包实验项目。助记词与私钥只存在于主�
 7. **交易记录**：侧栏按当前网络同步当前钱包的转入转出；BTC 走 Esplora，EVM 优先 Blockscout 其次 Etherscan，TRON 走 TronGrid，Solana 走 RPC
 8. **消息签名**：EVM/TRON 为 EIP-191 `personal_sign`；Bitcoin 为 BIP-137；Solana 为 Ed25519
 9. **地址簿**：本地 SQLite，转账页可选择收款人
-10. **节点 / 网络 / 代币 / 代理维护**：侧栏可增删改；重新装入内置目录时自定义项会保留
+10. **节点 / 网络 / 代币 / 水龙头 / 代理维护**：侧栏可增删改；测试网可维护多个水龙头并在应用内打开；重新装入内置目录时自定义项会保留
 
 ## 开发
 

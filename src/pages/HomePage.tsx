@@ -1,21 +1,24 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { AssetEntry, NetworkRecord, PortfolioSnapshot } from '@shared/types'
-import { catalogApi, portfolioApi, settingsApi } from '../lib/bridge'
+import type { AssetEntry, FaucetRecord, NetworkRecord, PortfolioSnapshot } from '@shared/types'
+import { catalogApi, faucetApi, portfolioApi, settingsApi } from '../lib/bridge'
 import { Alert, Button, Card } from '../components/ui'
 import { AccountAddress } from '../components/AccountAddress'
 import { NetworkSelect } from '../components/NetworkSelect'
-import { addressExplorerUrl } from '../lib/explorer'
-import { bitcoinAddressLabel, fromMinor } from '../lib/format'
+import { addressExplorerUrl, explorerTabTitle } from '../lib/explorer'
+import { bitcoinAddressLabel, formatAmount } from '../lib/format'
+import { useBrowserStore } from '../store/browserStore'
 import { useWalletStore } from '../store/walletStore'
 
 export default function HomePage() {
   const navigate = useNavigate()
   const currentWalletId = useWalletStore((s) => s.currentId)
   const currentWallet = useWalletStore((s) => s.current)
+  const open = useBrowserStore((s) => s.open)
   const [networks, setNetworks] = useState<NetworkRecord[]>([])
   const [networkPk, setNetworkPk] = useState('')
   const [snapshot, setSnapshot] = useState<PortfolioSnapshot | null>(null)
+  const [faucets, setFaucets] = useState<FaucetRecord[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -61,6 +64,28 @@ export default function HomePage() {
     }
   }, [currentWalletId, networkPk])
 
+  const current = networks.find((item) => item.id === networkPk)
+  const isTestnet = current?.networkScope === 'testnet'
+
+  useEffect(() => {
+    if (!networkPk || !isTestnet) {
+      setFaucets([])
+      return
+    }
+    let alive = true
+    void faucetApi
+      .list(networkPk)
+      .then((list) => {
+        if (alive) setFaucets(list)
+      })
+      .catch(() => {
+        if (alive) setFaucets([])
+      })
+    return () => {
+      alive = false
+    }
+  }, [networkPk, isTestnet])
+
   const refresh = async (pk = networkPk) => {
     setBusy(true)
     setError(null)
@@ -73,7 +98,6 @@ export default function HomePage() {
     }
   }
 
-  const current = networks.find((item) => item.id === networkPk)
   const isBitcoin = current?.walletType === 'bitcoin'
   const accountEntries = useMemo(() => uniqueAccountEntries(snapshot?.entries ?? []), [snapshot])
 
@@ -113,6 +137,39 @@ export default function HomePage() {
         <p className="rounded-lg border border-honey-600/30 bg-honey-600/10 px-3 py-2 text-xs text-honey-400">
           {snapshot.priceError}
         </p>
+      ) : null}
+
+      {isTestnet ? (
+        <Card
+          title="测试币水龙头"
+          action={
+            <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => navigate('/faucets')}>
+              维护
+            </Button>
+          }
+        >
+          {faucets.length === 0 ? (
+            <p className="text-sm text-ink-400">还没有水龙头。到「水龙头」页添加，或恢复内置列表。</p>
+          ) : (
+            <ul className="divide-y divide-ink-700">
+              {faucets.map((item) => (
+                <li key={item.id} className="flex items-center gap-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-ink-200">{item.label || item.url}</p>
+                    <p className="truncate font-mono text-[11px] text-ink-500">{item.url}</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    className="shrink-0 px-2 py-1 text-xs"
+                    onClick={() => open(item.url, item.label || explorerTabTitle(item.url))}
+                  >
+                    打开
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
       ) : null}
 
       <Card>
@@ -182,7 +239,7 @@ export default function HomePage() {
                   </div>
                   <div className="text-right">
                     <p className="text-sm text-ink-200">
-                      {fromMinor(entry.balance, entry.decimals)} {entry.symbol}
+                      {formatAmount(entry.balance)} {entry.symbol}
                     </p>
                     <p className="text-[11px] text-ink-500">
                       {entry.currencyBalance ?? '--'} {snapshot.currencyCode}

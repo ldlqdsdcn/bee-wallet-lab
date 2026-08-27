@@ -37,6 +37,7 @@ import { registerTransferIpc } from './transfer'
 import { registerSignIpc } from './sign'
 import { registerRpcIpc } from './rpc'
 import { registerProxyIpc } from './proxy'
+import { registerFaucetIpc } from './faucet'
 
 function registerVaultIpc(): void {
   handle<void, VaultStatus>(IPC.vaultStatus, () => vault.getStatus())
@@ -178,6 +179,7 @@ export function registerAllIpc(): void {
   registerAddressBookIpc()
   registerRpcIpc()
   registerProxyIpc()
+  registerFaucetIpc()
   registerPlaceholders()
   initWalletAuth()
 
