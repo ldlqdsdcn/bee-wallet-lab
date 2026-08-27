@@ -1,16 +1,16 @@
 [
   {
-    "id": "1",
-    "currencyTypeCode": "USD",
-    "currencyTypeName": "USD",
-    "currencyTypeUnit": "$",
-    "isEnable": 1
-  },
-  {
     "id": "3",
     "currencyTypeCode": "CNY",
     "currencyTypeName": "CNY",
     "currencyTypeUnit": "¥",
+    "isEnable": 1
+  },
+  {
+    "id": "1",
+    "currencyTypeCode": "USD",
+    "currencyTypeName": "USD",
+    "currencyTypeUnit": "$",
     "isEnable": 1
   },
   {

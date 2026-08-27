@@ -9,13 +9,12 @@ import type {
   TokenRecord,
   TransferDraftInput,
   TransferPreview,
-  TransactionRecord,
 } from '@shared/types'
 import { newId } from '../security/crypto'
 import { parseDecimalToMinor, formatMinor } from '../util/amount'
 import { getNetwork, getToken } from '../db/repos/catalogRepo'
 import { getAccountRow, listMatchingAccounts } from '../db/repos/accountRepo'
-import { insertTransaction, listTransactions } from '../db/repos/transactionRepo'
+import { upsertTransaction } from '../db/repos/transactionRepo'
 import { invalidArg, notFound } from '../ipc/registry'
 import { getAccount, withAccountPrivateKey } from '../wallets/service'
 import {
@@ -407,12 +406,12 @@ export async function submitTransfer(draftId: string): Promise<BroadcastResult> 
     draft.network.walletType === 'bitcoin'
       ? explorerUrlForBitcoin(txid, draft.network.networkScope, draft.network.browser)
       : draft.network.walletType === 'web3'
-        ? explorerUrlForEvm(txid, draft.network.browser)
+        ? explorerUrlForEvm(txid, draft.network.browser, draft.network.chainId)
         : draft.network.walletType === 'solana'
           ? explorerUrlForSolana(txid, draft.network)
           : explorerUrlForTron(txid, draft.network.networkScope, draft.network.browser)
 
-  insertTransaction({
+  upsertTransaction({
     id: newId(),
     networkPk: draft.network.id,
     accountId: draft.account.id,
@@ -455,10 +454,6 @@ async function withAccountPrivateKeyAsync<T>(
 
 export function receiveInfo(accountId: string): AccountRecord {
   return getAccount(accountId)
-}
-
-export function listLocalTransactions(accountId?: string): TransactionRecord[] {
-  return listTransactions(accountId)
 }
 
 export function currentNetworkAccounts(networkPk: string): AccountRecord[] {

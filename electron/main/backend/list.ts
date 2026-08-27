@@ -13,7 +13,7 @@ export function extractList<T>(payload: unknown): T[] {
   }
   if (!payload || typeof payload !== 'object') return []
   const record = payload as Record<string, unknown>
-  for (const key of ['data', 'list', 'records', 'rows'] as const) {
+  for (const key of ['data', 'list', 'records', 'rows', 'items'] as const) {
     const value = record[key]
     if (Array.isArray(value)) return value as T[]
   }

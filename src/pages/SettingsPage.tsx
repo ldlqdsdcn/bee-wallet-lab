@@ -54,7 +54,7 @@ export default function SettingsPage() {
       <Card title="网络与代币">
         <div className="space-y-3">
           <p className="text-xs text-ink-400">
-            第一版目录打包在应用内（Bitcoin / Ethereum / Arbitrum / TRON / BSC / Solana），同步时写入本地数据库，不请求后台。
+            第一版目录打包在应用内。添加自定义网络时：设置了目录站会请求 `GET /api/network/lookup` 拿主币和热门代币；没填或失败则用本地预设。自定义项在重新装入时会保留。
           </p>
           <Button
             variant="ghost"
@@ -75,7 +75,7 @@ export default function SettingsPage() {
           <Field
             label="目录站地址（预留）"
             value={baseUrl}
-            hint="以后你的网站做好再填。当前版本不会用这个地址拉数据。"
+            hint="填了以后，添加网络会先请求 GET /api/network/lookup。接口还没好或失败时，继续用本地预设。"
             onChange={(e) => setBaseUrl(e.target.value)}
           />
           <Button
@@ -90,10 +90,10 @@ export default function SettingsPage() {
       <Card title="法币">
         <Select
           label="计价货币"
-          value={settings?.currencyCode ?? 'USD'}
+          value={settings?.currencyCode ?? 'CNY'}
           onChange={(e) => void updateSettings({ currencyCode: e.target.value })}
         >
-          {(currencies.length ? currencies : [{ id: 'usd', code: 'USD', name: 'USD', symbol: '$', syncedAt: 0 }]).map(
+          {(currencies.length ? currencies : [{ id: 'cny', code: 'CNY', name: 'CNY', symbol: '¥', syncedAt: 0 }]).map(
             (item) => (
               <option key={item.id} value={item.code}>
                 {item.code} {item.name ? `· ${item.name}` : ''}

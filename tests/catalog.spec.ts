@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { inferNetworkScope, inferWalletType, mapCurrency, mapNetwork, mapToken } from '../electron/main/catalog/map'
+import { defaultNativeDecimals, defaultNativeSymbol, inferNetworkScope, inferWalletType, mapCurrency, mapNetwork, mapToken } from '../electron/main/catalog/map'
+import { bundleFromPreset, parseLookupPayload } from '../electron/main/catalog/lookup'
+import { matchNetworkPreset } from '../shared/networkPresets'
 
 describe('目录映射', () => {
   it('网络 type 映射为 bitcoin / web3 / tron / solana', () => {
@@ -34,6 +36,7 @@ describe('目录映射', () => {
       walletType: 'web3',
       networkScope: 'mainnet',
       coinEasy: 'ETH',
+      source: 'builtin',
       syncedAt: 123,
     })
   })
@@ -89,5 +92,70 @@ describe('内置目录 JSON', () => {
     expect(catalog.networks.some((item) => item.walletType === 'tron')).toBe(true)
     expect(catalog.networks.some((item) => item.walletType === 'solana')).toBe(true)
     expect(catalog.tokens.some((item) => item.symbol === 'USDT' && item.isToken)).toBe(true)
+  })
+})
+
+describe('自定义网络原生币默认值', () => {
+  it('按链类型给出精度和符号', () => {
+    expect(defaultNativeDecimals('bitcoin')).toBe(8)
+    expect(defaultNativeDecimals('web3')).toBe(18)
+    expect(defaultNativeDecimals('tron')).toBe(6)
+    expect(defaultNativeDecimals('solana')).toBe(9)
+    expect(defaultNativeSymbol('web3', 'POL')).toBe('POL')
+    expect(defaultNativeSymbol('solana', null)).toBe('SOL')
+  })
+
+  it('按名称 / chainId 匹配常见链主币', () => {
+    expect(matchNetworkPreset('base')).toMatchObject({ chainId: '8453', coinEasy: 'ETH', supported: true })
+    expect(matchNetworkPreset('8453')).toMatchObject({ networkName: 'Base', coinEasy: 'ETH' })
+    expect(matchNetworkPreset('xoc')).toMatchObject({ chainId: '3721', coinEasy: 'XOC', supported: true })
+    expect(matchNetworkPreset('xone')).toMatchObject({ coinEasy: 'XOC' })
+    expect(matchNetworkPreset('sui')).toMatchObject({ supported: false, coinEasy: 'SUI' })
+  })
+
+  it('本地 Base 预设带主币 ETH 和热门 USDC/USDT', () => {
+    const preset = matchNetworkPreset('base')
+    expect(preset).toBeTruthy()
+    const bundle = bundleFromPreset(preset!)
+    expect(bundle.native?.symbol).toBe('ETH')
+    expect(bundle.tokens.map((item) => item.symbol)).toEqual(['USDC', 'USDT'])
+  })
+
+  it('解析目录站 lookup 响应', () => {
+    const result = parseLookupPayload({
+      network: {
+        id: '8453',
+        networkName: 'Base',
+        chainId: '8453',
+        chainName: 'Mainnet',
+        type: 'web3',
+        coinEasy: 'ETH',
+        coinId: 'ethereum',
+        rpcUrl: 'https://mainnet.base.org',
+      },
+      native: {
+        id: 'n1',
+        symbol: 'ETH',
+        decimals: 18,
+        isToken: 'N',
+        contractAddress: '0',
+        tNetworkId: '8453',
+      },
+      tokens: [
+        {
+          id: 't1',
+          symbol: 'USDC',
+          decimals: 6,
+          isToken: 'Y',
+          contractAddress: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+          tNetworkId: '8453',
+        },
+      ],
+    })
+    expect(result?.network).toMatchObject({ networkName: 'Base', chainId: '8453', coinEasy: 'ETH' })
+    expect(result?.native?.symbol).toBe('ETH')
+    expect(result?.tokens).toEqual([
+      expect.objectContaining({ symbol: 'USDC', isToken: true }),
+    ])
   })
 })

@@ -65,6 +65,11 @@ export const IPC = {
   catalogTokens: 'catalog:tokens',
   catalogCurrencies: 'catalog:currencies',
   catalogSync: 'catalog:sync',
+  catalogNetworkUpsert: 'catalog:network:upsert',
+  catalogNetworkRemove: 'catalog:network:remove',
+  catalogTokenUpsert: 'catalog:token:upsert',
+  catalogTokenRemove: 'catalog:token:remove',
+  catalogLookup: 'catalog:lookup',
 
   /* 资产 */
   portfolioSnapshot: 'portfolio:snapshot',

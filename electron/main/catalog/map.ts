@@ -13,6 +13,22 @@ import { asBooleanFlag, asNumber, asString } from '../backend/list'
 
 const WALLET_TYPES: WalletType[] = ['bitcoin', 'web3', 'tron', 'solana']
 
+export function defaultNativeDecimals(walletType: WalletType): number {
+  if (walletType === 'bitcoin') return 8
+  if (walletType === 'tron') return 6
+  if (walletType === 'solana') return 9
+  return 18
+}
+
+export function defaultNativeSymbol(walletType: WalletType, coinEasy?: string | null): string {
+  const easy = coinEasy?.trim().toUpperCase()
+  if (easy) return easy
+  if (walletType === 'bitcoin') return 'BTC'
+  if (walletType === 'tron') return 'TRX'
+  if (walletType === 'solana') return 'SOL'
+  return 'ETH'
+}
+
 export function inferWalletType(value: unknown): WalletType | null {
   const normalized = asString(value).toLowerCase()
   if (normalized === 'bitcoin' || normalized === 'btc') return 'bitcoin'
@@ -52,6 +68,7 @@ export function mapNetwork(dto: Record<string, unknown>, syncedAt: number): Netw
     supportGasTime: asString(dto.supportGasTime) || null,
     remark: asString(dto.remark) || null,
     networkScope: inferNetworkScope(chainId, chainName),
+    source: 'builtin',
     syncedAt,
   }
 }
@@ -78,6 +95,7 @@ export function mapToken(dto: Record<string, unknown>, syncedAt: number): TokenR
     tokenIcon: asString(dto.tokenIcon ?? dto.icon) || null,
     blockchainExplorer: asString(dto.blockchainExplorer) || null,
     isDefaultSelected: asBooleanFlag(dto.isDefaultSelected),
+    source: 'builtin',
     syncedAt,
   }
 }

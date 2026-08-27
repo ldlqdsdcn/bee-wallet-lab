@@ -224,7 +224,27 @@ export async function broadcastEvmTx(network: NetworkRecord, rawHex: string): Pr
   return hash
 }
 
-export function explorerUrlForEvm(txid: string, browser: string | null): string | null {
-  if (!browser) return null
-  return `${browser.replace(/\/+$/, '')}/tx/${txid}`
+const EVM_EXPLORER: Record<string, string> = {
+  '1': 'https://etherscan.io',
+  '11155111': 'https://sepolia.etherscan.io',
+  '42161': 'https://arbiscan.io',
+  '421614': 'https://sepolia.arbiscan.io',
+  '56': 'https://bscscan.com',
+  '97': 'https://testnet.bscscan.com',
+  '8453': 'https://basescan.org',
+  '10': 'https://optimistic.etherscan.io',
+  '137': 'https://polygonscan.com',
+  '43114': 'https://snowtrace.io',
+  '59144': 'https://lineascan.build',
+  '534352': 'https://scrollscan.com',
+  '324': 'https://explorer.zksync.io',
+  '81457': 'https://blastscan.io',
+  '5000': 'https://mantlescan.xyz',
+  '3721': 'https://xonescan.com',
+}
+
+export function explorerUrlForEvm(txid: string, browser: string | null, chainId?: string): string | null {
+  if (browser) return `${browser.replace(/\/+$/, '')}/tx/${txid}`
+  const base = chainId ? EVM_EXPLORER[chainId] : null
+  return base ? `${base}/tx/${txid}` : null
 }

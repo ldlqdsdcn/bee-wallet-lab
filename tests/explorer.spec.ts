@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { NetworkRecord } from '../shared/types'
-import { addressExplorerUrl, explorerTabTitle } from '../src/lib/explorer'
+import { addressExplorerUrl, explorerTabTitle, txExplorerUrl } from '../src/lib/explorer'
 
 function network(partial: Partial<NetworkRecord> & Pick<NetworkRecord, 'walletType' | 'chainId'>): NetworkRecord {
   return {
@@ -18,6 +18,7 @@ function network(partial: Partial<NetworkRecord> & Pick<NetworkRecord, 'walletTy
     supportGasTime: null,
     remark: null,
     networkScope: 'mainnet',
+    source: 'builtin',
     syncedAt: 0,
     ...partial,
   }
@@ -33,6 +34,9 @@ describe('区块链浏览器地址', () => {
     )
     expect(addressExplorerUrl(network({ walletType: 'web3', chainId: '56' }), '0xabc')).toBe(
       'https://bscscan.com/address/0xabc',
+    )
+    expect(addressExplorerUrl(network({ walletType: 'web3', chainId: '8453' }), '0xabc')).toBe(
+      'https://basescan.org/address/0xabc',
     )
   })
 
@@ -65,5 +69,20 @@ describe('区块链浏览器地址', () => {
 
   it('标签标题取 hostname', () => {
     expect(explorerTabTitle('https://etherscan.io/address/0xabc')).toBe('etherscan.io')
+  })
+
+  it('交易哈希拼 tx 页', () => {
+    expect(txExplorerUrl(network({ walletType: 'web3', chainId: '1' }), '0xdead')).toBe(
+      'https://etherscan.io/tx/0xdead',
+    )
+    expect(txExplorerUrl(network({ walletType: 'bitcoin', chainId: 'Mainnet', networkScope: 'mainnet' }), 'ab')).toBe(
+      'https://mempool.space/tx/ab',
+    )
+    expect(txExplorerUrl(network({ walletType: 'tron', chainId: '195' }), 'txid')).toBe(
+      'https://tronscan.org/#/transaction/txid',
+    )
+    expect(
+      txExplorerUrl(network({ walletType: 'solana', chainId: 'devnet', networkScope: 'testnet' }), 'sig'),
+    ).toBe('https://solscan.io/tx/sig?cluster=devnet')
   })
 })

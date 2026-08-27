@@ -33,6 +33,7 @@ coverage
 .vscode/*
 !.vscode/extensions.json
 .idea
+.cursor/rules/git-author.mdc
 .DS_Store
 Thumbs.db
 Desktop.ini

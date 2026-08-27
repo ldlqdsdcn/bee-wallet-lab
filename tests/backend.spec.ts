@@ -45,6 +45,7 @@ describe('列表解包', () => {
     expect(extractList({ data: [1] })).toEqual([1])
     expect(extractList({ list: [2] })).toEqual([2])
     expect(extractList({ records: [] })).toEqual([])
+    expect(extractList({ items: [3] })).toEqual([3])
   })
 })
 

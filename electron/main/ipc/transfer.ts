@@ -7,12 +7,8 @@ import type {
   TransactionRecord,
 } from '../../../shared/types'
 import { handle, requireObject, requireString } from './registry'
-import {
-  listLocalTransactions,
-  previewTransfer,
-  receiveInfo,
-  submitTransfer,
-} from '../transfer/service'
+import { previewTransfer, receiveInfo, submitTransfer } from '../transfer/service'
+import { listNetworkTransactions, syncNetworkTransactions } from '../history/service'
 
 export function registerTransferIpc(): void {
   handle<TransferDraftInput, TransferPreview>(IPC.transferPreview, (arg) =>
@@ -27,11 +23,11 @@ export function registerTransferIpc(): void {
     receiveInfo(requireString(arg?.accountId, 'accountId')),
   )
 
-  handle<{ accountId?: string }, TransactionRecord[]>(IPC.transactionList, (arg) =>
-    listLocalTransactions(arg?.accountId),
+  handle<{ accountId?: string; networkPk?: string }, TransactionRecord[]>(IPC.transactionList, (arg) =>
+    listNetworkTransactions(arg?.networkPk, arg?.accountId),
   )
 
-  handle<{ accountId?: string }, TransactionRecord[]>(IPC.transactionSync, (arg) =>
-    listLocalTransactions(arg?.accountId),
+  handle<{ networkPk: string }, TransactionRecord[]>(IPC.transactionSync, async (arg) =>
+    syncNetworkTransactions(requireString(arg?.networkPk, 'networkPk')),
   )
 }

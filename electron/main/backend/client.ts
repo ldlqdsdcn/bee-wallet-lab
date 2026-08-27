@@ -138,12 +138,13 @@ export function post<T>(
 export async function catalogGet<T>(
   path: string,
   query?: Record<string, QueryValue>,
+  extra?: Omit<RequestOptions, 'method' | 'path' | 'query'>,
 ): Promise<T> {
   try {
-    return await request<T>({ method: 'GET', path, query, anonymous: true })
+    return await request<T>({ ...extra, method: 'GET', path, query, anonymous: true })
   } catch (err) {
     if (err instanceof BackendError && (err.code === 'AUTH_EXPIRED' || err.status === 401)) {
-      return await request<T>({ method: 'GET', path, query })
+      return await request<T>({ ...extra, method: 'GET', path, query })
     }
     throw err
   }

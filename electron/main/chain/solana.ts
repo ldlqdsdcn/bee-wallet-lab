@@ -331,3 +331,14 @@ export function explorerUrlForSolana(signature: string, network: NetworkRecord):
   const cluster = network.networkScope === 'testnet' ? '?cluster=devnet' : ''
   return `${base}/tx/${signature}${cluster}`
 }
+
+export async function fetchSolanaSignatures(network: NetworkRecord, address: string, limit = 30): Promise<unknown> {
+  return solanaRpc<unknown>(network, 'getSignaturesForAddress', [address, { limit }])
+}
+
+export async function fetchSolanaTransaction(network: NetworkRecord, signature: string): Promise<unknown> {
+  return solanaRpc<unknown>(network, 'getTransaction', [
+    signature,
+    { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0 },
+  ])
+}

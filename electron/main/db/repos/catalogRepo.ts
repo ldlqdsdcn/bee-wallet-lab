@@ -2,6 +2,7 @@
  * 目录仓储：网络 / 代币 / 法币快照 + 同步元信息。
  */
 import type {
+  CatalogSource,
   CatalogSyncMeta,
   CurrencyRecord,
   NetworkRecord,
@@ -29,6 +30,7 @@ interface NetworkRow {
   support_gas_time: string | null
   remark: string | null
   sort_order: number
+  source: string
   synced_at: number
 }
 
@@ -47,6 +49,7 @@ interface TokenRow {
   blockchain_explorer: string | null
   is_default_selected: number
   sort_order: number
+  source: string
   synced_at: number
 }
 
@@ -64,6 +67,10 @@ interface SyncMetaRow {
   last_sync_at: number | null
   item_count: number
   last_error: string | null
+}
+
+function asCatalogSource(value: string): CatalogSource {
+  return value === 'custom' ? 'custom' : 'builtin'
 }
 
 export function toNetworkRecord(row: NetworkRow): NetworkRecord {
@@ -84,6 +91,7 @@ export function toNetworkRecord(row: NetworkRow): NetworkRecord {
     supportGasTime: row.support_gas_time,
     remark: row.remark,
     networkScope: row.network_scope as NetworkScope,
+    source: asCatalogSource(row.source),
     syncedAt: row.synced_at,
   }
 }
@@ -103,6 +111,7 @@ export function toTokenRecord(row: TokenRow): TokenRecord {
     tokenIcon: row.token_icon,
     blockchainExplorer: row.blockchain_explorer,
     isDefaultSelected: row.is_default_selected === 1,
+    source: asCatalogSource(row.source),
     syncedAt: row.synced_at,
   }
 }
@@ -195,8 +204,8 @@ export function replaceNetworks(records: NetworkRecord[]): void {
     `INSERT INTO catalog_networks (
        id, network_id, network_name, chain_id, chain_name, chain_type, wallet_type,
        network_scope, coin_id, coin_easy, rpc_url, browser, icon, web_address,
-       support_gas_time, remark, sort_order, synced_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       support_gas_time, remark, sort_order, source, synced_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        network_id = excluded.network_id,
        network_name = excluded.network_name,
@@ -214,6 +223,7 @@ export function replaceNetworks(records: NetworkRecord[]): void {
        support_gas_time = excluded.support_gas_time,
        remark = excluded.remark,
        sort_order = excluded.sort_order,
+       source = 'builtin',
        synced_at = excluded.synced_at`,
   )
   const keep = new Set(records.map((item) => item.id))
@@ -237,13 +247,23 @@ export function replaceNetworks(records: NetworkRecord[]): void {
         item.supportGasTime,
         item.remark,
         index,
+        'builtin',
         item.syncedAt,
       )
     })
-    const existing = db.prepare<[], { id: string }>('SELECT id FROM catalog_networks').all()
+    const existing = db
+      .prepare<[], { id: string; source: string }>('SELECT id, source FROM catalog_networks')
+      .all()
+    const dropTokens = db.prepare('DELETE FROM catalog_tokens WHERE network_pk = ?')
+    const dropNodes = db.prepare('DELETE FROM rpc_nodes WHERE network_pk = ?')
+    const dropBalances = db.prepare('DELETE FROM balances_cache WHERE network_pk = ?')
     const drop = db.prepare('DELETE FROM catalog_networks WHERE id = ?')
     for (const row of existing) {
-      if (!keep.has(row.id)) drop.run(row.id)
+      if (keep.has(row.id) || row.source === 'custom') continue
+      dropTokens.run(row.id)
+      dropNodes.run(row.id)
+      dropBalances.run(row.id)
+      drop.run(row.id)
     }
   })
   apply()
@@ -254,8 +274,8 @@ export function replaceTokens(records: TokenRecord[]): void {
   const upsert = db.prepare(
     `INSERT INTO catalog_tokens (
        id, network_pk, token_id, name, symbol, decimals, contract_address, token_standard,
-       is_token, gas_limit, token_icon, blockchain_explorer, is_default_selected, sort_order, synced_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       is_token, gas_limit, token_icon, blockchain_explorer, is_default_selected, sort_order, source, synced_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        network_pk = excluded.network_pk,
        token_id = excluded.token_id,
@@ -270,6 +290,7 @@ export function replaceTokens(records: TokenRecord[]): void {
        blockchain_explorer = excluded.blockchain_explorer,
        is_default_selected = excluded.is_default_selected,
        sort_order = excluded.sort_order,
+       source = 'builtin',
        synced_at = excluded.synced_at`,
   )
   const keep = new Set(records.map((item) => item.id))
@@ -290,13 +311,15 @@ export function replaceTokens(records: TokenRecord[]): void {
         item.blockchainExplorer,
         item.isDefaultSelected ? 1 : 0,
         index,
+        'builtin',
         item.syncedAt,
       )
     })
-    const existing = db.prepare<[], { id: string }>('SELECT id FROM catalog_tokens').all()
+    const existing = db.prepare<[], { id: string; source: string }>('SELECT id, source FROM catalog_tokens').all()
     const drop = db.prepare('DELETE FROM catalog_tokens WHERE id = ?')
     for (const row of existing) {
-      if (!keep.has(row.id)) drop.run(row.id)
+      if (keep.has(row.id) || row.source === 'custom') continue
+      drop.run(row.id)
     }
   })
   apply()
@@ -325,4 +348,158 @@ export function replaceCurrencies(records: CurrencyRecord[]): void {
     }
   })
   apply()
+}
+
+export function findNetworkByChain(walletType: WalletType, chainId: string): NetworkRecord | null {
+  const row = getDatabase()
+    .prepare<[string, string], NetworkRow>(
+      'SELECT * FROM catalog_networks WHERE wallet_type = ? AND chain_id = ? LIMIT 1',
+    )
+    .get(walletType, chainId)
+  return row ? toNetworkRecord(row) : null
+}
+
+export function nextNetworkSortOrder(): number {
+  const row = getDatabase()
+    .prepare<[], { n: number }>('SELECT IFNULL(MAX(sort_order), -1) + 1 AS n FROM catalog_networks')
+    .get()
+  return row?.n ?? 0
+}
+
+export function nextTokenSortOrder(networkPk: string): number {
+  const row = getDatabase()
+    .prepare<[string], { n: number }>(
+      'SELECT IFNULL(MAX(sort_order), -1) + 1 AS n FROM catalog_tokens WHERE network_pk = ?',
+    )
+    .get(networkPk)
+  return row?.n ?? 0
+}
+
+export function insertNetwork(record: NetworkRecord, sortOrder: number): void {
+  getDatabase()
+    .prepare(
+      `INSERT INTO catalog_networks (
+         id, network_id, network_name, chain_id, chain_name, chain_type, wallet_type,
+         network_scope, coin_id, coin_easy, rpc_url, browser, icon, web_address,
+         support_gas_time, remark, sort_order, source, synced_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      record.id,
+      record.networkId,
+      record.networkName,
+      record.chainId,
+      record.chainName,
+      record.chainType,
+      record.walletType,
+      record.networkScope,
+      record.coinId,
+      record.coinEasy,
+      record.rpcUrl,
+      record.browser,
+      record.icon,
+      record.webAddress,
+      record.supportGasTime,
+      record.remark,
+      sortOrder,
+      record.source,
+      record.syncedAt,
+    )
+}
+
+export function updateNetwork(record: NetworkRecord): void {
+  getDatabase()
+    .prepare(
+      `UPDATE catalog_networks SET
+         network_id = ?, network_name = ?, chain_id = ?, chain_name = ?, chain_type = ?,
+         wallet_type = ?, network_scope = ?, coin_id = ?, coin_easy = ?, rpc_url = ?,
+         browser = ?, icon = ?, web_address = ?, support_gas_time = ?, remark = ?, synced_at = ?
+       WHERE id = ?`,
+    )
+    .run(
+      record.networkId,
+      record.networkName,
+      record.chainId,
+      record.chainName,
+      record.chainType,
+      record.walletType,
+      record.networkScope,
+      record.coinId,
+      record.coinEasy,
+      record.rpcUrl,
+      record.browser,
+      record.icon,
+      record.webAddress,
+      record.supportGasTime,
+      record.remark,
+      record.syncedAt,
+      record.id,
+    )
+}
+
+export function deleteNetwork(id: string): void {
+  getDatabase().prepare('DELETE FROM catalog_networks WHERE id = ?').run(id)
+}
+
+export function insertToken(record: TokenRecord, sortOrder: number): void {
+  getDatabase()
+    .prepare(
+      `INSERT INTO catalog_tokens (
+         id, network_pk, token_id, name, symbol, decimals, contract_address, token_standard,
+         is_token, gas_limit, token_icon, blockchain_explorer, is_default_selected, sort_order, source, synced_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      record.id,
+      record.networkPk,
+      record.tokenId,
+      record.name,
+      record.symbol,
+      record.decimals,
+      record.contractAddress,
+      record.tokenStandard,
+      record.isToken ? 1 : 0,
+      record.gasLimit,
+      record.tokenIcon,
+      record.blockchainExplorer,
+      record.isDefaultSelected ? 1 : 0,
+      sortOrder,
+      record.source,
+      record.syncedAt,
+    )
+}
+
+export function updateToken(record: TokenRecord): void {
+  getDatabase()
+    .prepare(
+      `UPDATE catalog_tokens SET
+         network_pk = ?, token_id = ?, name = ?, symbol = ?, decimals = ?, contract_address = ?,
+         token_standard = ?, is_token = ?, gas_limit = ?, token_icon = ?, blockchain_explorer = ?,
+         is_default_selected = ?, synced_at = ?
+       WHERE id = ?`,
+    )
+    .run(
+      record.networkPk,
+      record.tokenId,
+      record.name,
+      record.symbol,
+      record.decimals,
+      record.contractAddress,
+      record.tokenStandard,
+      record.isToken ? 1 : 0,
+      record.gasLimit,
+      record.tokenIcon,
+      record.blockchainExplorer,
+      record.isDefaultSelected ? 1 : 0,
+      record.syncedAt,
+      record.id,
+    )
+}
+
+export function deleteToken(id: string): void {
+  getDatabase().prepare('DELETE FROM catalog_tokens WHERE id = ?').run(id)
+}
+
+export function deleteTokensByNetwork(networkPk: string): void {
+  getDatabase().prepare('DELETE FROM catalog_tokens WHERE network_pk = ?').run(networkPk)
 }

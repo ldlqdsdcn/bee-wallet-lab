@@ -9,6 +9,7 @@ import { initVault, disposeVault } from './security/vault'
 import { registerAllIpc } from './ipc'
 import { applyActiveProxy } from './net/proxy'
 import { migrateLegacyProxy } from './net/proxies'
+import { ensureDefaultFiat } from './db/repos/metaRepo'
 
 let started = false
 
@@ -23,6 +24,7 @@ export function bootstrap(): void {
 
   initVault()
   migrateLegacyProxy()
+  ensureDefaultFiat()
   registerAllIpc()
   started = true
   void applyActiveProxy().catch((err) => {

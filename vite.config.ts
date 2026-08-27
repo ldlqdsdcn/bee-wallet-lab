@@ -4,12 +4,14 @@ import electron from 'vite-plugin-electron/simple'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
+const sharedAlias = {
+  '@shared': path.join(__dirname, 'shared'),
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
   resolve: {
-    alias: {
-      '@shared': path.join(__dirname, 'shared'),
-    },
+    alias: sharedAlias,
   },
   plugins: [
     react(),
@@ -19,6 +21,7 @@ export default defineConfig({
         // Shortcut of `build.lib.entry`.
         entry: 'electron/main.ts',
         vite: {
+          resolve: { alias: sharedAlias },
           build: {
             rollupOptions: {
               // better-sqlite3 是原生模块，必须保持外部依赖，运行时用 require 加载
@@ -31,6 +34,9 @@ export default defineConfig({
         // Shortcut of `build.rollupOptions.input`.
         // Preload scripts may contain Web assets, so use the `build.rollupOptions.input` instead `build.lib.entry`.
         input: path.join(__dirname, 'electron/preload.ts'),
+        vite: {
+          resolve: { alias: sharedAlias },
+        },
       },
       // Ployfill the Electron and Node.js API for Renderer process.
       // If you want use Node.js in Renderer process, the `nodeIntegration` needs to be enabled in the Main process.

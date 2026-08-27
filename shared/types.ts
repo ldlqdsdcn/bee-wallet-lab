@@ -5,6 +5,8 @@
 
 export type WalletType = 'bitcoin' | 'web3' | 'tron' | 'solana'
 
+export type CatalogSource = 'builtin' | 'custom'
+
 export type BitcoinAddressType = 'p2pkh' | 'p2sh-p2wpkh' | 'p2wpkh' | 'p2tr'
 
 export type NetworkScope = 'mainnet' | 'testnet'
@@ -149,6 +151,7 @@ export interface NetworkRecord {
   remark: string | null
   /** 由 chainId / chainName 推断 */
   networkScope: NetworkScope
+  source: CatalogSource
   syncedAt: number
 }
 
@@ -167,6 +170,7 @@ export interface TokenRecord {
   tokenIcon: string | null
   blockchainExplorer: string | null
   isDefaultSelected: boolean
+  source: CatalogSource
   syncedAt: number
 }
 
@@ -192,6 +196,61 @@ export interface CatalogSyncResult {
   offline: boolean
   error: string | null
   syncedAt: number
+}
+
+export interface NetworkUpsertInput {
+  id?: string
+  networkName: string
+  walletType: WalletType
+  networkScope: NetworkScope
+  chainId: string
+  chainName?: string
+  rpcUrl?: string
+  browser?: string
+  coinId?: string
+  coinEasy?: string
+  icon?: string
+  remark?: string
+}
+
+export interface TokenUpsertInput {
+  id?: string
+  networkPk: string
+  name?: string
+  symbol: string
+  decimals?: number
+  contractAddress?: string
+  tokenId?: string
+  tokenStandard?: string
+  gasLimit?: number
+  tokenIcon?: string
+  isDefaultSelected?: boolean
+}
+
+/** 添加网络时按 chainId / 名称查询目录站或本地预设 */
+export interface CatalogLookupQuery {
+  q?: string
+  chainId?: string
+}
+
+export interface CatalogLookupToken {
+  name: string
+  symbol: string
+  decimals: number
+  contractAddress: string | null
+  tokenId: string | null
+  tokenIcon: string | null
+  isToken: boolean
+}
+
+export interface CatalogLookupResult {
+  /** remote：目录站；local：内置预设 */
+  source: 'remote' | 'local'
+  supported: boolean
+  hint: string | null
+  network: NetworkUpsertInput | null
+  native: CatalogLookupToken | null
+  tokens: CatalogLookupToken[]
 }
 
 /* -------------------------------- 资产余额 -------------------------------- */

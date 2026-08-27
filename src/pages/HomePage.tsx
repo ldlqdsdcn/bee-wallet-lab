@@ -116,7 +116,7 @@ export default function HomePage() {
       ) : null}
 
       <Card>
-        <p className="text-xs text-ink-500">总资产（{snapshot?.currencyCode ?? 'USD'}）</p>
+        <p className="text-xs text-ink-500">总资产（{snapshot?.currencyCode ?? 'CNY'}）</p>
         <p className="mt-1 text-3xl font-semibold text-ink-100">
           {snapshot?.totalCurrency ?? '--'}
         </p>

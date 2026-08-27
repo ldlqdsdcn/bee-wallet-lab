@@ -12,8 +12,10 @@ Electron 桌面端 Web3 钱包实验项目。助记词与私钥只存在于主�
 4. **钱包管理**：创建（抄写校验）/ 导入助记词 / 导出 / 多钱包 / 多账户派生 / 私钥导入
 5. **资产总览**：本机直连 RPC 取余额；BTC 原生币按四种地址格式展开
 6. **收款转账**：BTC（Esplora）、EVM（JSON-RPC）、TRON（TronGrid）、Solana（JSON-RPC）；本地签名后直连广播
-7. **消息签名**：EVM/TRON 为 EIP-191 `personal_sign`；Bitcoin 为 BIP-137；Solana 为 Ed25519
-8. **地址簿**：本地 SQLite，转账页可选择收款人
+7. **交易记录**：侧栏按当前网络同步当前钱包的转入转出；BTC 走 Esplora，EVM 优先 Blockscout 其次 Etherscan，TRON 走 TronGrid，Solana 走 RPC
+8. **消息签名**：EVM/TRON 为 EIP-191 `personal_sign`；Bitcoin 为 BIP-137；Solana 为 Ed25519
+9. **地址簿**：本地 SQLite，转账页可选择收款人
+10. **节点 / 网络 / 代币 / 代理维护**：侧栏可增删改；重新装入内置目录时自定义项会保留
 
 ## 开发
 
@@ -28,7 +30,7 @@ npm run dev
 cp .env.example .env
 ```
 
-在 `.env` 填写 `VITE_INFURA_API_KEY`（EVM）。可选 TronGrid key、Bitcoin Esplora 地址。首次进入先设置主密码，再创建或导入钱包。设置页「重新装入本地目录」会把 `data/catalog/` 再写进 SQLite。
+在 `.env` 填写 `VITE_INFURA_API_KEY`（EVM）。可选 TronGrid key、Bitcoin Esplora 地址、`VITE_ETHERSCAN_API_KEY`（EVM 交易记录；不填则走 Blockscout 公开接口）。设置页可填目录站地址；添加网络时会请求 `GET /api/network/lookup` 拿主币和热门代币，没填或失败则用本地预设。
 
 ## 数据位置
 

@@ -10,9 +10,12 @@ const navItems = [
   { to: '/', label: '资产总览' },
   { to: '/wallets', label: '钱包与账户' },
   { to: '/transfer', label: '收款转账' },
+  { to: '/activity', label: '交易记录' },
   { to: '/address-book', label: '地址簿' },
   { to: '/sign', label: '消息签名' },
   { to: '/nodes', label: '节点维护' },
+  { to: '/networks', label: '网络维护' },
+  { to: '/tokens', label: '代币维护' },
   { to: '/proxy', label: '代理' },
   { to: '/settings', label: '设置' },
 ]

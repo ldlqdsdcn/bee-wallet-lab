@@ -12,6 +12,8 @@ import type {
   AppSettings,
   BackendStatus,
   BroadcastResult,
+  CatalogLookupQuery,
+  CatalogLookupResult,
   CatalogSyncResult,
   CreateWalletInput,
   CurrencyRecord,
@@ -21,6 +23,7 @@ import type {
   ImportWalletInput,
   MnemonicDraft,
   NetworkRecord,
+  NetworkUpsertInput,
   PortfolioSnapshot,
   ProxyCreateInput,
   ProxyListState,
@@ -29,6 +32,7 @@ import type {
   SignMessageInput,
   SignMessageResult,
   TokenRecord,
+  TokenUpsertInput,
   TransactionRecord,
   TransferDraftInput,
   TransferPreview,
@@ -139,6 +143,11 @@ export const catalogApi = {
   tokens: (networkPk?: string) => call<TokenRecord[]>(IPC.catalogTokens, { networkPk }),
   currencies: () => call<CurrencyRecord[]>(IPC.catalogCurrencies),
   sync: (force = false) => call<CatalogSyncResult>(IPC.catalogSync, { force }),
+  lookup: (query: CatalogLookupQuery) => call<CatalogLookupResult>(IPC.catalogLookup, query),
+  upsertNetwork: (input: NetworkUpsertInput) => call<NetworkRecord>(IPC.catalogNetworkUpsert, input),
+  removeNetwork: (id: string) => call<true>(IPC.catalogNetworkRemove, { id }),
+  upsertToken: (input: TokenUpsertInput) => call<TokenRecord>(IPC.catalogTokenUpsert, input),
+  removeToken: (id: string) => call<true>(IPC.catalogTokenRemove, { id }),
 }
 
 export const portfolioApi = {
@@ -150,7 +159,9 @@ export const transferApi = {
   preview: (input: TransferDraftInput) => call<TransferPreview>(IPC.transferPreview, input),
   submit: (draftId: string) => call<BroadcastResult>(IPC.transferSubmit, { draftId }),
   receiveInfo: (accountId: string) => call<AccountRecord>(IPC.transferReceiveInfo, { accountId }),
-  transactions: (accountId?: string) => call<TransactionRecord[]>(IPC.transactionList, { accountId }),
+  transactions: (query?: { networkPk?: string; accountId?: string }) =>
+    call<TransactionRecord[]>(IPC.transactionList, query ?? {}),
+  syncTransactions: (networkPk: string) => call<TransactionRecord[]>(IPC.transactionSync, { networkPk }),
 }
 
 export const signApi = {

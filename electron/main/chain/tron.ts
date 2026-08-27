@@ -9,7 +9,7 @@ import { isTronAddress, tronAddressToHex } from '../derive/tron'
 import { networkByType, tronApiCandidates, tryRpcUrls } from '../rpc/nodes'
 import { setPreferredRpc } from '../rpc/preference'
 import { trongridApiKey } from '../rpc/env'
-import { providerPost } from '../rpc/fetch'
+import { providerGet, providerPost } from '../rpc/fetch'
 import { joinRpcPath } from '../rpc/url'
 
 export interface TronUnsignedTx {
@@ -25,6 +25,15 @@ function trongridHeaders(): Record<string, string> | undefined {
 async function trongrid<T>(path: string, body: unknown, scope: NetworkScope): Promise<T> {
   const { url, result } = await tryRpcUrls(tronApiCandidates(scope), (base) =>
     providerPost<T>(joinRpcPath(base, path), body, { headers: trongridHeaders() }),
+  )
+  const network = networkByType('tron', scope)
+  if (network) setPreferredRpc(network.id, url)
+  return result
+}
+
+async function trongridGet<T>(path: string, scope: NetworkScope): Promise<T> {
+  const { url, result } = await tryRpcUrls(tronApiCandidates(scope), (base) =>
+    providerGet<T>(joinRpcPath(base, path), trongridHeaders()),
   )
   const network = networkByType('tron', scope)
   if (network) setPreferredRpc(network.id, url)
@@ -165,4 +174,18 @@ export function explorerUrlForTron(txid: string, networkScope: NetworkScope, bro
   return networkScope === 'mainnet'
     ? `https://tronscan.org/#/transaction/${txid}`
     : `https://nile.tronscan.org/#/transaction/${txid}`
+}
+
+export async function fetchTronAccountTransactions(address: string, networkScope: NetworkScope): Promise<unknown> {
+  return trongridGet<unknown>(
+    `v1/accounts/${encodeURIComponent(address)}/transactions?limit=50&only_confirmed=true`,
+    networkScope,
+  )
+}
+
+export async function fetchTronAccountTrc20(address: string, networkScope: NetworkScope): Promise<unknown> {
+  return trongridGet<unknown>(
+    `v1/accounts/${encodeURIComponent(address)}/transactions/trc20?limit=50&only_confirmed=true`,
+    networkScope,
+  )
 }

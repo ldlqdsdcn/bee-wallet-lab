@@ -318,6 +318,16 @@ const migrations: Migration[] = [
       `)
     },
   },
+  {
+    version: 7,
+    description: 'catalog source builtin/custom so user networks and tokens survive sync',
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE catalog_networks ADD COLUMN source TEXT NOT NULL DEFAULT 'builtin';
+        ALTER TABLE catalog_tokens ADD COLUMN source TEXT NOT NULL DEFAULT 'builtin';
+      `)
+    },
+  },
 ]
 
 export const LATEST_SCHEMA_VERSION = migrations[migrations.length - 1].version

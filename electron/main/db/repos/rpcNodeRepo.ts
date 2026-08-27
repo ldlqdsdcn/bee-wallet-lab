@@ -93,6 +93,10 @@ export function deleteBuiltinRpcNodes(networkPk: string): void {
   getDatabase().prepare("DELETE FROM rpc_nodes WHERE network_pk = ? AND source = 'builtin'").run(networkPk)
 }
 
+export function deleteRpcNodesByNetwork(networkPk: string): void {
+  getDatabase().prepare('DELETE FROM rpc_nodes WHERE network_pk = ?').run(networkPk)
+}
+
 export function clearRpcSelection(networkPk: string): void {
   getDatabase().prepare('UPDATE rpc_nodes SET is_selected = 0 WHERE network_pk = ?').run(networkPk)
 }

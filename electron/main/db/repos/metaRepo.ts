@@ -8,12 +8,13 @@ import { getDatabase } from '../sqlite'
 
 const META_KDF = 'vault.kdf'
 const META_VERIFIER = 'vault.verifier'
+const META_FIAT_DEFAULTED = 'settings.fiatDefaultedCny'
 const SETTINGS_KEY = 'app'
 
 export const DEFAULT_SETTINGS: AppSettings = {
   baseUrl: catalogEnvUrl(),
   autoLockMinutes: 5,
-  currencyCode: 'USD',
+  currencyCode: 'CNY',
   language: 'zh-CN',
   theme: 'dark',
   defaultWalletId: null,
@@ -90,4 +91,13 @@ export function saveSettings(patch: Partial<AppSettings>): AppSettings {
     )
     .run(SETTINGS_KEY, JSON.stringify(next), Date.now())
   return next
+}
+
+/** 实验室钱包默认人民币。仅在从未改过法币时，把旧默认 USD 迁成 CNY。 */
+export function ensureDefaultFiat(): void {
+  if (readMeta(META_FIAT_DEFAULTED)) return
+  if (loadSettings().currencyCode === 'USD') {
+    saveSettings({ currencyCode: 'CNY' })
+  }
+  writeMeta(META_FIAT_DEFAULTED, '1')
 }

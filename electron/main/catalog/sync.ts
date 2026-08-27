@@ -12,6 +12,7 @@ import {
 } from '../db/repos/catalogRepo'
 import { loadSettings, saveSettings } from '../db/repos/metaRepo'
 import { loadBuiltinCatalog } from './builtin'
+import { ensureMissingNativeTokens } from './maintain'
 import type { CatalogSyncResult } from '@shared/types'
 
 function applyBuiltin(now: number): CatalogSyncResult {
@@ -19,6 +20,7 @@ function applyBuiltin(now: number): CatalogSyncResult {
   replaceNetworks(networks)
   replaceTokens(tokens)
   replaceCurrencies(currencies)
+  ensureMissingNativeTokens()
   upsertSyncMeta({ name: 'all', lastSyncAt: now, itemCount: networks.length + tokens.length, lastError: null })
   upsertSyncMeta({ name: 'networks', lastSyncAt: now, itemCount: networks.length, lastError: null })
   upsertSyncMeta({ name: 'tokens', lastSyncAt: now, itemCount: tokens.length, lastError: null })
@@ -56,5 +58,5 @@ export function getCatalogTokens(networkPk?: string) {
 
 export function getCatalogCurrencies() {
   const rows = listCurrencies()
-  return rows.length ? rows : [{ id: 'usd', code: 'USD', name: 'US Dollar', symbol: '$', syncedAt: 0 }]
+  return rows.length ? rows : [{ id: 'cny', code: 'CNY', name: 'CNY', symbol: '¥', syncedAt: 0 }]
 }

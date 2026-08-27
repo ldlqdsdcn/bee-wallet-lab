@@ -45,3 +45,7 @@ export function trongridApiKey(): string {
 export function coingeckoApiKey(): string {
   return read('VITE_COINGECKO_API_KEY')
 }
+
+export function etherscanApiKey(): string {
+  return read('VITE_ETHERSCAN_API_KEY')
+}

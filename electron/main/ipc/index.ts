@@ -21,6 +21,7 @@ import {
 } from '../db/repos/addressBookRepo'
 import { reencryptAuthTokens } from '../db/repos/authTokenRepo'
 import { authenticate, getBackendStatus, ping, resetBackend } from '../backend/client'
+import { resetPriceBackoff } from '../price'
 import { hydrateAuthToken } from '../backend/auth'
 import { reencryptWalletSecrets, initWalletAuth } from '../wallets/service'
 import { syncCatalog } from '../catalog/sync'
@@ -82,6 +83,9 @@ function registerSettingsIpc(): void {
     if (next.baseUrl !== before.baseUrl) {
       resetBackend()
       broadcast(IPC_EVENT.backendStatusChanged)
+    }
+    if (next.currencyCode !== before.currencyCode) {
+      resetPriceBackoff()
     }
     return next
   })

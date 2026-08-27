@@ -17,6 +17,7 @@ function token(partial: Partial<TokenRecord> & Pick<TokenRecord, 'symbol'>): Tok
     tokenIcon: null,
     blockchainExplorer: null,
     isDefaultSelected: true,
+    source: 'builtin',
     syncedAt: 0,
     ...partial,
   }
@@ -40,6 +41,7 @@ function network(partial: Partial<NetworkRecord> = {}): NetworkRecord {
     supportGasTime: null,
     remark: null,
     networkScope: 'mainnet',
+    source: 'builtin',
     syncedAt: 0,
     ...partial,
   }

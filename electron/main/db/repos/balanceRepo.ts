@@ -66,3 +66,11 @@ export function loadBalance(entryKey: string): BalanceCacheRow | null {
       .get(entryKey) ?? null
   )
 }
+
+export function deleteBalancesForNetwork(networkPk: string): void {
+  getDatabase().prepare('DELETE FROM balances_cache WHERE network_pk = ?').run(networkPk)
+}
+
+export function deleteBalancesForToken(tokenPk: string): void {
+  getDatabase().prepare('DELETE FROM balances_cache WHERE token_pk = ?').run(tokenPk)
+}

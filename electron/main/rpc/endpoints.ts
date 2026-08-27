@@ -84,6 +84,20 @@ const PUBLIC_EVM_RPC: Record<string, string[]> = {
   '421614': ['https://sepolia-rollup.arbitrum.io/rpc'],
   '56': ['https://bsc-dataseed.binance.org', 'https://1rpc.io/bnb'],
   '97': ['https://bsc-testnet-rpc.publicnode.com'],
+  '8453': ['https://mainnet.base.org', 'https://base-rpc.publicnode.com', 'https://1rpc.io/base'],
+  '84532': ['https://sepolia.base.org'],
+  '10': ['https://mainnet.optimism.io', 'https://1rpc.io/op'],
+  '137': ['https://polygon-rpc.com', 'https://1rpc.io/matic'],
+  '43114': ['https://api.avax.network/ext/bc/C/rpc', 'https://1rpc.io/avax/c'],
+  '59144': ['https://rpc.linea.build', 'https://1rpc.io/linea'],
+  '534352': ['https://rpc.scroll.io', 'https://1rpc.io/scroll'],
+  '324': ['https://mainnet.era.zksync.io'],
+  '81457': ['https://rpc.blast.io'],
+  '5000': ['https://rpc.mantle.xyz'],
+  '3721': ['https://rpc.xone.org'],
+  '204': ['https://opbnb-mainnet-rpc.bnbchain.org'],
+  '196': ['https://rpc.xlayer.tech'],
+  '1329': ['https://evm-rpc.sei-apis.com'],
 }
 
 function uniqueUrls(urls: string[]): string[] {

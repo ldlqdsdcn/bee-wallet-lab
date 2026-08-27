@@ -7,8 +7,11 @@ import AddressBookPage from './pages/AddressBookPage'
 import HomePage from './pages/HomePage'
 import WalletsPage from './pages/WalletsPage'
 import TransferPage from './pages/TransferPage'
+import ActivityPage from './pages/ActivityPage'
 import SignPage from './pages/SignPage'
 import RpcNodesPage from './pages/RpcNodesPage'
+import NetworksPage from './pages/NetworksPage'
+import TokensPage from './pages/TokensPage'
 import ProxyPage from './pages/ProxyPage'
 import { subscribeVaultEvents, useVaultStore } from './store/vaultStore'
 import { subscribeWalletEvents } from './store/walletStore'
@@ -60,9 +63,12 @@ export default function App() {
             <Route index element={<HomePage />} />
             <Route path="wallets" element={<WalletsPage />} />
             <Route path="transfer" element={<TransferPage />} />
+            <Route path="activity" element={<ActivityPage />} />
             <Route path="address-book" element={<AddressBookPage />} />
             <Route path="sign" element={<SignPage />} />
             <Route path="nodes" element={<RpcNodesPage />} />
+            <Route path="networks" element={<NetworksPage />} />
+            <Route path="tokens" element={<TokensPage />} />
             <Route path="proxy" element={<ProxyPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

@@ -21,6 +21,7 @@ function network(chainId: string, rpcUrl: string | null = null): NetworkRecord {
     supportGasTime: null,
     remark: null,
     networkScope: 'mainnet',
+    source: 'builtin',
     syncedAt: 0,
   }
 }
@@ -34,6 +35,11 @@ describe('EVM RPC 候选', () => {
   it('BSC / Arbitrum 有公共 fallback', () => {
     expect(evmRpcCandidates(network('56')).length).toBeGreaterThan(0)
     expect(evmRpcCandidates(network('42161')).length).toBeGreaterThan(0)
+  })
+
+  it('Base / Xone 有公共节点', () => {
+    expect(evmRpcCandidates(network('8453')).some((item) => item.includes('base.org'))).toBe(true)
+    expect(evmRpcCandidates(network('3721')).some((item) => item.includes('xone.org'))).toBe(true)
   })
 })
 

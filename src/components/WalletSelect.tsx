@@ -81,7 +81,7 @@ function WalletPickerDialog({
   const [page, setPage] = useState(1)
   const [items, setItems] = useState<WalletPickerItem[]>([])
   const [total, setTotal] = useState(0)
-  const [currencyCode, setCurrencyCode] = useState('USD')
+  const [currencyCode, setCurrencyCode] = useState('CNY')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

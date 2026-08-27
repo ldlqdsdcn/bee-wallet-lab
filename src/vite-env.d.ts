@@ -13,4 +13,5 @@ interface ImportMetaEnv {
   readonly VITE_SOLANA_MAINNET_RPC?: string
   readonly VITE_SOLANA_DEVNET_RPC?: string
   readonly VITE_COINGECKO_API_KEY?: string
+  readonly VITE_ETHERSCAN_API_KEY?: string
 }
