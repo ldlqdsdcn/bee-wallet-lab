@@ -48,6 +48,8 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-5">
       <h1 className="text-lg font-semibold text-ink-200">设置</h1>
+      <Alert>{error}</Alert>
+      {message ? <p className="text-xs text-honey-400">{message}</p> : null}
 
       <Card title="网络与代币">
         <div className="space-y-3">
@@ -139,8 +141,6 @@ export default function SettingsPage() {
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
           />
-          <Alert>{error}</Alert>
-          {message ? <p className="text-xs text-honey-400">{message}</p> : null}
           <Button
             disabled={!oldPassword || !newPassword}
             onClick={() => void changePassword()}

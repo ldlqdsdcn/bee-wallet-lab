@@ -22,6 +22,16 @@ export const IPC = {
   settingsGet: 'settings:get',
   settingsUpdate: 'settings:update',
 
+  /* 代理 */
+  proxyList: 'proxy:list',
+  proxyAdd: 'proxy:add',
+  proxyUpdate: 'proxy:update',
+  proxyRemove: 'proxy:remove',
+  proxySelect: 'proxy:select',
+  proxyPing: 'proxy:ping',
+  proxyPingAll: 'proxy:pingAll',
+  proxySetEnabled: 'proxy:setEnabled',
+
   /* 钱包 */
   walletList: 'wallet:list',
   walletListPage: 'wallet:listPage',
@@ -101,6 +111,7 @@ export const IPC_EVENT = {
   addressBookUpdated: 'event:addressBookUpdated',
   walletsChanged: 'event:walletsChanged',
   rpcNodesChanged: 'event:rpcNodesChanged',
+  proxiesChanged: 'event:proxiesChanged',
 } as const
 
 export type IpcEventName = (typeof IPC_EVENT)[keyof typeof IPC_EVENT]

@@ -109,6 +109,11 @@ export default function HomePage() {
           节点暂时不可达，正在展示本地缓存余额
         </p>
       ) : null}
+      {snapshot?.priceError ? (
+        <p className="rounded-lg border border-honey-600/30 bg-honey-600/10 px-3 py-2 text-xs text-honey-400">
+          {snapshot.priceError}
+        </p>
+      ) : null}
 
       <Card>
         <p className="text-xs text-ink-500">总资产（{snapshot?.currencyCode ?? 'USD'}）</p>

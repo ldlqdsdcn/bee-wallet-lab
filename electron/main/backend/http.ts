@@ -7,6 +7,8 @@
  *   部分列表接口直接返回数组或裸对象
  */
 
+import { proxiedFetch } from '../net/proxy'
+
 export const DEFAULT_TIMEOUT_MS = 15_000
 
 /** 后端返回的 401 业务码 */
@@ -70,7 +72,7 @@ export async function rawFetch(
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const response = await fetch(url, { ...init, signal: controller.signal })
+    const response = await proxiedFetch(url, { ...init, signal: controller.signal })
     const text = await response.text()
     let body: unknown = null
     if (text) {

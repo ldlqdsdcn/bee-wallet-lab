@@ -19,7 +19,7 @@ import { fetchAddressStats } from '../chain/bitcoin'
 import { getErc20Balance, getEvmBalance } from '../chain/evm'
 import { getTrc20Balance, getTronAccount } from '../chain/tron'
 import { getSolBalance, getSplBalance } from '../chain/solana'
-import { coinGeckoId, fetchCoinGeckoPrices, fiatValue } from '../price/coingecko'
+import { coinGeckoId, fetchMarketPrices, fiatValue } from '../price'
 
 const BTC_LABEL: Record<BitcoinAddressType, string> = {
   p2pkh: 'Legacy',
@@ -171,7 +171,7 @@ async function applyFiatPrices(
   tokens: TokenRecord[],
   network: NetworkRecord,
   currencyCode: string,
-): Promise<void> {
+): Promise<string | null> {
   const tokenByPk = new Map(tokens.map((item) => [item.id, item]))
   const ids = new Set<string>(['bitcoin', 'ethereum'])
   for (const entry of entries) {
@@ -182,9 +182,9 @@ async function applyFiatPrices(
 
   let prices: Map<string, number>
   try {
-    prices = await fetchCoinGeckoPrices([...ids], currencyCode)
-  } catch {
-    return
+    prices = await fetchMarketPrices([...ids], currencyCode)
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err)
   }
 
   for (const entry of entries) {
@@ -209,6 +209,7 @@ async function applyFiatPrices(
       updated_at: entry.updatedAt ?? Date.now(),
     })
   }
+  return null
 }
 
 const SYMBOL_FALLBACK: Record<string, string> = {
@@ -274,7 +275,7 @@ export async function getPortfolioSnapshot(networkPk?: string): Promise<Portfoli
     }
   }
 
-  await applyFiatPrices(entries, tokens, network, settings.currencyCode)
+  const priceError = await applyFiatPrices(entries, tokens, network, settings.currencyCode)
 
   const priced = entries.filter((item) => item.currencyBalance != null)
   const total = priced.reduce((sum, item) => {
@@ -288,5 +289,6 @@ export async function getPortfolioSnapshot(networkPk?: string): Promise<Portfoli
     totalCurrency: priced.length ? total.toFixed(2) : null,
     entries,
     offline: entries.some((item) => item.stale),
+    priceError,
   }
 }

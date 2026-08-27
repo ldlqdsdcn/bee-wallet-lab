@@ -22,6 +22,10 @@ import type {
   MnemonicDraft,
   NetworkRecord,
   PortfolioSnapshot,
+  ProxyCreateInput,
+  ProxyListState,
+  ProxyTestResult,
+  ProxyUpdateInput,
   SignMessageInput,
   SignMessageResult,
   TokenRecord,
@@ -152,6 +156,17 @@ export const transferApi = {
 export const signApi = {
   sign: (input: SignMessageInput) => call<SignMessageResult>(IPC.signMessage, input),
   verify: (input: VerifyMessageInput) => call<VerifyMessageResult>(IPC.verifyMessage, input),
+}
+
+export const proxyApi = {
+  list: () => call<ProxyListState>(IPC.proxyList),
+  add: (input: ProxyCreateInput) => call<ProxyListState>(IPC.proxyAdd, input),
+  update: (input: ProxyUpdateInput) => call<ProxyListState>(IPC.proxyUpdate, input),
+  remove: (id: string) => call<ProxyListState>(IPC.proxyRemove, { id }),
+  select: (id: string) => call<ProxyListState>(IPC.proxySelect, { id }),
+  ping: (id: string) => call<ProxyTestResult>(IPC.proxyPing, { id }),
+  pingAll: () => call<ProxyTestResult[]>(IPC.proxyPingAll),
+  setEnabled: (enabled: boolean) => call<ProxyListState>(IPC.proxySetEnabled, { enabled }),
 }
 
 export const rpcApi = {

@@ -35,6 +35,7 @@ import { registerPortfolioIpc } from './portfolio'
 import { registerTransferIpc } from './transfer'
 import { registerSignIpc } from './sign'
 import { registerRpcIpc } from './rpc'
+import { registerProxyIpc } from './proxy'
 
 function registerVaultIpc(): void {
   handle<void, VaultStatus>(IPC.vaultStatus, () => vault.getStatus())
@@ -172,6 +173,7 @@ export function registerAllIpc(): void {
   registerSignIpc()
   registerAddressBookIpc()
   registerRpcIpc()
+  registerProxyIpc()
   registerPlaceholders()
   initWalletAuth()
 

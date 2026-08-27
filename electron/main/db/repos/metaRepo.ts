@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
   defaultWalletId: null,
   defaultNetworkPk: null,
+  proxyEnabled: false,
 }
 
 function readMeta(key: string): string | null {
@@ -58,9 +59,25 @@ export function loadSettings(): AppSettings {
     .get(SETTINGS_KEY)
   if (!row) return { ...DEFAULT_SETTINGS }
   try {
-    return { ...DEFAULT_SETTINGS, ...(JSON.parse(row.value) as Partial<AppSettings>) }
+    const parsed = JSON.parse(row.value) as Partial<AppSettings> & { proxyUrl?: string }
+    const { proxyUrl: _legacy, ...rest } = parsed
+    return { ...DEFAULT_SETTINGS, ...rest }
   } catch {
     return { ...DEFAULT_SETTINGS }
+  }
+}
+
+/** 旧版单条 proxyUrl，仅用于迁到 proxies 表 */
+export function peekLegacyProxyUrl(): string {
+  const row = getDatabase()
+    .prepare<[string], { value: string }>('SELECT value FROM settings WHERE key = ?')
+    .get(SETTINGS_KEY)
+  if (!row) return ''
+  try {
+    const parsed = JSON.parse(row.value) as { proxyUrl?: unknown }
+    return typeof parsed.proxyUrl === 'string' ? parsed.proxyUrl.trim() : ''
+  } catch {
+    return ''
   }
 }
 

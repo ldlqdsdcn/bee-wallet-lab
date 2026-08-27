@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { coinGeckoId, fiatValue } from '../electron/main/price/coingecko'
+import { gatePair, quoteFromUsdt } from '../electron/main/price/fallback'
 import type { NetworkRecord, TokenRecord } from '../shared/types'
 
 function token(partial: Partial<TokenRecord> & Pick<TokenRecord, 'symbol'>): TokenRecord {
@@ -59,5 +60,19 @@ describe('CoinGecko 价格映射', () => {
     expect(fiatValue('1.5', 2000)).toBe('3000.00')
     expect(fiatValue('0.01', 100000)).toBe('1000.00')
     expect(fiatValue('bad', 1)).toBeNull()
+  })
+})
+
+describe('备用行情', () => {
+  it('主流币映射到 Gate USDT 交易对', () => {
+    expect(gatePair('ethereum')).toBe('ETH_USDT')
+    expect(gatePair('bitcoin')).toBe('BTC_USDT')
+    expect(gatePair('tether')).toBeNull()
+  })
+
+  it('USDT 报价乘汇率得到 CNY', () => {
+    expect(quoteFromUsdt(2500, 'usd', {})).toBe(2500)
+    expect(quoteFromUsdt(2500, 'CNY', { cny: 7.2 })).toBe(18000)
+    expect(quoteFromUsdt(2500, 'cny', {})).toBeNull()
   })
 })

@@ -229,6 +229,8 @@ export interface PortfolioSnapshot {
   entries: AssetEntry[]
   /** 数据来自缓存且后端不可用 */
   offline: boolean
+  /** 行情源都失败时的说明；有值时总资产仍可能为 -- */
+  priceError?: string | null
 }
 
 /* -------------------------------- 转账签名 -------------------------------- */
@@ -374,6 +376,41 @@ export interface AppSettings {
   theme: 'dark' | 'light'
   defaultWalletId: string | null
   defaultNetworkPk: string | null
+  /** 总开关。关闭时即使已选择代理也直连 */
+  proxyEnabled: boolean
+}
+
+export interface ProxyRecord {
+  id: string
+  url: string
+  label: string | null
+  isSelected: boolean
+  lastLatencyMs: number | null
+  lastError: string | null
+  lastCheckedAt: number | null
+  createdAt: number
+}
+
+export interface ProxyCreateInput {
+  url: string
+  label?: string
+}
+
+export interface ProxyUpdateInput {
+  id: string
+  url: string
+  label?: string
+}
+
+export interface ProxyListState {
+  enabled: boolean
+  proxies: ProxyRecord[]
+}
+
+export interface ProxyTestResult {
+  ok: boolean
+  latencyMs: number | null
+  message: string
 }
 
 export interface BackendStatus {

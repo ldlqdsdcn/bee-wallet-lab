@@ -299,6 +299,25 @@ const migrations: Migration[] = [
       `)
     },
   },
+  {
+    version: 6,
+    description: 'user proxy list',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE proxies (
+          id              TEXT PRIMARY KEY,
+          url             TEXT NOT NULL UNIQUE,
+          label           TEXT,
+          is_selected     INTEGER NOT NULL DEFAULT 0,
+          last_latency_ms INTEGER,
+          last_error      TEXT,
+          last_checked_at INTEGER,
+          created_at      INTEGER NOT NULL
+        );
+        CREATE INDEX idx_proxies_selected ON proxies(is_selected DESC, created_at ASC);
+      `)
+    },
+  },
 ]
 
 export const LATEST_SCHEMA_VERSION = migrations[migrations.length - 1].version

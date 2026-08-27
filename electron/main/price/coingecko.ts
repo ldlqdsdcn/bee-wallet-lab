@@ -43,7 +43,11 @@ function vsCurrency(code: string): string {
   return vs || 'usd'
 }
 
-export async function fetchCoinGeckoPrices(ids: string[], currencyCode: string): Promise<Map<string, number>> {
+export async function fetchCoinGeckoPrices(
+  ids: string[],
+  currencyCode: string,
+  timeoutMs = 10_000,
+): Promise<Map<string, number>> {
   const unique = [...new Set(ids.map((id) => id.trim().toLowerCase()).filter(Boolean))]
   const vs = vsCurrency(currencyCode)
   if (unique.length === 0) return new Map()
@@ -64,7 +68,7 @@ export async function fetchCoinGeckoPrices(ids: string[], currencyCode: string):
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (key) headers['x-cg-demo-api-key'] = key
 
-  const { status, body } = await rawFetch(url, { method: 'GET', headers }, 10_000)
+  const { status, body } = await rawFetch(url, { method: 'GET', headers }, timeoutMs)
   if (status < 200 || status >= 300) {
     throw new Error(`CoinGecko 返回 ${status}`)
   }

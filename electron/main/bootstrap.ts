@@ -7,6 +7,8 @@ import { closeDatabase, getDatabaseFilePath, openDatabase } from './db/sqlite'
 
 import { initVault, disposeVault } from './security/vault'
 import { registerAllIpc } from './ipc'
+import { applyActiveProxy } from './net/proxy'
+import { migrateLegacyProxy } from './net/proxies'
 
 let started = false
 
@@ -20,8 +22,12 @@ export function bootstrap(): void {
   }
 
   initVault()
+  migrateLegacyProxy()
   registerAllIpc()
   started = true
+  void applyActiveProxy().catch((err) => {
+    console.warn('[proxy] 应用代理失败', err instanceof Error ? err.message : err)
+  })
 }
 
 export function shutdown(): void {

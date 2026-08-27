@@ -13,6 +13,7 @@ const navItems = [
   { to: '/address-book', label: '地址簿' },
   { to: '/sign', label: '消息签名' },
   { to: '/nodes', label: '节点维护' },
+  { to: '/proxy', label: '代理' },
   { to: '/settings', label: '设置' },
 ]
 
