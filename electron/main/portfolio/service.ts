@@ -18,6 +18,8 @@ import { formatMinor } from '../util/amount'
 import { fetchAddressStats } from '../chain/bitcoin'
 import { getErc20Balance, getEvmBalance } from '../chain/evm'
 import { getTrc20Balance, getTronAccount } from '../chain/tron'
+import { getSolBalance, getSplBalance } from '../chain/solana'
+import { coinGeckoId, fetchCoinGeckoPrices, fiatValue } from '../price/coingecko'
 
 const BTC_LABEL: Record<BitcoinAddressType, string> = {
   p2pkh: 'Legacy',
@@ -59,6 +61,11 @@ async function fetchChainBalance(
       ? await getErc20Balance(network, contract, address)
       : await getEvmBalance(network, address)
     return { balance: formatMinor(wei, token.decimals), unconfirmed: null }
+  }
+  if (network.walletType === 'solana') {
+    const mint = contractOf(token)
+    const amount = mint ? await getSplBalance(network, address, mint) : await getSolBalance(network, address)
+    return { balance: formatMinor(amount, token.decimals), unconfirmed: null }
   }
   const contract = contractOf(token)
   if (!contract) {
@@ -159,6 +166,56 @@ async function loadEntry(input: {
   }
 }
 
+async function applyFiatPrices(
+  entries: AssetEntry[],
+  tokens: TokenRecord[],
+  network: NetworkRecord,
+  currencyCode: string,
+): Promise<void> {
+  const tokenByPk = new Map(tokens.map((item) => [item.id, item]))
+  const ids = new Set<string>(['bitcoin', 'ethereum'])
+  for (const entry of entries) {
+    const token = tokenByPk.get(entry.tokenPk)
+    const id = token ? coinGeckoId(token, network) : SYMBOL_FALLBACK[entry.symbol.toLowerCase()]
+    if (id) ids.add(id)
+  }
+
+  let prices: Map<string, number>
+  try {
+    prices = await fetchCoinGeckoPrices([...ids], currencyCode)
+  } catch {
+    return
+  }
+
+  for (const entry of entries) {
+    const token = tokenByPk.get(entry.tokenPk)
+    const id = token ? coinGeckoId(token, network) : SYMBOL_FALLBACK[entry.symbol.toLowerCase()]
+    const price = id ? prices.get(id) : undefined
+    if (price == null) continue
+    const fiat = fiatValue(entry.balance, price)
+    if (fiat == null) continue
+    entry.currencyBalance = fiat
+    upsertBalance({
+      entry_key: entry.key,
+      network_pk: entry.networkPk,
+      token_pk: entry.tokenPk,
+      account_id: entry.accountId,
+      address: entry.address,
+      address_type: entry.addressType,
+      balance: entry.balance,
+      unconfirmed: entry.unconfirmed,
+      currency_code: currencyCode,
+      currency_balance: fiat,
+      updated_at: entry.updatedAt ?? Date.now(),
+    })
+  }
+}
+
+const SYMBOL_FALLBACK: Record<string, string> = {
+  btc: 'bitcoin',
+  eth: 'ethereum',
+}
+
 export async function getPortfolioSnapshot(networkPk?: string): Promise<PortfolioSnapshot> {
   const settings = loadSettings()
   const pk = networkPk ?? settings.defaultNetworkPk
@@ -216,6 +273,8 @@ export async function getPortfolioSnapshot(networkPk?: string): Promise<Portfoli
       )
     }
   }
+
+  await applyFiatPrices(entries, tokens, network, settings.currencyCode)
 
   const priced = entries.filter((item) => item.currencyBalance != null)
   const total = priced.reduce((sum, item) => {

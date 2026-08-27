@@ -8,6 +8,7 @@ import HomePage from './pages/HomePage'
 import WalletsPage from './pages/WalletsPage'
 import TransferPage from './pages/TransferPage'
 import SignPage from './pages/SignPage'
+import RpcNodesPage from './pages/RpcNodesPage'
 import { subscribeVaultEvents, useVaultStore } from './store/vaultStore'
 import { subscribeWalletEvents } from './store/walletStore'
 import { subscribeAddressBookEvents } from './store/addressBookStore'
@@ -60,6 +61,7 @@ export default function App() {
             <Route path="transfer" element={<TransferPage />} />
             <Route path="address-book" element={<AddressBookPage />} />
             <Route path="sign" element={<SignPage />} />
+            <Route path="nodes" element={<RpcNodesPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

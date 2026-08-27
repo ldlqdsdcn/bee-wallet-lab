@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import type { AddressBookEntry, NetworkScope, WalletType } from '@shared/types'
 import { useAddressBookStore } from '../store/addressBookStore'
 import { Alert, Button, Card, Field } from '../components/ui'
+import { walletTypeLabel } from '../lib/format'
 
 const WALLET_TYPES: { value: WalletType; label: string }[] = [
   { value: 'bitcoin', label: 'Bitcoin' },
   { value: 'web3', label: 'EVM' },
   { value: 'tron', label: 'TRON' },
+  { value: 'solana', label: 'Solana' },
 ]
 
 const SCOPES: { value: NetworkScope; label: string }[] = [
@@ -192,7 +194,7 @@ export default function AddressBookPage() {
                   <div className="flex items-center gap-2">
                     <span className="truncate text-sm font-medium text-ink-200">{entry.label}</span>
                     <span className="rounded bg-ink-700 px-1.5 py-0.5 text-[10px] uppercase text-ink-400">
-                      {entry.walletType === 'web3' ? 'EVM' : entry.walletType}
+                      {walletTypeLabel(entry.walletType)}
                     </span>
                     {entry.networkScope === 'testnet' ? (
                       <span className="rounded bg-honey-600/20 px-1.5 py-0.5 text-[10px] text-honey-400">

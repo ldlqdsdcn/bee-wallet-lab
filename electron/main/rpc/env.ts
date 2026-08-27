@@ -32,6 +32,16 @@ export function tronApiBase(scope: 'mainnet' | 'testnet'): string {
   return scope === 'mainnet' ? 'https://api.trongrid.io' : 'https://nile.trongrid.io'
 }
 
+export function solanaRpcBase(scope: 'mainnet' | 'testnet'): string {
+  const fromEnv = scope === 'mainnet' ? read('VITE_SOLANA_MAINNET_RPC') : read('VITE_SOLANA_DEVNET_RPC')
+  if (fromEnv) return fromEnv.replace(/\/+$/, '')
+  return scope === 'mainnet' ? 'https://api.mainnet-beta.solana.com' : 'https://api.devnet.solana.com'
+}
+
 export function trongridApiKey(): string {
   return read('VITE_TRONGRID_API_KEY')
+}
+
+export function coingeckoApiKey(): string {
+  return read('VITE_COINGECKO_API_KEY')
 }

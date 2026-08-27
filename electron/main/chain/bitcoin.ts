@@ -6,8 +6,10 @@ import { hexToBytes } from '@noble/hashes/utils'
 import type { BitcoinAddressType, NetworkScope } from '@shared/types'
 import { extractList } from '../backend/list'
 import { isBitcoinAddress } from '../derive/bitcoin'
-import { resolveBitcoinApiBase } from '../rpc/endpoints'
+import { bitcoinApiCandidates, networkByType, tryRpcUrls } from '../rpc/nodes'
+import { setPreferredRpc } from '../rpc/preference'
 import { providerGet, providerPost } from '../rpc/fetch'
+import { joinRpcPath } from '../rpc/url'
 
 type BtcNetwork = typeof btc.NETWORK
 
@@ -38,8 +40,24 @@ function networkOf(scope: NetworkScope): BtcNetwork {
   return scope === 'mainnet' ? btc.NETWORK : btc.TEST_NETWORK
 }
 
-function esplora(scope: NetworkScope, path: string): string {
-  return `${resolveBitcoinApiBase(scope)}/${path.replace(/^\/+/, '')}`
+async function withEsplora<T>(scope: NetworkScope, run: (base: string) => Promise<T>): Promise<T> {
+  const { url, result } = await tryRpcUrls(bitcoinApiCandidates(scope), run)
+  const network = networkByType('bitcoin', scope)
+  if (network) setPreferredRpc(network.id, url)
+  return result
+}
+
+function esploraGet<T>(scope: NetworkScope, path: string): Promise<T> {
+  return withEsplora(scope, (base) => providerGet<T>(joinRpcPath(base, path)))
+}
+
+function esploraPost<T>(
+  scope: NetworkScope,
+  path: string,
+  body: unknown,
+  extra?: { rawBody?: string },
+): Promise<T> {
+  return withEsplora(scope, (base) => providerPost<T>(joinRpcPath(base, path), body, extra))
 }
 
 function toXOnly(publicKey: Uint8Array): Uint8Array {
@@ -102,7 +120,7 @@ export async function fetchAddressStats(address: string, networkScope: NetworkSc
   confirmed: bigint
   unconfirmed: bigint
 }> {
-  const data = await providerGet<Record<string, unknown>>(esplora(networkScope, `address/${address}`))
+  const data = await esploraGet<Record<string, unknown>>(networkScope, `address/${address}`)
   const chain = (data.chain_stats ?? {}) as Record<string, number>
   const mempool = (data.mempool_stats ?? {}) as Record<string, number>
   const confirmed = BigInt((chain.funded_txo_sum ?? 0) - (chain.spent_txo_sum ?? 0))
@@ -111,7 +129,7 @@ export async function fetchAddressStats(address: string, networkScope: NetworkSc
 }
 
 export async function fetchUtxos(address: string, networkScope: NetworkScope): Promise<BitcoinUtxo[]> {
-  const payload = await providerGet<unknown>(esplora(networkScope, `address/${address}/utxo`))
+  const payload = await esploraGet<unknown>(networkScope, `address/${address}/utxo`)
   return extractList<Record<string, unknown>>(payload).map((item) => ({
     txid: String(item.txid ?? ''),
     vout: Number(item.vout ?? 0),
@@ -121,7 +139,7 @@ export async function fetchUtxos(address: string, networkScope: NetworkScope): P
 }
 
 export async function fetchFeeRates(networkScope: NetworkScope): Promise<BitcoinFeeRates> {
-  const data = await providerGet<Record<string, number>>(esplora(networkScope, 'fee-estimates'))
+  const data = await esploraGet<Record<string, number>>(networkScope, 'fee-estimates')
   const pick = (...keys: Array<string | number>) => {
     for (const key of keys) {
       const value = data[String(key)]
@@ -137,7 +155,7 @@ export async function fetchFeeRates(networkScope: NetworkScope): Promise<Bitcoin
 }
 
 async function fetchTxHex(txid: string, networkScope: NetworkScope): Promise<string> {
-  const data = await providerGet<unknown>(esplora(networkScope, `tx/${txid}/hex`))
+  const data = await esploraGet<unknown>(networkScope, `tx/${txid}/hex`)
   if (typeof data === 'string' && data.trim()) return data.trim()
   if (data && typeof data === 'object' && 'hex' in data) return String((data as { hex: string }).hex)
   throw new Error(`无法获取交易 ${txid} 的原始 hex`)
@@ -253,7 +271,7 @@ export async function buildAndSignBitcoinTx(input: {
 }
 
 export async function broadcastBitcoinTx(rawTxHex: string, networkScope: NetworkScope): Promise<string> {
-  const result = await providerPost<unknown>(esplora(networkScope, 'tx'), undefined, {
+  const result = await esploraPost<unknown>(networkScope, 'tx', undefined, {
     rawBody: rawTxHex,
   })
   const txid = typeof result === 'string' ? result.trim() : String((result as { txid?: string }).txid ?? '')

@@ -17,6 +17,7 @@ import {
   mnemonicWordCount,
   masterFingerprint,
   privateKeyToWif,
+  encodeSolanaSecretKey,
 } from '../derive'
 import { personalSign } from '../sign/evm'
 import { newId, wipe } from '../security/crypto'
@@ -100,6 +101,7 @@ const DEFAULT_DERIVATIONS: Array<{
   { walletType: 'bitcoin', networkScope: 'mainnet', addressType: 'p2tr', label: 'BTC Taproot' },
   { walletType: 'web3', networkScope: 'mainnet', addressType: null, label: 'EVM' },
   { walletType: 'tron', networkScope: 'mainnet', addressType: null, label: 'TRON' },
+  { walletType: 'solana', networkScope: 'mainnet', addressType: null, label: 'Solana' },
 ]
 
 function requireWallet(id: string): WalletRow {
@@ -319,7 +321,8 @@ export function markAuthWallet(walletId: string): WalletSummary {
   return getWalletSummary(walletId)
 }
 
-export function removeWallet(walletId: string): true {
+export function removeWallet(walletId: string, password: string): true {
+  if (!verifyPassword(password)) throw new IpcError('INVALID_ARG', '主密码不正确')
   const row = requireWallet(walletId)
   deleteWallet(walletId)
   const remaining = listWalletRows()
@@ -450,6 +453,9 @@ export function revealPrivateKey(accountId: string, password: string): string {
     if (account.wallet_type === 'bitcoin') {
       return privateKeyToWif(privateKey, account.network_scope as NetworkScope)
     }
+    if (account.wallet_type === 'solana') {
+      return encodeSolanaSecretKey(privateKey)
+    }
     return `0x${bytesToHex(privateKey)}`
   })
 }
@@ -487,6 +493,7 @@ function defaultAccountLabel(walletType: WalletType, addressType: BitcoinAddress
     return addressType ? labels[addressType] : 'BTC'
   }
   if (walletType === 'tron') return 'TRON'
+  if (walletType === 'solana') return 'Solana'
   return 'EVM'
 }
 

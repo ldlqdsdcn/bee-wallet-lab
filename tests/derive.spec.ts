@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bytesToHex } from '@noble/hashes/utils'
+import { bytesToHex, hexToBytes } from '@noble/hashes/utils'
 import {
   assertMnemonic,
   assertPath,
@@ -11,6 +11,7 @@ import {
   isBitcoinAddress,
   isChecksumValid,
   isTronAddress,
+  isSolanaAddress,
   isValidMnemonic,
   masterFingerprint,
   mnemonicToSeed,
@@ -20,7 +21,10 @@ import {
   tronAddressFromEvmAddress,
   tronAddressToHex,
   wifToPrivateKey,
+  encodeSolanaSecretKey,
+  parseSolanaPrivateKey,
 } from '../electron/main/derive'
+import { slip10DeriveEd25519 } from '../electron/main/derive/slip10'
 
 /** BIP-39 官方向量：entropy 全零 */
 const MNEMONIC =
@@ -87,6 +91,10 @@ describe('派生路径', () => {
     expect(buildPath({ walletType: 'web3', networkScope: 'mainnet' })).toBe("m/44'/60'/0'/0/0")
     expect(buildPath({ walletType: 'web3', networkScope: 'testnet' })).toBe("m/44'/60'/0'/0/0")
     expect(buildPath({ walletType: 'tron', networkScope: 'testnet' })).toBe("m/44'/195'/0'/0/0")
+    expect(buildPath({ walletType: 'solana', networkScope: 'mainnet' })).toBe("m/44'/501'/0'/0'")
+    expect(buildPath({ walletType: 'solana', networkScope: 'testnet', accountIndex: 1 })).toBe(
+      "m/44'/501'/1'/0'",
+    )
   })
 
   it('accountIndex 与 addressIndex 分别落在第 3、5 层', () => {
@@ -284,5 +292,37 @@ describe('私钥生命周期', () => {
     expect(bytesToHex(a.privateKey)).toBe(bytesToHex(b.privateKey))
     a.privateKey.fill(0)
     expect(bytesToHex(b.privateKey)).not.toMatch(/^0{64}$/)
+  })
+})
+
+describe('Solana 地址', () => {
+  it('SLIP-0010 官方向量 seed=0001..0f 的 m 与 m/0\'', () => {
+    const seed = hexToBytes('000102030405060708090a0b0c0d0e0f')
+    expect(bytesToHex(slip10DeriveEd25519(seed, 'm'))).toBe(
+      '2b4be7f19ee27bbf30c667b642d5f4aa69fd169872f8fc3059c08ebae2eb19e7',
+    )
+    expect(bytesToHex(slip10DeriveEd25519(seed, "m/0'"))).toBe(
+      '68e0fe46dfb67e368c75379acec591dad19df3cde26e63b93a8e704f1dade7a3',
+    )
+  })
+
+  it('Phantom 默认路径 m/44\'/501\'/0\'/0\' 给出合法 Base58 地址', () => {
+    const account = derive({ seed: SEED, walletType: 'solana', networkScope: 'mainnet' })
+    expect(account.rootPath).toBe("m/44'/501'/0'/0'")
+    expect(account.addressType).toBeNull()
+    expect(isSolanaAddress(account.address)).toBe(true)
+    expect(account.address).toBe('HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk')
+  })
+
+  it('secret key 可往返导入', () => {
+    const account = derive({ seed: SEED, walletType: 'solana', networkScope: 'mainnet' })
+    const encoded = encodeSolanaSecretKey(account.privateKey)
+    const imported = deriveFromPrivateKey({
+      walletType: 'solana',
+      networkScope: 'mainnet',
+      privateKey: encoded,
+    })
+    expect(imported.address).toBe(account.address)
+    expect(bytesToHex(parseSolanaPrivateKey(encoded))).toBe(bytesToHex(account.privateKey))
   })
 })

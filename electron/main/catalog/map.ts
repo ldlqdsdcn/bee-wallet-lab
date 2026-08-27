@@ -11,14 +11,14 @@ import type {
 } from '@shared/types'
 import { asBooleanFlag, asNumber, asString } from '../backend/list'
 
-const WALLET_TYPES: WalletType[] = ['bitcoin', 'web3', 'tron']
+const WALLET_TYPES: WalletType[] = ['bitcoin', 'web3', 'tron', 'solana']
 
 export function inferWalletType(value: unknown): WalletType | null {
   const normalized = asString(value).toLowerCase()
   if (normalized === 'bitcoin' || normalized === 'btc') return 'bitcoin'
   if (normalized === 'tron' || normalized === 'trx') return 'tron'
   if (normalized === 'web3' || normalized === 'evm' || normalized === 'ethereum') return 'web3'
-  if (normalized === 'solana') return null
+  if (normalized === 'solana' || normalized === 'sol') return 'solana'
   return normalized ? 'web3' : null
 }
 

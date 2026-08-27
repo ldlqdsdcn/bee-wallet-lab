@@ -65,7 +65,9 @@ export default function SignPage() {
             hint={
               account?.walletType === 'bitcoin'
                 ? 'Bitcoin 使用 BIP-137 signmessage'
-                : 'EVM / TRON 使用 EIP-191 personal_sign'
+                : account?.walletType === 'solana'
+                  ? 'Solana 对消息原文做 Ed25519 签名'
+                  : 'EVM / TRON 使用 EIP-191 personal_sign'
             }
             onChange={(e) => setMessage(e.target.value)}
           />
@@ -104,6 +106,7 @@ export default function SignPage() {
             <option value="web3">EVM</option>
             <option value="bitcoin">Bitcoin</option>
             <option value="tron">TRON</option>
+            <option value="solana">Solana</option>
           </Select>
           <Field
             label="地址"

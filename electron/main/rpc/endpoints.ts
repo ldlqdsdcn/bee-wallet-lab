@@ -3,7 +3,7 @@
  * 相对路径 / 公司代理路径一律丢掉，改用 .env 里的 Infura / Esplora / TronGrid。
  */
 import type { NetworkRecord, NetworkScope } from '../../../shared/types'
-import { bitcoinApiBase, infuraApiKey, tronApiBase } from './env'
+import { bitcoinApiBase, infuraApiKey, solanaRpcBase, tronApiBase } from './env'
 
 /** Infura 子域。chainId 用十进制。 */
 const INFURA_BY_CHAIN_ID: Record<string, string> = {
@@ -76,10 +76,68 @@ export function resolveEvmRpcUrl(network: NetworkRecord): string {
   )
 }
 
+/** Infura 在部分网络不可达时使用的公共节点，不带密钥。 */
+const PUBLIC_EVM_RPC: Record<string, string[]> = {
+  '1': ['https://ethereum-rpc.publicnode.com', 'https://1rpc.io/eth'],
+  '11155111': ['https://ethereum-sepolia-rpc.publicnode.com', 'https://1rpc.io/sepolia'],
+  '42161': ['https://arb1.arbitrum.io/rpc', 'https://1rpc.io/arb'],
+  '421614': ['https://sepolia-rollup.arbitrum.io/rpc'],
+  '56': ['https://bsc-dataseed.binance.org', 'https://1rpc.io/bnb'],
+  '97': ['https://bsc-testnet-rpc.publicnode.com'],
+}
+
+function uniqueUrls(urls: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const url of urls) {
+    const trimmed = url.trim().replace(/\/+$/, '')
+    if (!trimmed || seen.has(trimmed)) continue
+    seen.add(trimmed)
+    out.push(trimmed)
+  }
+  return out
+}
+
+/** 当前网络要尝试的 RPC 列表：目录 / Infura 优先，失败再走公共节点。 */
+export function evmRpcCandidates(network: NetworkRecord): string[] {
+  const urls: string[] = []
+  try {
+    urls.push(resolveEvmRpcUrl(network))
+  } catch {
+    /* 没有 Infura key 时仍可用公共节点 */
+  }
+  const extras = PUBLIC_EVM_RPC[normalizeChainId(network.chainId)] ?? []
+  return uniqueUrls([...urls, ...extras])
+}
+
+/** 当前网络内置候选：目录 / Infura / 公共节点。不含用户自建。 */
+export function builtinRpcUrls(network: NetworkRecord): string[] {
+  if (network.walletType === 'web3') return evmRpcCandidates(network)
+  if (network.walletType === 'bitcoin') {
+    const extra =
+      network.networkScope === 'testnet'
+        ? ['https://mempool.space/testnet/api', 'https://blockstream.info/testnet/api']
+        : ['https://mempool.space/api', 'https://blockstream.info/api']
+    return uniqueUrls([bitcoinApiBase(network.networkScope), ...extra])
+  }
+  if (network.walletType === 'solana') {
+    const extra =
+      network.networkScope === 'testnet'
+        ? ['https://api.devnet.solana.com']
+        : ['https://api.mainnet-beta.solana.com', 'https://solana-rpc.publicnode.com']
+    return uniqueUrls([solanaRpcBase(network.networkScope), network.rpcUrl ?? '', ...extra])
+  }
+  return uniqueUrls([tronApiBase(network.networkScope)])
+}
+
 export function resolveBitcoinApiBase(scope: NetworkScope): string {
   return bitcoinApiBase(scope)
 }
 
 export function resolveTronApiBase(scope: NetworkScope): string {
   return tronApiBase(scope)
+}
+
+export function resolveSolanaRpcUrl(scope: NetworkScope): string {
+  return solanaRpcBase(scope)
 }

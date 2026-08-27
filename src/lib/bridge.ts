@@ -31,6 +31,9 @@ import type {
   VaultStatus,
   VerifyMessageInput,
   VerifyMessageResult,
+  RpcNodeCreateInput,
+  RpcNodeRecord,
+  RpcPingResult,
   WalletPickerPage,
   WalletPickerQuery,
   WalletSummary,
@@ -111,7 +114,8 @@ export const walletApi = {
   rename: (walletId: string, name: string) => call<WalletSummary>(IPC.walletRename, { walletId, name }),
   setDefault: (walletId: string) => call<WalletSummary>(IPC.walletSetDefault, { walletId }),
   setAuthWallet: (walletId: string) => call<WalletSummary>(IPC.walletSetAuthWallet, { walletId }),
-  remove: (walletId: string) => call<true>(IPC.walletRemove, { walletId }),
+  remove: (walletId: string, password: string) =>
+    call<true>(IPC.walletRemove, { walletId, password }),
 }
 
 export const accountApi = {
@@ -148,4 +152,15 @@ export const transferApi = {
 export const signApi = {
   sign: (input: SignMessageInput) => call<SignMessageResult>(IPC.signMessage, input),
   verify: (input: VerifyMessageInput) => call<VerifyMessageResult>(IPC.verifyMessage, input),
+}
+
+export const rpcApi = {
+  list: (networkPk: string) => call<RpcNodeRecord[]>(IPC.rpcList, { networkPk }),
+  add: (input: RpcNodeCreateInput) => call<RpcNodeRecord>(IPC.rpcAdd, input),
+  remove: (id: string) => call<true>(IPC.rpcRemove, { id }),
+  select: (id: string) => call<RpcNodeRecord>(IPC.rpcSelect, { id }),
+  useAuto: (networkPk: string) => call<RpcNodeRecord[]>(IPC.rpcSelect, { networkPk }),
+  ping: (id: string) => call<RpcPingResult>(IPC.rpcPing, { id }),
+  pingAll: (networkPk: string) => call<RpcPingResult[]>(IPC.rpcPingAll, { networkPk }),
+  restore: (networkPk: string) => call<RpcNodeRecord[]>(IPC.rpcRestore, { networkPk }),
 }

@@ -2,17 +2,17 @@
 
 Electron 桌面端 Web3 钱包实验项目。助记词与私钥只存在于主进程，渲染进程通过白名单 IPC 访问。
 
-对照实现：移动端 `onewallet-app`。第一版网络 / 代币列表打包在 `data/catalog/`，启动时写入本地 SQLite，不请求后台。链上请求由钱包进程直连 Infura / Blockstream / TronGrid，密钥写在本地 `.env`。
+对照实现：移动端 `onewallet-app`。第一版网络 / 代币列表打包在 `data/catalog/`，启动时写入本地 SQLite，不请求后台。链上请求由钱包进程直连 Infura / Blockstream / TronGrid / Solana RPC，密钥写在本地 `.env`。
 
 ## 功能
 
 1. **安全基座**：scrypt KDF + AES-256-GCM，主密码锁屏，空闲自动锁定
-2. **派生内核**：BIP-39/32；BTC 四种地址格式、EVM、TRON
-3. **内置目录**：Bitcoin / Ethereum / Arbitrum / TRON / BSC 写入本地库
+2. **派生内核**：BIP-39/32；BTC 四种地址格式、EVM、TRON、Solana（SLIP-0010 Ed25519）
+3. **内置目录**：Bitcoin / Ethereum / Arbitrum / TRON / BSC / Solana 写入本地库
 4. **钱包管理**：创建（抄写校验）/ 导入助记词 / 导出 / 多钱包 / 多账户派生 / 私钥导入
 5. **资产总览**：本机直连 RPC 取余额；BTC 原生币按四种地址格式展开
-6. **收款转账**：BTC（Esplora）、EVM（Infura JSON-RPC）、TRON（TronGrid）；本地签名后直连广播
-7. **消息签名**：EVM/TRON 为 EIP-191 `personal_sign`；Bitcoin 为 BIP-137
+6. **收款转账**：BTC（Esplora）、EVM（JSON-RPC）、TRON（TronGrid）、Solana（JSON-RPC）；本地签名后直连广播
+7. **消息签名**：EVM/TRON 为 EIP-191 `personal_sign`；Bitcoin 为 BIP-137；Solana 为 Ed25519
 8. **地址簿**：本地 SQLite，转账页可选择收款人
 
 ## 开发

@@ -1,5 +1,5 @@
 /**
- * 消息签名 / 验签。EVM 与 TRON 走 EIP-191 personal_sign，Bitcoin 走 BIP-137。
+ * 消息签名 / 验签。EVM 与 TRON 走 EIP-191 personal_sign，Bitcoin 走 BIP-137，Solana 走 Ed25519。
  */
 import type {
   AccountRecord,
@@ -18,6 +18,7 @@ import {
   verifyPersonalSign,
 } from './evm'
 import { bitcoinMessageHash, signBitcoinMessage, verifyBitcoinMessage } from './bitcoin'
+import { signSolanaMessage, solanaMessageDigestHex, verifySolanaMessage } from './solana'
 import { bytesToHex } from '@noble/hashes/utils'
 import { isEvmAddress } from '../derive/evm'
 import { isTronAddress, tronAddressFromEvmAddress, tronAddressToEvmAddress } from '../derive/tron'
@@ -38,6 +39,17 @@ export function signMessage(input: SignMessageInput): SignMessageResult {
       digest: `0x${bytesToHex(bitcoinMessageHash(message))}`,
       scheme: 'bip137',
       signature: signBitcoinMessage(privateKey, message, account.addressType!),
+    }))
+  }
+
+  if (account.walletType === 'solana') {
+    return withAccountPrivateKey(row, (privateKey) => ({
+      address: account.address,
+      walletType: account.walletType,
+      addressType: null,
+      digest: solanaMessageDigestHex(message),
+      scheme: 'ed25519',
+      signature: signSolanaMessage(privateKey, message),
     }))
   }
 
@@ -68,6 +80,9 @@ export function verifyMessage(input: VerifyMessageInput): VerifyMessageResult {
       valid,
       recoveredAddress: recoveredEvm ? tronAddressFromEvmAddress(recoveredEvm) : null,
     }
+  }
+  if (input.walletType === 'solana') {
+    return verifySolanaMessage(input.message, input.signature, input.address)
   }
   if (!isEvmAddress(input.address)) throw invalidArg('EVM 地址格式不合法')
   const recovered = safeRecover(input.message, input.signature)

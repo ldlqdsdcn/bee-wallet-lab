@@ -46,6 +46,12 @@ describe('区块链浏览器地址', () => {
     expect(addressExplorerUrl(network({ walletType: 'tron', chainId: '195' }), 'Txyz')).toBe(
       'https://tronscan.org/#/address/Txyz',
     )
+    expect(
+      addressExplorerUrl(network({ walletType: 'solana', chainId: 'mainnet-beta', networkScope: 'mainnet' }), 'SoLxxx'),
+    ).toBe('https://solscan.io/account/SoLxxx')
+    expect(
+      addressExplorerUrl(network({ walletType: 'solana', chainId: 'devnet', networkScope: 'testnet' }), 'SoLxxx'),
+    ).toBe('https://solscan.io/account/SoLxxx?cluster=devnet')
   })
 
   it('未知 EVM 链回落到目录 browser 字段', () => {

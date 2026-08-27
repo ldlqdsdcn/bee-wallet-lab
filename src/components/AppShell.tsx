@@ -12,6 +12,7 @@ const navItems = [
   { to: '/transfer', label: '收款转账' },
   { to: '/address-book', label: '地址簿' },
   { to: '/sign', label: '消息签名' },
+  { to: '/nodes', label: '节点维护' },
   { to: '/settings', label: '设置' },
 ]
 

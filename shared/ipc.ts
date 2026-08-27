@@ -6,6 +6,7 @@
  * 2. 返回值禁止包含助记词、私钥、KEK、JWT 原文，
  *    唯一例外是 `wallet:exportMnemonic` / `account:revealPrivateKey`，
  *    它们必须在主进程内二次校验主密码后才返回。
+ * 3. `wallet:remove` 不返回密钥，但仍须校验主密码后才能删除。
  */
 
 export const IPC = {
@@ -75,6 +76,15 @@ export const IPC = {
   addressBookUpsert: 'addressBook:upsert',
   addressBookRemove: 'addressBook:remove',
   addressBookTouch: 'addressBook:touch',
+
+  /* RPC 节点 */
+  rpcList: 'rpc:list',
+  rpcAdd: 'rpc:add',
+  rpcRemove: 'rpc:remove',
+  rpcSelect: 'rpc:select',
+  rpcPing: 'rpc:ping',
+  rpcPingAll: 'rpc:pingAll',
+  rpcRestore: 'rpc:restore',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]
@@ -90,6 +100,7 @@ export const IPC_EVENT = {
   balanceUpdated: 'event:balanceUpdated',
   addressBookUpdated: 'event:addressBookUpdated',
   walletsChanged: 'event:walletsChanged',
+  rpcNodesChanged: 'event:rpcNodesChanged',
 } as const
 
 export type IpcEventName = (typeof IPC_EVENT)[keyof typeof IPC_EVENT]

@@ -6,9 +6,11 @@ import { bytesToHex, hexToBytes } from '@noble/hashes/utils'
 import type { NetworkScope } from '@shared/types'
 import { asRecord, asString } from '../backend/list'
 import { isTronAddress, tronAddressToHex } from '../derive/tron'
-import { resolveTronApiBase } from '../rpc/endpoints'
+import { networkByType, tronApiCandidates, tryRpcUrls } from '../rpc/nodes'
+import { setPreferredRpc } from '../rpc/preference'
 import { trongridApiKey } from '../rpc/env'
 import { providerPost } from '../rpc/fetch'
+import { joinRpcPath } from '../rpc/url'
 
 export interface TronUnsignedTx {
   txID: string
@@ -20,9 +22,13 @@ function trongridHeaders(): Record<string, string> | undefined {
   return key ? { 'TRON-PRO-API-KEY': key } : undefined
 }
 
-function trongrid<T>(path: string, body: unknown, scope: NetworkScope): Promise<T> {
-  const url = `${resolveTronApiBase(scope)}/${path.replace(/^\/+/, '')}`
-  return providerPost<T>(url, body, { headers: trongridHeaders() })
+async function trongrid<T>(path: string, body: unknown, scope: NetworkScope): Promise<T> {
+  const { url, result } = await tryRpcUrls(tronApiCandidates(scope), (base) =>
+    providerPost<T>(joinRpcPath(base, path), body, { headers: trongridHeaders() }),
+  )
+  const network = networkByType('tron', scope)
+  if (network) setPreferredRpc(network.id, url)
+  return result
 }
 
 export function encodeTrc20TransferParameter(to: string, amount: bigint): string {

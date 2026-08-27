@@ -10,4 +10,7 @@ interface ImportMetaEnv {
   readonly VITE_TRON_MAINNET_API?: string
   readonly VITE_TRON_TESTNET_API?: string
   readonly VITE_TRONGRID_API_KEY?: string
+  readonly VITE_SOLANA_MAINNET_RPC?: string
+  readonly VITE_SOLANA_DEVNET_RPC?: string
+  readonly VITE_COINGECKO_API_KEY?: string
 }

@@ -73,8 +73,13 @@ export function registerWalletIpc(): void {
     wallets.markAuthWallet(requireString(arg?.walletId, 'walletId')),
   )
 
-  handle<{ walletId: string }, true>(IPC.walletRemove, (arg) =>
-    changed(wallets.removeWallet(requireString(arg?.walletId, 'walletId'))),
+  handle<{ walletId: string; password: string }, true>(IPC.walletRemove, (arg) =>
+    changed(
+      wallets.removeWallet(
+        requireString(arg?.walletId, 'walletId'),
+        requireString(arg?.password, 'password'),
+      ),
+    ),
   )
 
   handle<{ walletId?: string }, AccountRecord[]>(IPC.accountList, (arg) =>

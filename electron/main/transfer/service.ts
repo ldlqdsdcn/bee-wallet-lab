@@ -45,9 +45,16 @@ import {
   getTronAccount,
   signTronTx,
 } from '../chain/tron'
+import {
+  broadcastSolanaTx,
+  buildAndSignSolanaTx,
+  explorerUrlForSolana,
+  quoteSolanaFee,
+} from '../chain/solana'
 import { isBitcoinAddress } from '../derive/bitcoin'
 import { isEvmAddress, toChecksumAddress } from '../derive/evm'
 import { isTronAddress } from '../derive/tron'
+import { isSolanaAddress } from '../derive/solana'
 import { loadSettings } from '../db/repos/metaRepo'
 
 interface StoredDraft {
@@ -112,6 +119,9 @@ function validateAddress(network: NetworkRecord, address: string): string {
   }
   if (network.walletType === 'tron' && !isTronAddress(trimmed)) {
     throw invalidArg('收款地址不是有效的 TRON 地址')
+  }
+  if (network.walletType === 'solana' && !isSolanaAddress(trimmed)) {
+    throw invalidArg('收款地址不是有效的 Solana 地址')
   }
   return network.walletType === 'web3' ? toChecksumAddress(trimmed) : trimmed
 }
@@ -216,6 +226,36 @@ export async function previewTransfer(input: TransferDraftInput): Promise<Transf
       evmFee: quote,
       gasLimit,
       data,
+      to,
+      createdAt: Date.now(),
+    })
+    return preview
+  }
+
+  if (network.walletType === 'solana') {
+    const mint = contractOf(token)
+    const quote = await quoteSolanaFee(network, to, mint)
+    const preview = buildPreview({
+      account,
+      to,
+      token,
+      amountMinor,
+      feeMinor: quote.feeLamports,
+      feeText: `${formatMinor(quote.feeLamports, 9)} SOL`,
+      detail: {
+        mint: mint ?? '',
+        createAta: String(quote.createAta),
+      },
+      warnings: quote.createAta ? ['收款地址还没有该代币账户，转账会代为创建 Associated Token Account'] : [],
+    })
+    drafts.set(preview.draftId, {
+      input,
+      preview,
+      network,
+      token,
+      account,
+      amountMinor,
+      feeMinor: quote.feeLamports,
       to,
       createdAt: Date.now(),
     })
@@ -327,6 +367,20 @@ export async function submitTransfer(draftId: string): Promise<BroadcastResult> 
     )
     rawHex = signed.hex
     txid = await broadcastEvmTx(draft.network, signed.hex)
+  } else if (draft.network.walletType === 'solana') {
+    const mint = contractOf(draft.token)
+    const signed = await withAccountPrivateKeyAsync(accountRow, (privateKey) =>
+      buildAndSignSolanaTx({
+        network: draft.network,
+        privateKey,
+        from: draft.account.address,
+        to: draft.to,
+        mint,
+        amount: draft.amountMinor,
+      }),
+    )
+    rawHex = signed.wireBase64
+    txid = await broadcastSolanaTx(draft.network, signed.wireBase64)
   } else {
     const contract = contractOf(draft.token)
     const unsigned = contract
@@ -354,7 +408,9 @@ export async function submitTransfer(draftId: string): Promise<BroadcastResult> 
       ? explorerUrlForBitcoin(txid, draft.network.networkScope, draft.network.browser)
       : draft.network.walletType === 'web3'
         ? explorerUrlForEvm(txid, draft.network.browser)
-        : explorerUrlForTron(txid, draft.network.networkScope, draft.network.browser)
+        : draft.network.walletType === 'solana'
+          ? explorerUrlForSolana(txid, draft.network)
+          : explorerUrlForTron(txid, draft.network.networkScope, draft.network.browser)
 
   insertTransaction({
     id: newId(),
@@ -367,7 +423,16 @@ export async function submitTransfer(draftId: string): Promise<BroadcastResult> 
     tokenPk: draft.token.id,
     symbol: draft.token.symbol,
     amount: formatMinor(draft.amountMinor, draft.token.decimals),
-    fee: formatMinor(draft.feeMinor, draft.network.walletType === 'bitcoin' ? 8 : draft.network.walletType === 'tron' ? 6 : 18),
+    fee: formatMinor(
+      draft.feeMinor,
+      draft.network.walletType === 'bitcoin'
+        ? 8
+        : draft.network.walletType === 'tron'
+          ? 6
+          : draft.network.walletType === 'solana'
+            ? 9
+            : 18,
+    ),
     status: 'pending',
     blockHeight: null,
     rawHex,

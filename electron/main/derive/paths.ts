@@ -31,6 +31,7 @@ const COIN_TYPE: Record<WalletType, Record<NetworkScope, number>> = {
   bitcoin: { mainnet: 0, testnet: 1 },
   web3: { mainnet: 60, testnet: 60 },
   tron: { mainnet: 195, testnet: 195 },
+  solana: { mainnet: 501, testnet: 501 },
 }
 
 /** 只接受 m 开头的非负整数路径，允许 ' 或 h 表示硬化 */
@@ -76,6 +77,9 @@ export function buildPath(input: PathInput): string {
   const coinType = COIN_TYPE[input.walletType]?.[input.networkScope]
   if (coinType === undefined) {
     throw new Error(`unsupported wallet type: ${input.walletType}`)
+  }
+  if (input.walletType === 'solana') {
+    return `m/44'/501'/${accountIndex}'/${addressIndex}'`
   }
   return `m/${purpose}'/${coinType}'/${accountIndex}'/0/${addressIndex}`
 }

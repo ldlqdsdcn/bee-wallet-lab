@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { inferNetworkScope, inferWalletType, mapCurrency, mapNetwork, mapToken } from '../electron/main/catalog/map'
 
 describe('目录映射', () => {
-  it('网络 type 映射为 bitcoin / web3 / tron，过滤 solana', () => {
+  it('网络 type 映射为 bitcoin / web3 / tron / solana', () => {
     expect(inferWalletType('bitcoin')).toBe('bitcoin')
     expect(inferWalletType('tron')).toBe('tron')
     expect(inferWalletType('web3')).toBe('web3')
-    expect(inferWalletType('solana')).toBeNull()
+    expect(inferWalletType('solana')).toBe('solana')
   })
 
   it('chainId / chainName 含 test 时判定测试网', () => {
@@ -87,6 +87,7 @@ describe('内置目录 JSON', () => {
     expect(catalog.networks.some((item) => item.walletType === 'bitcoin')).toBe(true)
     expect(catalog.networks.some((item) => item.walletType === 'web3')).toBe(true)
     expect(catalog.networks.some((item) => item.walletType === 'tron')).toBe(true)
+    expect(catalog.networks.some((item) => item.walletType === 'solana')).toBe(true)
     expect(catalog.tokens.some((item) => item.symbol === 'USDT' && item.isToken)).toBe(true)
   })
 })

@@ -12,20 +12,94 @@ import {
 import { privateKeyToAccount } from 'viem/accounts'
 import type { NetworkRecord } from '@shared/types'
 import { toChecksumAddress } from '../derive/evm'
-import { resolveEvmRpcUrl } from '../rpc/endpoints'
+import { normalizeChainId } from '../rpc/endpoints'
 import { providerPost } from '../rpc/fetch'
+import { rpcUrlsForNetwork, selectedRpcNode } from '../rpc/nodes'
+import { setPreferredRpc } from '../rpc/preference'
 
 interface JsonRpcResponse<T> {
   result?: T
   error?: { code?: number; message?: string }
 }
 
+const workingRpcByNetwork = new Map<string, string>()
+
 export async function evmRpc<T>(network: NetworkRecord, method: string, params: unknown[] = []): Promise<T> {
-  const url = resolveEvmRpcUrl(network)
+  const chainId = normalizeChainId(network.chainId)
   const payload = { jsonrpc: '2.0', id: Date.now(), method, params }
-  const body = await providerPost<JsonRpcResponse<T>>(url, payload)
-  if (body?.error) throw new Error(body.error.message || `RPC ${method} 失败`)
-  return body.result as T
+
+  const call = async (url: string): Promise<T> => {
+    const body = await providerPost<JsonRpcResponse<T>>(url, payload)
+    if (body?.error) throw new Error(body.error.message || `RPC ${method} 失败`)
+    return body.result as T
+  }
+
+  const remember = (url: string) => {
+    workingRpcByNetwork.set(network.id, url)
+    setPreferredRpc(network.id, url)
+  }
+
+  const urls = rpcUrlsForNetwork(network)
+  if (urls.length === 0) {
+    throw new Error(`网络 ${network.networkName || chainId} 没有可用的 RPC`)
+  }
+
+  let failedPrimary: string | undefined
+  const pinned = selectedRpcNode(network.id)?.url
+  if (pinned) {
+    try {
+      const result = await call(pinned)
+      remember(pinned)
+      return result
+    } catch {
+      workingRpcByNetwork.delete(network.id)
+      failedPrimary = pinned
+    }
+  } else {
+    const cached = workingRpcByNetwork.get(network.id)
+    if (cached && urls.includes(cached)) {
+      try {
+        return await call(cached)
+      } catch {
+        workingRpcByNetwork.delete(network.id)
+        failedPrimary = cached
+      }
+    }
+  }
+
+  const rest = urls.filter((url) => url !== failedPrimary)
+  const racePool = rest.length > 0 ? rest : urls
+
+  try {
+    const winner = await raceFirst(
+      racePool.map(async (url) => {
+        const result = await call(url)
+        return { url, result }
+      }),
+    )
+    remember(winner.url)
+    return winner.result
+  } catch (err) {
+    throw err instanceof Error ? err : new Error(`RPC ${method} 失败`)
+  }
+}
+
+function raceFirst<T>(tasks: Array<Promise<T>>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let pending = tasks.length
+    let firstError: Error | null = null
+    if (pending === 0) {
+      reject(new Error('没有可用的 RPC'))
+      return
+    }
+    for (const task of tasks) {
+      task.then(resolve, (err: unknown) => {
+        if (!firstError) firstError = err instanceof Error ? err : new Error(String(err))
+        pending -= 1
+        if (pending === 0 && firstError) reject(firstError)
+      })
+    }
+  })
 }
 
 function toHexQuantity(value: bigint): Hex {

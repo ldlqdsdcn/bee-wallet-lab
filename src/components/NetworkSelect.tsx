@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { NetworkRecord } from '@shared/types'
 
-function NetworkIcon({ src, name, size = 20 }: { src?: string | null; name?: string | null; size?: number }) {
+export function NetworkIcon({ src, name, size = 20 }: { src?: string | null; name?: string | null; size?: number }) {
   const [failed, setFailed] = useState(false)
   const letter = (name ?? '?').trim().slice(0, 1).toUpperCase()
   if (!src || failed) {

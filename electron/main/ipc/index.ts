@@ -27,12 +27,14 @@ import { syncCatalog } from '../catalog/sync'
 import { isBitcoinAddress } from '../derive/bitcoin'
 import { isChecksumValid, isEvmAddress } from '../derive/evm'
 import { isTronAddress } from '../derive/tron'
+import { isSolanaAddress } from '../derive/solana'
 import { broadcast, handle, handleNotImplemented, invalidArg, listRegistered, requireString } from './registry'
 import { registerWalletIpc } from './wallets'
 import { registerCatalogIpc } from './catalog'
 import { registerPortfolioIpc } from './portfolio'
 import { registerTransferIpc } from './transfer'
 import { registerSignIpc } from './sign'
+import { registerRpcIpc } from './rpc'
 
 function registerVaultIpc(): void {
   handle<void, VaultStatus>(IPC.vaultStatus, () => vault.getStatus())
@@ -99,6 +101,7 @@ function registerBackendIpc(): void {
 function addressLooksValid(walletType: WalletType, networkScope: 'mainnet' | 'testnet', address: string): boolean {
   if (walletType === 'web3') return isEvmAddress(address) && isChecksumValid(address)
   if (walletType === 'tron') return isTronAddress(address)
+  if (walletType === 'solana') return isSolanaAddress(address)
   return isBitcoinAddress(address, networkScope)
 }
 
@@ -108,7 +111,7 @@ function normalizeUpsert(input: AddressBookUpsertInput): AddressBookUpsertInput 
   const label = requireString(input.label, 'label').trim()
   const address = requireString(input.address, 'address').trim()
   const walletType = input.walletType
-  if (walletType !== 'bitcoin' && walletType !== 'web3' && walletType !== 'tron') {
+  if (walletType !== 'bitcoin' && walletType !== 'web3' && walletType !== 'tron' && walletType !== 'solana') {
     throw invalidArg('walletType 无效')
   }
   if (input.networkScope !== 'mainnet' && input.networkScope !== 'testnet') {
@@ -168,6 +171,7 @@ export function registerAllIpc(): void {
   registerTransferIpc()
   registerSignIpc()
   registerAddressBookIpc()
+  registerRpcIpc()
   registerPlaceholders()
   initWalletAuth()
 

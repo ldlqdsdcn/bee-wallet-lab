@@ -38,6 +38,10 @@ export function addressExplorerUrl(network: NetworkRecord, address: string): str
       ? `https://nile.tronscan.org/#/address/${value}`
       : `https://tronscan.org/#/address/${value}`
   }
+  if (network.walletType === 'solana') {
+    const cluster = network.networkScope === 'testnet' ? '?cluster=devnet' : ''
+    return `https://solscan.io/account/${value}${cluster}`
+  }
 
   const known = EVM_ADDRESS_URL[network.chainId]
   if (known) return fill(known, value)

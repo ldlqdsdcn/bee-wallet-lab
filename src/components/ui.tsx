@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
+import { useEffect, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 
 const base =
   'inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50'
@@ -104,6 +104,43 @@ export function TextArea({
       />
       {hint ? <span className="mt-1 block text-xs text-ink-600">{hint}</span> : null}
     </label>
+  )
+}
+
+export function Modal({
+  title,
+  children,
+  onClose,
+  wide,
+}: {
+  title: string
+  children: ReactNode
+  onClose: () => void
+  wide?: boolean
+}) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onMouseDown={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+        className={`w-full rounded-xl border border-ink-600 bg-ink-900 p-5 shadow-2xl ${wide ? 'max-w-xl' : 'max-w-md'}`}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <h2 id="modal-title" className="text-sm font-semibold text-ink-200">
+          {title}
+        </h2>
+        {children}
+      </div>
+    </div>
   )
 }
 

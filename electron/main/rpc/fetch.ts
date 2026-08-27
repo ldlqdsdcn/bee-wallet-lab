@@ -3,8 +3,12 @@
  */
 import { DEFAULT_TIMEOUT_MS, rawFetch } from '../backend/http'
 
-export async function providerGet<T>(url: string, headers?: Record<string, string>): Promise<T> {
-  const { status, body } = await rawFetch(url, { method: 'GET', headers }, DEFAULT_TIMEOUT_MS)
+export async function providerGet<T>(
+  url: string,
+  headers?: Record<string, string>,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+): Promise<T> {
+  const { status, body } = await rawFetch(url, { method: 'GET', headers }, timeoutMs)
   if (status < 200 || status >= 300) {
     throw new Error(`节点返回 ${status}`)
   }
@@ -14,7 +18,7 @@ export async function providerGet<T>(url: string, headers?: Record<string, strin
 export async function providerPost<T>(
   url: string,
   body: unknown,
-  extra?: { headers?: Record<string, string>; rawBody?: string },
+  extra?: { headers?: Record<string, string>; rawBody?: string; timeoutMs?: number },
 ): Promise<T> {
   const headers = {
     'Content-Type': extra?.rawBody !== undefined ? 'text/plain' : 'application/json',
@@ -27,7 +31,7 @@ export async function providerPost<T>(
       headers,
       body: extra?.rawBody ?? JSON.stringify(body),
     },
-    DEFAULT_TIMEOUT_MS,
+    extra?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   )
   if (status < 200 || status >= 300) {
     const hint = typeof payload === 'string' ? payload.slice(0, 180) : ''

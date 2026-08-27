@@ -8,7 +8,7 @@ import type {
   WalletType,
 } from '@shared/types'
 import { accountApi, walletApi } from '../lib/bridge'
-import { Alert, Button, Card, Field, Select, TextArea } from '../components/ui'
+import { Alert, Button, Card, Field, Modal, Select, TextArea } from '../components/ui'
 import { shorten, walletTypeLabel } from '../lib/format'
 import { useWalletStore } from '../store/walletStore'
 
@@ -47,16 +47,34 @@ export default function WalletsPage() {
     privateKey: '',
     label: '',
   })
-  const [reveal, setReveal] = useState<{ kind: 'mnemonic' | 'key'; id: string } | null>(null)
-  const [password, setPassword] = useState('')
-  const [secret, setSecret] = useState<string | null>(null)
+  const [revealPrompt, setRevealPrompt] = useState<{
+    kind: 'mnemonic' | 'key'
+    id: string
+    label: string
+  } | null>(null)
+  const [revealPassword, setRevealPassword] = useState('')
+  const [revealBusy, setRevealBusy] = useState(false)
+  const [revealError, setRevealError] = useState<string | null>(null)
+  const [revealed, setRevealed] = useState<{
+    kind: 'mnemonic' | 'key'
+    value: string
+    passphrase: string | null
+    label: string
+  } | null>(null)
   const [renaming, setRenaming] = useState(false)
   const [renameName, setRenameName] = useState('')
+  const [deleting, setDeleting] = useState<WalletSummary | null>(null)
+  const [deletePassword, setDeletePassword] = useState('')
 
   const load = useCallback(async (walletId?: string) => {
     const list = await walletApi.list()
     setWallets(list)
-    const nextId = walletId ?? selectedId ?? list.find((item) => item.isDefault)?.id ?? list[0]?.id ?? null
+    const keep = walletId ?? selectedId
+    const nextId =
+      (keep && list.some((item) => item.id === keep) ? keep : null) ??
+      list.find((item) => item.isDefault)?.id ??
+      list[0]?.id ??
+      null
     setSelectedId(nextId)
     setAccounts(nextId ? await accountApi.list(nextId) : [])
     void reloadCurrent()
@@ -250,6 +268,7 @@ export default function WalletsPage() {
               <option value="web3">EVM</option>
               <option value="bitcoin">Bitcoin</option>
               <option value="tron">TRON</option>
+              <option value="solana">Solana</option>
             </Select>
             <Select
               label="网络"
@@ -282,7 +301,7 @@ export default function WalletsPage() {
                 label="私钥"
                 className="sensitive"
                 value={keyForm.privateKey}
-                hint="EVM / TRON 为 64 位 hex，Bitcoin 也可用 WIF"
+                hint="EVM / TRON 为 64 位 hex，Bitcoin 可用 WIF，Solana 为 32 字节 hex 或 Base58 secret key"
                 onChange={(e) => setKeyForm({ ...keyForm, privateKey: e.target.value })}
               />
             </div>
@@ -368,12 +387,23 @@ export default function WalletsPage() {
                   variant="ghost"
                   className="px-2 py-1 text-xs"
                   onClick={() => {
-                    setReveal({ kind: 'mnemonic', id: selected.id })
-                    setSecret(null)
-                    setPassword('')
+                    setRevealPrompt({ kind: 'mnemonic', id: selected.id, label: selected.name })
+                    setRevealPassword('')
+                    setRevealError(null)
                   }}
                 >
                   导出助记词
+                </Button>
+                <Button
+                  variant="danger"
+                  className="px-2 py-1 text-xs"
+                  onClick={() => {
+                    setDeleting(selected)
+                    setDeletePassword('')
+                    setError(null)
+                  }}
+                >
+                  删除
                 </Button>
               </div>
             ) : null
@@ -443,9 +473,13 @@ export default function WalletsPage() {
                     variant="ghost"
                     className="px-2 py-1 text-xs"
                     onClick={() => {
-                      setReveal({ kind: 'key', id: account.id })
-                      setSecret(null)
-                      setPassword('')
+                      setRevealPrompt({
+                        kind: 'key',
+                        id: account.id,
+                        label: account.label || shorten(account.address),
+                      })
+                      setRevealPassword('')
+                      setRevealError(null)
                     }}
                   >
                     私钥
@@ -466,47 +500,228 @@ export default function WalletsPage() {
         </Card>
       </div>
 
-      {reveal ? (
-        <Card title={reveal.kind === 'mnemonic' ? '导出助记词' : '揭示私钥'}>
-          <div className="space-y-3">
-            <Field
-              label="主密码"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            {secret ? <p className="sensitive break-all rounded-lg bg-ink-900 px-3 py-2 text-xs text-honey-400">{secret}</p> : null}
-            <div className="flex gap-2">
-              <Button
-                disabled={busy || !password}
-                onClick={() =>
-                  void run(async () => {
-                    const value =
-                      reveal.kind === 'mnemonic'
-                        ? (await walletApi.exportMnemonic(reveal.id, password)).mnemonic
-                        : await accountApi.revealPrivateKey(reveal.id, password)
-                    setSecret(value)
-                    setPassword('')
+      {revealPrompt ? (
+        <PasswordPromptDialog
+          kind={revealPrompt.kind}
+          label={revealPrompt.label}
+          password={revealPassword}
+          busy={revealBusy}
+          error={revealError}
+          onPassword={setRevealPassword}
+          onCancel={() => {
+            setRevealPrompt(null)
+            setRevealPassword('')
+            setRevealError(null)
+          }}
+          onConfirm={() => {
+            void (async () => {
+              setRevealBusy(true)
+              setRevealError(null)
+              try {
+                if (revealPrompt.kind === 'mnemonic') {
+                  const exported = await walletApi.exportMnemonic(revealPrompt.id, revealPassword)
+                  setRevealed({
+                    kind: 'mnemonic',
+                    value: exported.mnemonic,
+                    passphrase: exported.passphrase,
+                    label: revealPrompt.label,
+                  })
+                } else {
+                  const value = await accountApi.revealPrivateKey(revealPrompt.id, revealPassword)
+                  setRevealed({
+                    kind: 'key',
+                    value,
+                    passphrase: null,
+                    label: revealPrompt.label,
                   })
                 }
-              >
-                确认
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setReveal(null)
-                  setSecret(null)
-                  setPassword('')
-                }}
-              >
-                关闭
-              </Button>
-            </div>
-          </div>
-        </Card>
+                setRevealPrompt(null)
+                setRevealPassword('')
+              } catch (err) {
+                setRevealError(err instanceof Error ? err.message : String(err))
+              } finally {
+                setRevealBusy(false)
+              }
+            })()
+          }}
+        />
+      ) : null}
+
+      {revealed ? (
+        <SecretRevealDialog secret={revealed} onClose={() => setRevealed(null)} />
+      ) : null}
+
+      {deleting ? (
+        <DeleteWalletDialog
+          wallet={deleting}
+          password={deletePassword}
+          busy={busy}
+          error={error}
+          onPassword={setDeletePassword}
+          onCancel={() => {
+            setDeleting(null)
+            setDeletePassword('')
+            setError(null)
+          }}
+          onConfirm={() =>
+            void run(async () => {
+              await walletApi.remove(deleting.id, deletePassword)
+              setDeleting(null)
+              setDeletePassword('')
+              await load()
+            })
+          }
+        />
       ) : null}
     </div>
+  )
+}
+
+function PasswordPromptDialog({
+  kind,
+  label,
+  password,
+  busy,
+  error,
+  onPassword,
+  onCancel,
+  onConfirm,
+}: {
+  kind: 'mnemonic' | 'key'
+  label: string
+  password: string
+  busy: boolean
+  error: string | null
+  onPassword: (value: string) => void
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <Modal title={kind === 'mnemonic' ? '导出助记词' : '查看私钥'} onClose={onCancel}>
+      <p className="mt-2 text-sm text-ink-400">
+        {kind === 'mnemonic'
+          ? `输入主密码后，将单独打开窗口显示「${label}」的助记词。`
+          : `输入主密码后，将单独打开窗口显示「${label}」的私钥。`}
+      </p>
+      <div className="mt-4">
+        <Field
+          label="主密码"
+          type="password"
+          autoFocus
+          value={password}
+          onChange={(e) => onPassword(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && password && !busy) onConfirm()
+          }}
+        />
+      </div>
+      {error ? <p className="mt-3 text-xs text-red-300">{error}</p> : null}
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="ghost" onClick={onCancel}>
+          取消
+        </Button>
+        <Button disabled={busy || !password} onClick={onConfirm}>
+          {busy ? '校验中…' : '确认'}
+        </Button>
+      </div>
+    </Modal>
+  )
+}
+
+function SecretRevealDialog({
+  secret,
+  onClose,
+}: {
+  secret: { kind: 'mnemonic' | 'key'; value: string; passphrase: string | null; label: string }
+  onClose: () => void
+}) {
+  const [copied, setCopied] = useState(false)
+  const words = secret.kind === 'mnemonic' ? secret.value.trim().split(/\s+/) : []
+
+  const copy = async () => {
+    await navigator.clipboard.writeText(secret.value)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <Modal title={secret.kind === 'mnemonic' ? '助记词' : '私钥'} onClose={onClose} wide={secret.kind === 'mnemonic'}>
+      <p className="mt-2 text-xs text-ink-500">
+        {secret.label} · 请勿截图、勿发给任何人。关闭窗口后不再显示。
+      </p>
+      {secret.kind === 'mnemonic' ? (
+        <ol className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {words.map((word, index) => (
+            <li key={index} className="sensitive rounded-lg bg-ink-800 px-2 py-1.5 text-xs text-ink-200">
+              <span className="mr-1 text-ink-600">{index + 1}.</span>
+              {word}
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="sensitive mt-4 break-all rounded-lg bg-ink-800 px-3 py-3 font-mono text-sm text-honey-400">
+          {secret.value}
+        </p>
+      )}
+      {secret.passphrase ? (
+        <p className="mt-3 text-xs text-ink-400">
+          Passphrase：<span className="sensitive text-ink-200">{secret.passphrase}</span>
+        </p>
+      ) : null}
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="ghost" onClick={() => void copy()}>
+          {copied ? '已复制' : '复制'}
+        </Button>
+        <Button onClick={onClose}>关闭</Button>
+      </div>
+    </Modal>
+  )
+}
+
+function DeleteWalletDialog({
+  wallet,
+  password,
+  busy,
+  error,
+  onPassword,
+  onCancel,
+  onConfirm,
+}: {
+  wallet: WalletSummary
+  password: string
+  busy: boolean
+  error: string | null
+  onPassword: (value: string) => void
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <Modal title="删除钱包" onClose={onCancel}>
+      <p className="mt-2 text-sm text-ink-400">
+        确定删除「{wallet.name}」？助记词和账户将从本机清除，无法恢复。
+      </p>
+      <div className="mt-4">
+        <Field
+          label="主密码"
+          type="password"
+          autoFocus
+          value={password}
+          onChange={(e) => onPassword(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && password && !busy) onConfirm()
+          }}
+        />
+      </div>
+      {error ? <p className="mt-3 text-xs text-red-300">{error}</p> : null}
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="ghost" onClick={onCancel}>
+          取消
+        </Button>
+        <Button variant="danger" disabled={busy || !password} onClick={onConfirm}>
+          {busy ? '删除中…' : '确认删除'}
+        </Button>
+      </div>
+    </Modal>
   )
 }
 
@@ -531,6 +746,7 @@ function DeriveBar({
         <option value="web3">EVM</option>
         <option value="bitcoin">Bitcoin</option>
         <option value="tron">TRON</option>
+        <option value="solana">Solana</option>
       </Select>
       <Select
         label="网络"

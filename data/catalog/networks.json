@@ -178,5 +178,41 @@
     "supportGasTime": "N",
     "remark": null,
     "symbol": null
+  },
+  {
+    "id": "101",
+    "networkId": "solana",
+    "networkName": "Solana",
+    "chainId": "mainnet-beta",
+    "chainName": "Mainnet",
+    "chainType": "1",
+    "type": "solana",
+    "coinId": "solana",
+    "coinEasy": "SOL",
+    "rpcUrl": "https://api.mainnet-beta.solana.com",
+    "browser": "https://solscan.io",
+    "icon": "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/solana/info/logo.png",
+    "webAddress": "https://solana.com",
+    "supportGasTime": "N",
+    "remark": "Solana 主网 JSON-RPC",
+    "symbol": "SOL"
+  },
+  {
+    "id": "103",
+    "networkId": "solana",
+    "networkName": "Solana Devnet",
+    "chainId": "devnet",
+    "chainName": "Devnet",
+    "chainType": "2",
+    "type": "solana",
+    "coinId": "solana",
+    "coinEasy": "SOL",
+    "rpcUrl": "https://api.devnet.solana.com",
+    "browser": "https://solscan.io?cluster=devnet",
+    "icon": "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/solana/info/logo.png",
+    "webAddress": "https://solana.com",
+    "supportGasTime": "N",
+    "remark": "Solana 开发测试网",
+    "symbol": "SOL"
   }
 ]

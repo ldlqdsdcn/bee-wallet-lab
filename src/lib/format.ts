@@ -28,6 +28,7 @@ export function fromMinor(amount: string, decimals: number): string {
 export function walletTypeLabel(type: string): string {
   if (type === 'web3') return 'EVM'
   if (type === 'tron') return 'TRON'
+  if (type === 'solana') return 'Solana'
   return 'Bitcoin'
 }
 

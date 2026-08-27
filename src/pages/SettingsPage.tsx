@@ -52,7 +52,7 @@ export default function SettingsPage() {
       <Card title="网络与代币">
         <div className="space-y-3">
           <p className="text-xs text-ink-400">
-            第一版目录打包在应用内（Bitcoin / Ethereum / Arbitrum / TRON / BSC），同步时写入本地数据库，不请求后台。
+            第一版目录打包在应用内（Bitcoin / Ethereum / Arbitrum / TRON / BSC / Solana），同步时写入本地数据库，不请求后台。
           </p>
           <Button
             variant="ghost"

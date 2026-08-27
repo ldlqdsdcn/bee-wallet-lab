@@ -3,7 +3,7 @@
  * 命名与移动端 onewallet-app 保持一致：walletType / addressType / rootPath / network。
  */
 
-export type WalletType = 'bitcoin' | 'web3' | 'tron'
+export type WalletType = 'bitcoin' | 'web3' | 'tron' | 'solana'
 
 export type BitcoinAddressType = 'p2pkh' | 'p2sh-p2wpkh' | 'p2wpkh' | 'p2tr'
 
@@ -383,4 +383,32 @@ export interface BackendStatus {
   authenticated: boolean
   tokenExpiresAt: number | null
   message: string | null
+}
+
+export type RpcNodeSource = 'builtin' | 'custom'
+
+export interface RpcNodeRecord {
+  id: string
+  networkPk: string
+  url: string
+  label: string | null
+  source: RpcNodeSource
+  isSelected: boolean
+  lastLatencyMs: number | null
+  lastError: string | null
+  lastCheckedAt: number | null
+  createdAt: number
+}
+
+export interface RpcNodeCreateInput {
+  networkPk: string
+  url: string
+  label?: string
+}
+
+export interface RpcPingResult {
+  id: string
+  ok: boolean
+  latencyMs: number | null
+  error: string | null
 }

@@ -5,6 +5,8 @@ import { personalSign, recoverPersonalSignAddress, verifyPersonalSign } from '..
 import { signBitcoinMessage, verifyBitcoinMessage } from '../electron/main/sign/bitcoin'
 import { evmAddressFromPrivateKey } from '../electron/main/derive/evm'
 import { bitcoinAddressFromPublicKey } from '../electron/main/derive/bitcoin'
+import { solanaAddressFromPrivateKey } from '../electron/main/derive/solana'
+import { signSolanaMessage, verifySolanaMessage } from '../electron/main/sign/solana'
 import { secp256k1 } from '@noble/curves/secp256k1'
 
 const PRIVATE_KEY = hexToBytes('1111111111111111111111111111111111111111111111111111111111111111')
@@ -38,5 +40,14 @@ describe('消息签名', () => {
     const verified = verifyBitcoinMessage('hello bee', signature, address, 'mainnet', 'p2wpkh')
     expect(verified.valid).toBe(true)
     expect(verified.recoveredAddress).toBe(address)
+  })
+
+  it('Solana Ed25519 可验证', () => {
+    const address = solanaAddressFromPrivateKey(PRIVATE_KEY)
+    const signature = signSolanaMessage(PRIVATE_KEY, 'hello bee')
+    const verified = verifySolanaMessage('hello bee', signature, address)
+    expect(verified.valid).toBe(true)
+    expect(verified.recoveredAddress).toBe(address)
+    expect(verifySolanaMessage('other', signature, address).valid).toBe(false)
   })
 })

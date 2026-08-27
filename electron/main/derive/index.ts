@@ -15,12 +15,19 @@ import { assertPath, buildPath, resolveAddressType, type PathInput } from './pat
 import { bitcoinAddressFromPublicKey, wifToPrivateKey } from './bitcoin'
 import { evmAddressFromPrivateKey, evmPublicKeyHex } from './evm'
 import { tronAddressFromPrivateKey } from './tron'
+import {
+  parseSolanaPrivateKey,
+  solanaAddressFromPrivateKey,
+  solanaPublicKeyHex,
+} from './solana'
+import { slip10DeriveEd25519 } from './slip10'
 
 export * from './paths'
 export * from './mnemonic'
 export * from './bitcoin'
 export * from './evm'
 export * from './tron'
+export * from './solana'
 
 export interface DeriveInput extends PathInput {
   seed: Uint8Array
@@ -74,12 +81,33 @@ function addressFor(
         address: tronAddressFromPrivateKey(privateKey),
         publicKey: evmPublicKeyHex(privateKey),
       }
+    case 'solana':
+      return {
+        address: solanaAddressFromPrivateKey(privateKey),
+        publicKey: solanaPublicKeyHex(privateKey),
+      }
   }
 }
 
 export function derive(input: DeriveInput): DerivedKey {
   const addressType = resolveAddressType(input.walletType, input.addressType)
   const rootPath = input.customPath ? assertPath(input.customPath) : buildPath(input)
+
+  if (input.walletType === 'solana') {
+    const privateKey = slip10DeriveEd25519(input.seed, rootPath)
+    const derived = addressFor(input.walletType, input.networkScope, addressType, privateKey, privateKey)
+    return {
+      walletType: input.walletType,
+      networkScope: input.networkScope,
+      addressType,
+      rootPath,
+      accountIndex: input.accountIndex ?? 0,
+      addressIndex: input.addressIndex ?? 0,
+      address: derived.address,
+      publicKey: derived.publicKey,
+      privateKey,
+    }
+  }
 
   const master = HDKey.fromMasterSeed(input.seed)
   const node = master.derive(rootPath)
@@ -127,7 +155,9 @@ export function deriveFromPrivateKey(input: ImportKeyInput): ImportedKey {
 
   let privateKey: Uint8Array
   let networkScope = input.networkScope
-  if (input.walletType === 'bitcoin' && !/^(0x)?[0-9a-fA-F]{64}$/.test(raw)) {
+  if (input.walletType === 'solana') {
+    privateKey = parseSolanaPrivateKey(raw)
+  } else if (input.walletType === 'bitcoin' && !/^(0x)?[0-9a-fA-F]{64}$/.test(raw)) {
     const parsed = wifToPrivateKey(raw)
     privateKey = parsed.privateKey
     networkScope = parsed.networkScope
@@ -139,7 +169,7 @@ export function deriveFromPrivateKey(input: ImportKeyInput): ImportedKey {
     privateKey = hexToBytes(body.toLowerCase())
   }
 
-  const compressed = secp256k1.getPublicKey(privateKey, true)
+  const compressed = input.walletType === 'solana' ? privateKey : secp256k1.getPublicKey(privateKey, true)
   const derived = addressFor(input.walletType, networkScope, addressType, privateKey, compressed)
   return {
     walletType: input.walletType,

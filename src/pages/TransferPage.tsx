@@ -198,7 +198,13 @@ export default function TransferPage() {
             </Select>
             {feeLevel === 'custom' ? (
               <Field
-                label={network?.walletType === 'bitcoin' ? 'sat/vB' : 'maxFeePerGas (gwei)'}
+                label={
+                  network?.walletType === 'bitcoin'
+                    ? 'sat/vB'
+                    : network?.walletType === 'solana'
+                      ? '优先费（lamports，仅作展示）'
+                      : 'maxFeePerGas (gwei)'
+                }
                 value={customFeeRate}
                 onChange={(e) => setCustomFeeRate(e.target.value)}
               />

@@ -225,6 +225,80 @@ const migrations: Migration[] = [
       db.exec('CREATE INDEX IF NOT EXISTS idx_wallets_name ON wallets(name)')
     },
   },
+  {
+    version: 4,
+    description: 'per-network rpc node list',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE rpc_nodes (
+          id              TEXT PRIMARY KEY,
+          network_pk      TEXT NOT NULL,
+          url             TEXT NOT NULL,
+          label           TEXT,
+          source          TEXT NOT NULL CHECK (source IN ('builtin','custom')),
+          is_selected     INTEGER NOT NULL DEFAULT 0,
+          last_latency_ms INTEGER,
+          last_error      TEXT,
+          last_checked_at INTEGER,
+          created_at      INTEGER NOT NULL
+        );
+        CREATE UNIQUE INDEX idx_rpc_nodes_url ON rpc_nodes(network_pk, url);
+        CREATE INDEX idx_rpc_nodes_network ON rpc_nodes(network_pk, is_selected DESC);
+      `)
+    },
+  },
+  {
+    version: 5,
+    description: 'allow solana wallet_type on accounts and address book',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE accounts_v5 (
+          id                    TEXT PRIMARY KEY,
+          wallet_id             TEXT REFERENCES wallets(id) ON DELETE CASCADE,
+          wallet_type           TEXT NOT NULL CHECK (wallet_type IN ('bitcoin','web3','tron','solana')),
+          network_scope         TEXT NOT NULL CHECK (network_scope IN ('mainnet','testnet')),
+          address_type          TEXT CHECK (address_type IN ('p2pkh','p2sh-p2wpkh','p2wpkh','p2tr')),
+          root_path             TEXT,
+          account_index         INTEGER NOT NULL DEFAULT 0,
+          address_index         INTEGER NOT NULL DEFAULT 0,
+          address               TEXT NOT NULL,
+          public_key            TEXT NOT NULL,
+          label                 TEXT,
+          source                TEXT NOT NULL CHECK (source IN ('hd','imported')),
+          encrypted_private_key TEXT,
+          created_at            INTEGER NOT NULL,
+          updated_at            INTEGER NOT NULL
+        );
+        INSERT INTO accounts_v5 SELECT * FROM accounts;
+        DROP TABLE accounts;
+        ALTER TABLE accounts_v5 RENAME TO accounts;
+        CREATE UNIQUE INDEX idx_accounts_addr
+          ON accounts(wallet_type, network_scope, address);
+        CREATE INDEX idx_accounts_wallet ON accounts(wallet_id);
+        CREATE INDEX idx_accounts_lookup ON accounts(wallet_type, network_scope, address_type);
+
+        CREATE TABLE address_book_v5 (
+          id            TEXT PRIMARY KEY,
+          label         TEXT NOT NULL,
+          wallet_type   TEXT NOT NULL CHECK (wallet_type IN ('bitcoin','web3','tron','solana')),
+          network_scope TEXT NOT NULL CHECK (network_scope IN ('mainnet','testnet')),
+          network_pk    TEXT,
+          network_name  TEXT,
+          address       TEXT NOT NULL,
+          memo          TEXT,
+          last_used_at  INTEGER,
+          created_at    INTEGER NOT NULL,
+          updated_at    INTEGER NOT NULL
+        );
+        INSERT INTO address_book_v5 SELECT * FROM address_book;
+        DROP TABLE address_book;
+        ALTER TABLE address_book_v5 RENAME TO address_book;
+        CREATE UNIQUE INDEX idx_address_book_unique
+          ON address_book(wallet_type, network_scope, IFNULL(network_pk, ''), address);
+        CREATE INDEX idx_address_book_sort ON address_book(last_used_at DESC, updated_at DESC);
+      `)
+    },
+  },
 ]
 
 export const LATEST_SCHEMA_VERSION = migrations[migrations.length - 1].version
