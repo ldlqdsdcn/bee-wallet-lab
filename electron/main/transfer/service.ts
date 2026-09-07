@@ -10,12 +10,14 @@ import type {
   TransferDraftInput,
   TransferPreview,
 } from '@shared/types'
+import { IPC_EVENT } from '../../../shared/ipc'
 import { newId } from '../security/crypto'
 import { parseDecimalToMinor, formatMinor } from '../util/amount'
 import { getNetwork, getToken } from '../db/repos/catalogRepo'
 import { getAccountRow, listMatchingAccounts } from '../db/repos/accountRepo'
 import { upsertTransaction } from '../db/repos/transactionRepo'
-import { invalidArg, notFound } from '../ipc/registry'
+import { broadcast, invalidArg, notFound } from '../ipc/registry'
+import { watchTransaction } from '../history/watch'
 import { getAccount, withAccountPrivateKey } from '../wallets/service'
 import {
   broadcastBitcoinTx,
@@ -411,7 +413,7 @@ export async function submitTransfer(draftId: string): Promise<BroadcastResult> 
           ? explorerUrlForSolana(txid, draft.network)
           : explorerUrlForTron(txid, draft.network.networkScope, draft.network.browser)
 
-  upsertTransaction({
+  const transaction = upsertTransaction({
     id: newId(),
     networkPk: draft.network.id,
     accountId: draft.account.id,
@@ -438,8 +440,10 @@ export async function submitTransfer(draftId: string): Promise<BroadcastResult> 
     createdAt: Date.now(),
     explorerUrl,
   })
+  watchTransaction(transaction)
+  broadcast(IPC_EVENT.transactionUpdated, { record: transaction })
 
-  return { txid, explorerUrl, reportedToBackend: false }
+  return { txid, explorerUrl, reportedToBackend: false, transaction }
 }
 
 async function withAccountPrivateKeyAsync<T>(

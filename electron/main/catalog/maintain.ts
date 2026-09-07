@@ -33,6 +33,7 @@ import {
 import { deleteBalancesForNetwork, deleteBalancesForToken } from '../db/repos/balanceRepo'
 import { deleteRpcNodesByNetwork } from '../db/repos/rpcNodeRepo'
 import { deleteFaucetsByNetwork } from '../db/repos/faucetRepo'
+import { deleteTokenIssuesByNetwork } from '../db/repos/tokenIssueRepo'
 import { ensureFaucetsSeeded } from './faucet'
 import { loadSettings, saveSettings } from '../db/repos/metaRepo'
 import { invalidArg, notFound } from '../ipc/registry'
@@ -267,6 +268,7 @@ export function removeCatalogNetwork(id: string): true {
   deleteTokensByNetwork(id)
   deleteRpcNodesByNetwork(id)
   deleteFaucetsByNetwork(id)
+  deleteTokenIssuesByNetwork(id)
   deleteBalancesForNetwork(id)
   deleteNetwork(id)
   setPreferredRpc(id, null)

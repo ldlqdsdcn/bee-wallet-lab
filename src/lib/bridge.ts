@@ -20,6 +20,16 @@ import type {
   DeriveAccountInput,
   DerivedAddress,
   ImportPrivateKeyInput,
+  HdDerivedEvmKey,
+  HdDeriveEvmInput,
+  HdDeriveEvmResult,
+  HdAirdropInput,
+  HdAirdropItemPage,
+  HdAirdropItemQuery,
+  HdAirdropJob,
+  HdAirdropPreview,
+  HdAirdropRetryInput,
+  HdKeyRecord,
   ImportWalletInput,
   MnemonicDraft,
   NetworkRecord,
@@ -31,6 +41,10 @@ import type {
   ProxyUpdateInput,
   SignMessageInput,
   SignMessageResult,
+  IssuedTokenRecord,
+  TokenIssueInput,
+  TokenIssuePreview,
+  TokenIssueResult,
   TokenRecord,
   TokenUpsertInput,
   TransactionRecord,
@@ -138,6 +152,13 @@ export const accountApi = {
   rename: (accountId: string, label: string) => call<AccountRecord>(IPC.accountRename, { accountId, label }),
   remove: (accountId: string) => call<true>(IPC.accountRemove, { accountId }),
   preview: (input: DeriveAccountInput) => call<DerivedAddress>(IPC.accountPreviewDerivation, input),
+  hdDeriveEvm: (input: HdDeriveEvmInput) => call<HdDeriveEvmResult>(IPC.accountHdDeriveEvm, input),
+  hdKeyList: (walletId: string, accountIndex?: number) =>
+    call<HdKeyRecord[]>(IPC.accountHdKeyList, { walletId, accountIndex }),
+  hdKeyUnlock: (walletId: string, password: string, accountIndex?: number) =>
+    call<HdDerivedEvmKey[]>(IPC.accountHdKeyUnlock, { walletId, password, accountIndex }),
+  hdKeyClear: (walletId: string, password: string, accountIndex?: number) =>
+    call<number>(IPC.accountHdKeyClear, { walletId, password, accountIndex }),
 }
 
 export const catalogApi = {
@@ -155,6 +176,23 @@ export const catalogApi = {
 export const portfolioApi = {
   snapshot: (networkPk?: string) => call<PortfolioSnapshot>(IPC.portfolioSnapshot, { networkPk }),
   refresh: (networkPk?: string) => call<PortfolioSnapshot>(IPC.portfolioRefresh, { networkPk }),
+}
+
+export const tokenApi = {
+  preview: (input: TokenIssueInput) => call<TokenIssuePreview>(IPC.tokenIssuePreview, input),
+  submit: (draftId: string) => call<TokenIssueResult>(IPC.tokenIssueSubmit, { draftId }),
+  list: (networkPk?: string) => call<IssuedTokenRecord[]>(IPC.tokenIssueList, { networkPk }),
+}
+
+export const hdAirdropApi = {
+  preview: (input: HdAirdropInput) => call<HdAirdropPreview>(IPC.hdAirdropPreview, input),
+  start: (draftId: string) => call<HdAirdropJob>(IPC.hdAirdropStart, { draftId }),
+  stop: (jobId?: string) => call<HdAirdropJob | null>(IPC.hdAirdropStop, { jobId }),
+  status: (jobId?: string) => call<HdAirdropJob | null>(IPC.hdAirdropStatus, { jobId }),
+  jobs: (walletId?: string, networkPk?: string) =>
+    call<HdAirdropJob[]>(IPC.hdAirdropJobs, { walletId, networkPk }),
+  items: (query: HdAirdropItemQuery) => call<HdAirdropItemPage>(IPC.hdAirdropItems, query),
+  retry: (input: HdAirdropRetryInput) => call<HdAirdropJob>(IPC.hdAirdropRetry, input),
 }
 
 export const transferApi = {

@@ -121,6 +121,157 @@ export interface DeriveAccountInput {
   label?: string
 }
 
+/** 批量派生 EVM 分层地址；默认生成 1..toIndex */
+export interface HdDeriveEvmInput {
+  walletId: string
+  password: string
+  toIndex: number
+  fromIndex?: number
+  accountIndex?: number
+}
+
+export interface HdKeyRecord {
+  id: string
+  walletId: string
+  walletType: WalletType
+  accountIndex: number
+  addressIndex: number
+  path: string
+  address: string
+  publicKey: string
+  createdAt: number
+}
+
+export interface HdDerivedEvmKey {
+  id?: string
+  index: number
+  path: string
+  address: string
+  publicKey: string
+  privateKey?: string
+}
+
+export interface HdDeriveEvmResult {
+  walletId: string
+  walletName: string
+  accountIndex: number
+  fromIndex: number
+  toIndex: number
+  saved: number
+  skipped: number
+  rows: HdDerivedEvmKey[]
+}
+
+export type HdAirdropAmountMode = 'fixed' | 'range'
+
+export interface HdAirdropInput {
+  walletId: string
+  accountId: string
+  networkPk: string
+  tokenPk: string
+  fromIndex: number
+  toIndex: number
+  accountIndex?: number
+  amountMode: HdAirdropAmountMode
+  /** 固定额度，人类可读 */
+  amount?: string
+  amountMin?: string
+  amountMax?: string
+}
+
+export interface HdAirdropPreview {
+  draftId: string
+  from: string
+  symbol: string
+  decimals: number
+  recipientCount: number
+  missingCount: number
+  amountMode: HdAirdropAmountMode
+  amountText: string
+  estimatedTotal: string
+  feeText: string
+  estimatedMs: number
+  estimatedText: string
+  warnings: string[]
+}
+
+export type HdAirdropJobStatus = 'running' | 'done' | 'stopped' | 'failed'
+export type HdAirdropItemStatus = 'queued' | 'pending' | 'confirmed' | 'failed' | 'skipped'
+
+export interface HdAirdropJob {
+  id: string
+  walletId: string
+  accountId: string
+  networkPk: string
+  tokenPk: string
+  fromAddress: string
+  symbol: string
+  decimals: number
+  amountMode: HdAirdropAmountMode
+  amountText: string
+  fromIndex: number
+  toIndex: number
+  accountIndex: number
+  status: HdAirdropJobStatus
+  total: number
+  queued: number
+  pending: number
+  confirmed: number
+  /** pending + confirmed，已广播出去的笔数 */
+  sent: number
+  failed: number
+  skipped: number
+  currentIndex: number | null
+  lastTxid: string | null
+  lastError: string | null
+  estimatedMs: number
+  startedAt: number
+  finishedAt: number | null
+  createdAt: number
+}
+
+export interface HdAirdropItem {
+  id: string
+  jobId: string
+  addressIndex: number
+  toAddress: string
+  amount: string
+  amountMinor: string
+  status: HdAirdropItemStatus
+  txid: string | null
+  explorerUrl: string | null
+  error: string | null
+  attemptCount: number
+  updatedAt: number
+}
+
+export interface HdAirdropItemQuery {
+  jobId: string
+  status?: HdAirdropItemStatus
+  page?: number
+  pageSize?: number
+}
+
+export interface HdAirdropItemPage {
+  jobId: string
+  items: HdAirdropItem[]
+  total: number
+  page: number
+  pageSize: number
+  queued: number
+  pending: number
+  confirmed: number
+  failed: number
+  skipped: number
+}
+
+export interface HdAirdropRetryInput {
+  jobId: string
+  itemIds?: string[]
+  /** 不传 itemIds 时：failed 只重试失败；queued 继续未发送；retryable 两者都重试 */
+  scope?: 'failed' | 'queued' | 'retryable'
+}
+
 /** 助记词生成预览（尚未落库） */
 export interface MnemonicDraft {
   draftId: string
@@ -329,10 +480,62 @@ export interface TransferPreview {
   warnings: string[]
 }
 
+export interface TokenIssueInput {
+  accountId: string
+  networkPk: string
+  name: string
+  symbol: string
+  decimals: number
+  /** 人类可读总量，例如 1000000000 */
+  supply: string
+}
+
+export interface TokenIssuePreview {
+  draftId: string
+  from: string
+  name: string
+  symbol: string
+  decimals: number
+  supply: string
+  supplyMinor: string
+  feeText: string
+  feeMinor: string
+  warnings: string[]
+}
+
+export interface TokenIssueResult {
+  txid: string
+  explorerUrl: string | null
+  contractAddress: string | null
+  token: TokenRecord | null
+  transaction: TransactionRecord
+  issue: IssuedTokenRecord
+}
+
+export interface IssuedTokenRecord {
+  id: string
+  networkPk: string
+  accountId: string
+  tokenPk: string | null
+  transactionId: string | null
+  fromAddress: string
+  name: string
+  symbol: string
+  decimals: number
+  supply: string
+  supplyMinor: string
+  contractAddress: string | null
+  txid: string
+  explorerUrl: string | null
+  status: 'pending' | 'confirmed' | 'failed'
+  createdAt: number
+}
+
 export interface BroadcastResult {
   txid: string
   explorerUrl: string | null
   reportedToBackend: boolean
+  transaction: TransactionRecord
 }
 
 export interface TransactionRecord {

@@ -132,6 +132,10 @@ export async function fetchBitcoinAddressTxs(address: string, networkScope: Netw
   return esploraGet<unknown>(networkScope, `address/${address}/txs`)
 }
 
+export async function fetchBitcoinTx(txid: string, networkScope: NetworkScope): Promise<unknown> {
+  return esploraGet<unknown>(networkScope, `tx/${txid}`)
+}
+
 export async function fetchUtxos(address: string, networkScope: NetworkScope): Promise<BitcoinUtxo[]> {
   const payload = await esploraGet<unknown>(networkScope, `address/${address}/utxo`)
   return extractList<Record<string, unknown>>(payload).map((item) => ({

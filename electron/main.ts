@@ -2,6 +2,8 @@ import { app, BrowserWindow, session, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { bootstrap, shutdown } from './main/bootstrap'
+import { installAppMenu } from './main/appMenu'
+import { isQuitConfirmed, requestQuit } from './main/quit'
 import { ensureLinuxDevDesktopEntry, loadAppIcon, resolveAppIconPath } from './main/icon'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -84,6 +86,11 @@ function createWindow() {
   if (icon && process.platform === 'linux') {
     win.setIcon(icon)
   }
+  win.on('close', (event) => {
+    if (isQuitConfirmed()) return
+    event.preventDefault()
+    void requestQuit()
+  })
   win.on('closed', () => {
     win = null
   })
@@ -166,5 +173,6 @@ app.whenReady().then(() => {
   applyContentSecurityPolicy()
   hardenWebviewGuests()
   ensureLinuxDevDesktopEntry()
+  installAppMenu()
   createWindow()
 })

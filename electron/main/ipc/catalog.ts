@@ -17,6 +17,7 @@ import {
   syncCatalog,
 } from '../catalog/sync'
 import { lookupCatalogNetwork } from '../catalog/lookup'
+import { refreshAppMenu } from '../appMenu'
 import {
   removeCatalogNetwork,
   removeCatalogToken,
@@ -26,6 +27,7 @@ import {
 
 function changed<T>(value: T): T {
   broadcast(IPC_EVENT.catalogUpdated, { kind: 'maintain' })
+  refreshAppMenu()
   return value
 }
 
@@ -41,6 +43,7 @@ export function registerCatalogIpc(): void {
   handle<{ force?: boolean }, CatalogSyncResult>(IPC.catalogSync, async (arg) => {
     const result = await syncCatalog(Boolean(arg?.force))
     broadcast(IPC_EVENT.catalogUpdated, result)
+    refreshAppMenu()
     return result
   })
 

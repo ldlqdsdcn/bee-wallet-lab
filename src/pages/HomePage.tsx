@@ -1,50 +1,27 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { AssetEntry, FaucetRecord, NetworkRecord, PortfolioSnapshot } from '@shared/types'
-import { catalogApi, faucetApi, portfolioApi, settingsApi } from '../lib/bridge'
+import type { AssetEntry, FaucetRecord, PortfolioSnapshot } from '@shared/types'
+import { faucetApi, portfolioApi } from '../lib/bridge'
 import { Alert, Button, Card } from '../components/ui'
 import { AccountAddress } from '../components/AccountAddress'
-import { NetworkSelect } from '../components/NetworkSelect'
 import { addressExplorerUrl, explorerTabTitle } from '../lib/explorer'
 import { bitcoinAddressLabel, formatAmount } from '../lib/format'
 import { useBrowserStore } from '../store/browserStore'
 import { useWalletStore } from '../store/walletStore'
+import { currentNetworkOf, useNetworkStore } from '../store/networkStore'
 
 export default function HomePage() {
   const navigate = useNavigate()
   const currentWalletId = useWalletStore((s) => s.currentId)
   const currentWallet = useWalletStore((s) => s.current)
+  const networks = useNetworkStore((s) => s.networks)
+  const networkPk = useNetworkStore((s) => s.currentPk)
+  const current = currentNetworkOf({ networks, currentPk: networkPk })
   const open = useBrowserStore((s) => s.open)
-  const [networks, setNetworks] = useState<NetworkRecord[]>([])
-  const [networkPk, setNetworkPk] = useState('')
   const [snapshot, setSnapshot] = useState<PortfolioSnapshot | null>(null)
   const [faucets, setFaucets] = useState<FaucetRecord[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    let alive = true
-    void (async () => {
-      try {
-        let list = await catalogApi.networks()
-        if (!alive) return
-        if (list.length === 0) {
-          await catalogApi.sync()
-          list = await catalogApi.networks()
-          if (!alive) return
-        }
-        const settings = await settingsApi.get()
-        if (!alive) return
-        setNetworks(list)
-        setNetworkPk((pk) => pk || settings.defaultNetworkPk || list[0]?.id || '')
-      } catch (err) {
-        if (alive) setError(err instanceof Error ? err.message : String(err))
-      }
-    })()
-    return () => {
-      alive = false
-    }
-  }, [])
 
   useEffect(() => {
     if (!networkPk) return
@@ -64,7 +41,6 @@ export default function HomePage() {
     }
   }, [currentWalletId, networkPk])
 
-  const current = networks.find((item) => item.id === networkPk)
   const isTestnet = current?.networkScope === 'testnet'
 
   useEffect(() => {
@@ -86,11 +62,12 @@ export default function HomePage() {
     }
   }, [networkPk, isTestnet])
 
-  const refresh = async (pk = networkPk) => {
+  const refresh = async () => {
+    if (!networkPk) return
     setBusy(true)
     setError(null)
     try {
-      setSnapshot(await portfolioApi.refresh(pk))
+      setSnapshot(await portfolioApi.refresh(networkPk))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -111,20 +88,9 @@ export default function HomePage() {
             {current ? ` · ${current.networkName}` : ''}
           </p>
         </div>
-        <div className="flex items-end gap-3">
-          <NetworkSelect
-            label="网络"
-            networks={networks}
-            value={networkPk}
-            onChange={(id) => {
-              setNetworkPk(id)
-              void refresh(id)
-            }}
-          />
-          <Button disabled={busy || !networkPk} onClick={() => void refresh()}>
-            {busy ? '刷新中…' : '刷新'}
-          </Button>
-        </div>
+        <Button disabled={busy || !networkPk} onClick={() => void refresh()}>
+          {busy ? '刷新中…' : '刷新'}
+        </Button>
       </div>
 
       <Alert>{error}</Alert>

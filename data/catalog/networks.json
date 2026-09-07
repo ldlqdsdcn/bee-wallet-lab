@@ -214,5 +214,41 @@
     "supportGasTime": "N",
     "remark": "Solana 开发测试网",
     "symbol": "SOL"
+  },
+  {
+    "id": "31",
+    "networkId": "base",
+    "networkName": "Base",
+    "chainId": "8453",
+    "chainName": "Mainnet",
+    "chainType": "1",
+    "type": "web3",
+    "coinId": "ethereum",
+    "coinEasy": "ETH",
+    "rpcUrl": "https://mainnet.base.org",
+    "browser": "https://basescan.org",
+    "icon": "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/info/logo.png",
+    "webAddress": "https://base.org",
+    "supportGasTime": "Y",
+    "remark": "Coinbase 推出的 Ethereum L2",
+    "symbol": "ETH"
+  },
+  {
+    "id": "32",
+    "networkId": "base",
+    "networkName": "Base Sepolia",
+    "chainId": "84532",
+    "chainName": "Sepolia",
+    "chainType": "2",
+    "type": "web3",
+    "coinId": "ethereum",
+    "coinEasy": "ETH",
+    "rpcUrl": "https://sepolia.base.org",
+    "browser": "https://sepolia.basescan.org",
+    "icon": "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/info/logo.png",
+    "webAddress": "https://base.org",
+    "supportGasTime": "Y",
+    "remark": "Base 测试网（Sepolia）",
+    "symbol": "ETH"
   }
 ]

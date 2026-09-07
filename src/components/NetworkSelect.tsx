@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { NetworkRecord } from '@shared/types'
+import { networkLabel } from '../lib/format'
 
 export function NetworkIcon({ src, name, size = 20 }: { src?: string | null; name?: string | null; size?: number }) {
   const [failed, setFailed] = useState(false)
@@ -23,10 +24,6 @@ export function NetworkIcon({ src, name, size = 20 }: { src?: string | null; nam
       onError={() => setFailed(true)}
     />
   )
-}
-
-function labelOf(network: NetworkRecord): string {
-  return network.chainName ? `${network.networkName} (${network.chainName})` : network.networkName
 }
 
 export function NetworkSelect({
@@ -63,7 +60,7 @@ export function NetworkSelect({
         onClick={() => setOpen((current) => !current)}
       >
         <NetworkIcon src={selected?.icon} name={selected?.networkName} />
-        <span className="min-w-0 flex-1 truncate">{selected ? labelOf(selected) : '选择网络'}</span>
+        <span className="min-w-0 flex-1 truncate">{selected ? networkLabel(selected) : '选择网络'}</span>
         <span className="text-[10px] text-ink-500">{open ? '▴' : '▾'}</span>
       </button>
       {open ? (
@@ -83,7 +80,7 @@ export function NetworkSelect({
                   }}
                 >
                   <NetworkIcon src={item.icon} name={item.networkName} />
-                  <span className="min-w-0 truncate">{labelOf(item)}</span>
+                  <span className="min-w-0 truncate">{networkLabel(item)}</span>
                 </button>
               </li>
             )

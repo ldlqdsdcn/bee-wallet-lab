@@ -92,6 +92,10 @@ describe('内置目录 JSON', () => {
     expect(catalog.networks.some((item) => item.walletType === 'tron')).toBe(true)
     expect(catalog.networks.some((item) => item.walletType === 'solana')).toBe(true)
     expect(catalog.tokens.some((item) => item.symbol === 'USDT' && item.isToken)).toBe(true)
+    expect(catalog.networks.some((item) => item.chainId === '8453' && item.networkName === 'Base')).toBe(true)
+    expect(catalog.networks.some((item) => item.chainId === '84532' && item.networkScope === 'testnet')).toBe(true)
+    expect(catalog.tokens.some((item) => item.networkPk === '31' && item.symbol === 'ETH' && !item.isToken)).toBe(true)
+    expect(catalog.tokens.some((item) => item.networkPk === '32' && item.symbol === 'ETH' && !item.isToken)).toBe(true)
   })
 })
 
@@ -108,6 +112,8 @@ describe('自定义网络原生币默认值', () => {
   it('按名称 / chainId 匹配常见链主币', () => {
     expect(matchNetworkPreset('base')).toMatchObject({ chainId: '8453', coinEasy: 'ETH', supported: true })
     expect(matchNetworkPreset('8453')).toMatchObject({ networkName: 'Base', coinEasy: 'ETH' })
+    expect(matchNetworkPreset('base sepolia')).toMatchObject({ chainId: '84532', networkScope: 'testnet' })
+    expect(matchNetworkPreset('84532')).toMatchObject({ networkName: 'Base Sepolia' })
     expect(matchNetworkPreset('xoc')).toMatchObject({ chainId: '3721', coinEasy: 'XOC', supported: true })
     expect(matchNetworkPreset('xone')).toMatchObject({ coinEasy: 'XOC' })
     expect(matchNetworkPreset('sui')).toMatchObject({ supported: false, coinEasy: 'SUI' })

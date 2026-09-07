@@ -176,6 +176,10 @@ export function explorerUrlForTron(txid: string, networkScope: NetworkScope, bro
     : `https://nile.tronscan.org/#/transaction/${txid}`
 }
 
+export async function fetchTronTxInfo(txid: string, networkScope: NetworkScope): Promise<unknown> {
+  return trongrid<unknown>('wallet/gettransactioninfobyid', { value: txid }, networkScope)
+}
+
 export async function fetchTronAccountTransactions(address: string, networkScope: NetworkScope): Promise<unknown> {
   return trongridGet<unknown>(
     `v1/accounts/${encodeURIComponent(address)}/transactions?limit=50&only_confirmed=true`,

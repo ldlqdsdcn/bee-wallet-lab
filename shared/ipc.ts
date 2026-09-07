@@ -4,7 +4,8 @@
  * 安全约定：
  * 1. 渲染进程只能通过本文件列出的白名单通道调用主进程；
  * 2. 返回值禁止包含助记词、私钥、KEK、JWT 原文，
- *    唯一例外是 `wallet:exportMnemonic` / `account:revealPrivateKey`，
+ *    唯一例外是 `wallet:exportMnemonic` / `account:revealPrivateKey` /
+ *    `account:hdDeriveEvm` / `account:hdKeyUnlock`，
  *    它们必须在主进程内二次校验主密码后才返回。
  * 3. `wallet:remove` 不返回密钥，但仍须校验主密码后才能删除。
  */
@@ -54,6 +55,10 @@ export const IPC = {
   accountRename: 'account:rename',
   accountRemove: 'account:remove',
   accountPreviewDerivation: 'account:previewDerivation',
+  accountHdDeriveEvm: 'account:hdDeriveEvm',
+  accountHdKeyList: 'account:hdKeyList',
+  accountHdKeyUnlock: 'account:hdKeyUnlock',
+  accountHdKeyClear: 'account:hdKeyClear',
 
   /* 后端接入 */
   backendStatus: 'backend:status',
@@ -106,6 +111,20 @@ export const IPC = {
   faucetUpsert: 'faucet:upsert',
   faucetRemove: 'faucet:remove',
   faucetRestore: 'faucet:restore',
+
+  /* 发行 ERC-20 */
+  tokenIssuePreview: 'token:issuePreview',
+  tokenIssueSubmit: 'token:issueSubmit',
+  tokenIssueList: 'token:issueList',
+
+  /* 分层钱包批量转 ERC-20 */
+  hdAirdropPreview: 'hdAirdrop:preview',
+  hdAirdropStart: 'hdAirdrop:start',
+  hdAirdropStop: 'hdAirdrop:stop',
+  hdAirdropStatus: 'hdAirdrop:status',
+  hdAirdropJobs: 'hdAirdrop:jobs',
+  hdAirdropItems: 'hdAirdrop:items',
+  hdAirdropRetry: 'hdAirdrop:retry',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]
@@ -124,6 +143,9 @@ export const IPC_EVENT = {
   rpcNodesChanged: 'event:rpcNodesChanged',
   proxiesChanged: 'event:proxiesChanged',
   faucetsChanged: 'event:faucetsChanged',
+  transactionUpdated: 'event:transactionUpdated',
+  hdAirdropProgress: 'event:hdAirdropProgress',
+  appCommand: 'event:appCommand',
 } as const
 
 export type IpcEventName = (typeof IPC_EVENT)[keyof typeof IPC_EVENT]
@@ -139,3 +161,11 @@ export interface IpcResult<T> {
     message: string
   }
 }
+
+/** 原生菜单发给渲染进程的命令。工作区导入导出第一版只弹说明。 */
+export type AppCommand =
+  | { action: 'navigate'; path: string; state?: Record<string, unknown> }
+  | { action: 'lock' }
+  | { action: 'workspace'; kind: 'new' | 'import' | 'export' }
+  | { action: 'switchNetwork' }
+

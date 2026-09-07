@@ -336,6 +336,14 @@ export async function fetchSolanaSignatures(network: NetworkRecord, address: str
   return solanaRpc<unknown>(network, 'getSignaturesForAddress', [address, { limit }])
 }
 
+export async function fetchSolanaSignatureStatus(network: NetworkRecord, signature: string): Promise<unknown> {
+  const payload = await solanaRpc<{ value?: unknown[] }>(network, 'getSignatureStatuses', [
+    [signature],
+    { searchTransactionHistory: true },
+  ])
+  return payload?.value?.[0] ?? null
+}
+
 export async function fetchSolanaTransaction(network: NetworkRecord, signature: string): Promise<unknown> {
   return solanaRpc<unknown>(network, 'getTransaction', [
     signature,

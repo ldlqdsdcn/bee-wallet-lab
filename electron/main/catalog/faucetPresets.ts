@@ -29,6 +29,8 @@ const PRESETS: Record<string, FaucetPreset[]> = {
   ],
   'web3:84532': [
     { url: 'https://www.alchemy.com/faucets/base-sepolia', label: 'Alchemy Base Sepolia' },
+    { url: 'https://faucet.quicknode.com/base/sepolia', label: 'QuickNode Base Sepolia' },
+    { url: 'https://www.coinbase.com/faucets/base-ethereum-sepolia-faucet', label: 'Coinbase Base Sepolia' },
   ],
   'tron:1029': [{ url: 'https://nileex.io/join/getJoinPage', label: 'Nileex' }],
   'solana:devnet': [{ url: 'https://faucet.solana.com', label: 'Solana Faucet' }],

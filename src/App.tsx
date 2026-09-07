@@ -6,16 +6,21 @@ import SettingsPage from './pages/SettingsPage'
 import AddressBookPage from './pages/AddressBookPage'
 import HomePage from './pages/HomePage'
 import WalletsPage from './pages/WalletsPage'
+import HdDerivePage from './pages/HdDerivePage'
 import TransferPage from './pages/TransferPage'
+import IssuePage from './pages/IssuePage'
+import HdAirdropPage from './pages/HdAirdropPage'
 import ActivityPage from './pages/ActivityPage'
 import SignPage from './pages/SignPage'
 import RpcNodesPage from './pages/RpcNodesPage'
 import NetworksPage from './pages/NetworksPage'
 import TokensPage from './pages/TokensPage'
 import FaucetsPage from './pages/FaucetsPage'
+import DappsPage from './pages/DappsPage'
 import ProxyPage from './pages/ProxyPage'
 import { subscribeVaultEvents, useVaultStore } from './store/vaultStore'
 import { subscribeWalletEvents } from './store/walletStore'
+import { subscribeNetworkEvents } from './store/networkStore'
 import { subscribeAddressBookEvents } from './store/addressBookStore'
 import { useBrowserStore } from './store/browserStore'
 import { BrowserChrome } from './components/BrowserChrome'
@@ -30,10 +35,12 @@ export default function App() {
     void bootstrap()
     const offVault = subscribeVaultEvents()
     const offWallets = subscribeWalletEvents()
+    const offNetworks = subscribeNetworkEvents()
     const offAddressBook = subscribeAddressBookEvents()
     return () => {
       offVault()
       offWallets()
+      offNetworks()
       offAddressBook()
     }
   }, [bootstrap])
@@ -63,7 +70,10 @@ export default function App() {
           <Route element={<AppShell />}>
             <Route index element={<HomePage />} />
             <Route path="wallets" element={<WalletsPage />} />
+            <Route path="hd" element={<HdDerivePage />} />
             <Route path="transfer" element={<TransferPage />} />
+            <Route path="issue" element={<IssuePage />} />
+            <Route path="hd-airdrop" element={<HdAirdropPage />} />
             <Route path="activity" element={<ActivityPage />} />
             <Route path="address-book" element={<AddressBookPage />} />
             <Route path="sign" element={<SignPage />} />
@@ -71,6 +81,8 @@ export default function App() {
             <Route path="networks" element={<NetworksPage />} />
             <Route path="tokens" element={<TokensPage />} />
             <Route path="faucets" element={<FaucetsPage />} />
+            <Route path="dapps/:category" element={<DappsPage />} />
+            <Route path="dapps" element={<DappsPage />} />
             <Route path="proxy" element={<ProxyPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

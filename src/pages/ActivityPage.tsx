@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
-import type { NetworkRecord, TransactionRecord } from '@shared/types'
-import { catalogApi, settingsApi, transferApi } from '../lib/bridge'
+import { IPC_EVENT } from '@shared/ipc'
+import type { TransactionRecord } from '@shared/types'
+import { on, transferApi } from '../lib/bridge'
 import { Alert, Button, Card } from '../components/ui'
-import { NetworkSelect } from '../components/NetworkSelect'
 import { AccountAddress } from '../components/AccountAddress'
 import { explorerTabTitle, txExplorerUrl } from '../lib/explorer'
 import { shorten } from '../lib/format'
 import { useBrowserStore } from '../store/browserStore'
 import { useWalletStore } from '../store/walletStore'
+import { currentNetworkOf, useNetworkStore } from '../store/networkStore'
 
 function statusLabel(status: TransactionRecord['status']): string {
   if (status === 'confirmed') return '已确认'
@@ -29,39 +30,14 @@ function formatTime(at: number): string {
 export default function ActivityPage() {
   const currentWallet = useWalletStore((s) => s.current)
   const currentWalletId = useWalletStore((s) => s.currentId)
+  const networks = useNetworkStore((s) => s.networks)
+  const networkPk = useNetworkStore((s) => s.currentPk)
+  const current = currentNetworkOf({ networks, currentPk: networkPk })
   const open = useBrowserStore((s) => s.open)
-  const [networks, setNetworks] = useState<NetworkRecord[]>([])
-  const [networkPk, setNetworkPk] = useState('')
   const [rows, setRows] = useState<TransactionRecord[]>([])
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-
-  const current = networks.find((item) => item.id === networkPk)
-
-  useEffect(() => {
-    let alive = true
-    void (async () => {
-      try {
-        let list = await catalogApi.networks()
-        if (!alive) return
-        if (list.length === 0) {
-          await catalogApi.sync()
-          list = await catalogApi.networks()
-          if (!alive) return
-        }
-        const settings = await settingsApi.get()
-        if (!alive) return
-        setNetworks(list)
-        setNetworkPk((pk) => pk || settings.defaultNetworkPk || list[0]?.id || '')
-      } catch (err) {
-        if (alive) setError(err instanceof Error ? err.message : String(err))
-      }
-    })()
-    return () => {
-      alive = false
-    }
-  }, [])
 
   const load = async (pk = networkPk) => {
     if (!pk) return
@@ -86,8 +62,12 @@ export default function ActivityPage() {
   }
 
   useEffect(() => {
-    if (!networkPk) return
+    if (!networkPk) {
+      setRows([])
+      return
+    }
     let alive = true
+    setRows([])
     setError(null)
     setMessage(null)
     void (async () => {
@@ -115,6 +95,20 @@ export default function ActivityPage() {
     }
   }, [networkPk, currentWalletId])
 
+  useEffect(() => {
+    return on(IPC_EVENT.transactionUpdated, (payload) => {
+      const record = (payload as { record?: TransactionRecord }).record
+      if (!record || (networkPk && record.networkPk !== networkPk)) return
+      setRows((rows) => {
+        const index = rows.findIndex((item) => item.id === record.id || item.txid === record.txid)
+        if (index < 0) return [record, ...rows]
+        const next = rows.slice()
+        next[index] = record
+        return next
+      })
+    })
+  }, [networkPk])
+
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <div className="flex items-end justify-between gap-4">
@@ -123,20 +117,12 @@ export default function ActivityPage() {
           <p className="mt-1 text-xs text-ink-500">
             {currentWallet ? currentWallet.name : '请先创建钱包'}
             {current ? ` · ${current.networkName}` : ''}
-            {' · 从 Esplora / Blockscout / TronGrid / Solana RPC 同步'}
+            {' · 只显示当前钱包在当前网络的交易'}
           </p>
         </div>
-        <div className="flex items-end gap-3">
-          <NetworkSelect
-            label="网络"
-            networks={networks}
-            value={networkPk}
-            onChange={(id) => setNetworkPk(id)}
-          />
-          <Button disabled={busy || !networkPk} onClick={() => void sync()}>
-            {busy ? '同步中…' : '同步'}
-          </Button>
-        </div>
+        <Button disabled={busy || !networkPk} onClick={() => void sync()}>
+          {busy ? '同步中…' : '同步'}
+        </Button>
       </div>
 
       <Alert>{error}</Alert>

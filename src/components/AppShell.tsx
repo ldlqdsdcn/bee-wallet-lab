@@ -4,21 +4,22 @@ import { useVaultStore } from '../store/vaultStore'
 import { vaultApi } from '../lib/bridge'
 import { Button } from './ui'
 import { WalletSelect } from './WalletSelect'
+import { CurrentNetwork } from './CurrentNetwork'
+import { AppMenuBridge } from './AppMenuBridge'
+import { NetworkSwitchDialog } from './NetworkSwitchDialog'
+import { useNetworkStore } from '../store/networkStore'
 import logoUrl from '../assets/logo.png'
 
 const navItems = [
   { to: '/', label: '资产总览' },
   { to: '/wallets', label: '钱包与账户' },
+  { to: '/hd', label: '分层钱包' },
   { to: '/transfer', label: '收款转账' },
+  { to: '/issue', label: '发行代币' },
+  { to: '/hd-airdrop', label: '批量转账' },
   { to: '/activity', label: '交易记录' },
   { to: '/address-book', label: '地址簿' },
   { to: '/sign', label: '消息签名' },
-  { to: '/nodes', label: '节点维护' },
-  { to: '/networks', label: '网络维护' },
-  { to: '/tokens', label: '代币维护' },
-  { to: '/faucets', label: '水龙头' },
-  { to: '/proxy', label: '代理' },
-  { to: '/settings', label: '设置' },
 ]
 
 /** 用户活动上报节流间隔 */
@@ -27,6 +28,9 @@ const TOUCH_INTERVAL = 30_000
 export default function AppShell() {
   const lock = useVaultStore((s) => s.lock)
   const autoLockMinutes = useVaultStore((s) => s.settings?.autoLockMinutes ?? 0)
+  const pickerOpen = useNetworkStore((s) => s.pickerOpen)
+  const closePicker = useNetworkStore((s) => s.closePicker)
+  const selectNetwork = useNetworkStore((s) => s.select)
 
   // 有交互就续期空闲计时，避免用户操作中途被锁
   useEffect(() => {
@@ -49,7 +53,10 @@ export default function AppShell() {
           <img src={logoUrl} alt="" className="h-8 w-8 select-none" draggable={false} />
           <span className="text-sm font-semibold text-ink-200">Bee Wallet Lab</span>
         </div>
-        <WalletSelect />
+        <div className="mb-4 space-y-3">
+          <WalletSelect />
+          <CurrentNetwork />
+        </div>
         <nav className="flex-1 space-y-1">
           {navItems.map((item) => (
             <NavLink
@@ -80,8 +87,12 @@ export default function AppShell() {
       </aside>
 
       <main className="flex-1 overflow-y-auto p-6">
+        <AppMenuBridge />
         <Outlet />
       </main>
+      {pickerOpen ? (
+        <NetworkSwitchDialog onPick={(id) => void selectNetwork(id)} onClose={closePicker} />
+      ) : null}
     </div>
   )
 }

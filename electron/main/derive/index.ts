@@ -28,6 +28,7 @@ export * from './bitcoin'
 export * from './evm'
 export * from './tron'
 export * from './solana'
+export * from './evmRange'
 
 export interface DeriveInput extends PathInput {
   seed: Uint8Array

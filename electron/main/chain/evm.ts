@@ -154,14 +154,14 @@ export async function quoteEvmFees(network: NetworkRecord): Promise<Record<'low'
 export async function estimateEvmGas(input: {
   network: NetworkRecord
   from: string
-  to: string
+  to?: string | null
   value: bigint
   data?: Hex
 }): Promise<bigint> {
   const result = await evmRpc<string>(input.network, 'eth_estimateGas', [
     {
       from: input.from,
-      to: input.to,
+      ...(input.to ? { to: input.to } : {}),
       value: toHexQuantity(input.value),
       ...(input.data ? { data: input.data } : {}),
     },
@@ -185,19 +185,21 @@ export async function signAndSerializeEvmTx(input: {
   privateKey: Uint8Array
   chainId: number
   nonce: number
-  to: string
+  to?: string | null
   value: bigint
   data?: Hex
   gasLimit: bigint
   fee: EvmFeeQuote
 }): Promise<{ hex: string; hash: string }> {
-  const account = privateKeyToAccount(`0x${bytesToHex(input.privateKey)}`)
+  // viem bytesToHex 已带 0x；再拼一层会变成 0x0x…，noble 会报 invalid private key
+  const account = privateKeyToAccount(bytesToHex(input.privateKey))
+  const to = input.to ? (input.to as Hex) : undefined
   const tx: TransactionSerializable = input.fee.eip1559
     ? {
         type: 'eip1559',
         chainId: input.chainId,
         nonce: input.nonce,
-        to: input.to as Hex,
+        to,
         value: input.value,
         data: input.data,
         gas: input.gasLimit,
@@ -208,7 +210,7 @@ export async function signAndSerializeEvmTx(input: {
         type: 'legacy',
         chainId: input.chainId,
         nonce: input.nonce,
-        to: input.to as Hex,
+        to,
         value: input.value,
         data: input.data,
         gas: input.gasLimit,
@@ -216,6 +218,24 @@ export async function signAndSerializeEvmTx(input: {
       }
   const signed = await account.signTransaction(tx)
   return { hex: signed, hash: keccak256(signed as Hex) }
+}
+
+export async function fetchEvmReceipt(network: NetworkRecord, txid: string): Promise<unknown> {
+  return evmRpc<unknown>(network, 'eth_getTransactionReceipt', [txid])
+}
+
+export async function waitForEvmReceipt(
+  network: NetworkRecord,
+  txid: string,
+  timeoutMs = 45_000,
+): Promise<unknown | null> {
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    const receipt = await fetchEvmReceipt(network, txid)
+    if (receipt) return receipt
+    await new Promise((resolve) => setTimeout(resolve, 2500))
+  }
+  return null
 }
 
 export async function broadcastEvmTx(network: NetworkRecord, rawHex: string): Promise<string> {
@@ -232,6 +252,7 @@ const EVM_EXPLORER: Record<string, string> = {
   '56': 'https://bscscan.com',
   '97': 'https://testnet.bscscan.com',
   '8453': 'https://basescan.org',
+  '84532': 'https://sepolia.basescan.org',
   '10': 'https://optimistic.etherscan.io',
   '137': 'https://polygonscan.com',
   '43114': 'https://snowtrace.io',

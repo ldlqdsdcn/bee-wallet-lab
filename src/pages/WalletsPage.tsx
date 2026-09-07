@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import type {
   AccountRecord,
   BitcoinAddressType,
@@ -24,6 +25,7 @@ const ADDRESS_TYPES: { value: BitcoinAddressType; label: string }[] = [
 ]
 
 export default function WalletsPage() {
+  const location = useLocation()
   const reloadCurrent = useWalletStore((s) => s.load)
   const selectWallet = useWalletStore((s) => s.select)
   const [wallets, setWallets] = useState<WalletSummary[]>([])
@@ -65,6 +67,7 @@ export default function WalletsPage() {
   const [renameName, setRenameName] = useState('')
   const [deleting, setDeleting] = useState<WalletSummary | null>(null)
   const [deletePassword, setDeletePassword] = useState('')
+  const backupConsumed = useRef<string | null>(null)
 
   const load = useCallback(async (walletId?: string) => {
     const list = await walletApi.list()
@@ -83,6 +86,24 @@ export default function WalletsPage() {
   useEffect(() => {
     void load().catch((err) => setError(err instanceof Error ? err.message : String(err)))
   }, [load])
+
+  useEffect(() => {
+    const state = location.state as { wizard?: Wizard; backup?: boolean } | null
+    if (state?.wizard === 'create' || state?.wizard === 'import') setWizard(state.wizard)
+  }, [location.state])
+
+  useEffect(() => {
+    const state = location.state as { backup?: boolean } | null
+    if (!state?.backup || wallets.length === 0) return
+    if (backupConsumed.current === location.key) return
+    backupConsumed.current = location.key
+    const current = wallets.find((item) => item.isDefault) ?? wallets[0]
+    if (!current) return
+    setSelectedId(current.id)
+    setRevealPrompt({ kind: 'mnemonic', id: current.id, label: current.name })
+    setRevealPassword('')
+    setRevealError(null)
+  }, [location.key, location.state, wallets])
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true)

@@ -10,6 +10,7 @@ import { registerAllIpc } from './ipc'
 import { applyActiveProxy } from './net/proxy'
 import { migrateLegacyProxy } from './net/proxies'
 import { ensureDefaultFiat } from './db/repos/metaRepo'
+import { disposeTransactionWatch } from './history/watch'
 
 let started = false
 
@@ -33,6 +34,7 @@ export function bootstrap(): void {
 }
 
 export function shutdown(): void {
+  disposeTransactionWatch()
   disposeVault()
   closeDatabase()
   started = false

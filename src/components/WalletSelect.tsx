@@ -26,7 +26,7 @@ export function WalletSelect() {
     return (
       <button
         type="button"
-        className="mb-4 w-full rounded-lg border border-dashed border-ink-600 px-3 py-2 text-left text-xs text-ink-500 hover:border-honey-500 hover:text-honey-400"
+        className="w-full rounded-lg border border-dashed border-ink-600 px-3 py-2 text-left text-xs text-ink-500 hover:border-honey-500 hover:text-honey-400"
         onClick={() => navigate('/wallets')}
       >
         还没有钱包，去创建
@@ -35,7 +35,7 @@ export function WalletSelect() {
   }
 
   return (
-    <div className="mb-4">
+    <div>
       <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-ink-600">当前钱包</span>
       <button
         type="button"

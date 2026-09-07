@@ -23,6 +23,8 @@ import {
   wifToPrivateKey,
   encodeSolanaSecretKey,
   parseSolanaPrivateKey,
+  deriveEvmRange,
+  normalizeEvmRange,
 } from '../electron/main/derive'
 import { slip10DeriveEd25519 } from '../electron/main/derive/slip10'
 
@@ -217,6 +219,36 @@ describe('EVM 地址', () => {
     expect(account.address).toBe('0x9858EfFD232B4033E47d90003D41EC34EcaEda94')
     expect(account.addressType).toBeNull()
     expect(account.publicKey).toMatch(/^0x04[0-9a-f]{128}$/)
+  })
+
+  it('批量分层与逐条 derive 得到同一地址和私钥', () => {
+    const rows = deriveEvmRange({ seed: SEED, fromIndex: 0, toIndex: 3 })
+    expect(rows).toHaveLength(4)
+    expect(rows[0]?.address).toBe('0x9858EfFD232B4033E47d90003D41EC34EcaEda94')
+    expect(rows[0]?.path).toBe("m/44'/60'/0'/0/0")
+    for (const row of rows) {
+      const single = derive({
+        seed: SEED,
+        walletType: 'web3',
+        networkScope: 'mainnet',
+        addressIndex: row.index,
+      })
+      expect(row.path).toBe(single.rootPath)
+      expect(row.address).toBe(single.address)
+      expect(row.publicKey).toBe(single.publicKey)
+      expect(row.privateKey).toBe(`0x${bytesToHex(single.privateKey)}`)
+    }
+  })
+
+  it('跳过已存在的序号，只派生缺口', () => {
+    const rows = deriveEvmRange({ seed: SEED, fromIndex: 0, toIndex: 3, skipIndexes: [1, 2] })
+    expect(rows.map((row) => row.index)).toEqual([0, 3])
+  })
+
+  it('一次最多 20000 个，结束序号不能更小', () => {
+    expect(() => normalizeEvmRange(1, 20001)).toThrow(/20000/)
+    expect(() => normalizeEvmRange(5, 4)).toThrow(/结束/)
+    expect(normalizeEvmRange(1, 20000)).toEqual({ fromIndex: 1, toIndex: 20000 })
   })
 
   it('EIP-55 校验和大小写正确', () => {

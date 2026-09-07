@@ -48,6 +48,7 @@ function toRecord(row: TxRow): TransactionRecord {
 }
 
 export function insertTransaction(input: Omit<TransactionRecord, 'submittedToBackend'> & { submittedToBackend?: boolean }): TransactionRecord {
+  const previous = findByUnique(input.networkPk, input.txid, input.accountId)
   const now = Date.now()
   getDatabase()
     .prepare(
@@ -95,7 +96,9 @@ export function insertTransaction(input: Omit<TransactionRecord, 'submittedToBac
       'SELECT * FROM transactions WHERE network_pk = ? AND txid = ? AND account_id = ?',
     )
     .get(input.networkPk, input.txid, input.accountId)
-  return row ? toRecord(row) : (getTransaction(input.id) as TransactionRecord)
+  const next = row ? toRecord(row) : (getTransaction(input.id) as TransactionRecord)
+  emitSettled(next, previous)
+  return next
 }
 
 export const upsertTransaction = insertTransaction
@@ -103,6 +106,63 @@ export const upsertTransaction = insertTransaction
 export function getTransaction(id: string): TransactionRecord | null {
   const row = getDatabase().prepare<[string], TxRow>('SELECT * FROM transactions WHERE id = ?').get(id)
   return row ? toRecord(row) : null
+}
+
+type SettledListener = (next: TransactionRecord, previous: TransactionRecord) => void
+const settledListeners = new Set<SettledListener>()
+
+/** pending → confirmed / failed 时通知观察者（系统通知、页面刷新）。 */
+export function onTransactionSettled(listener: SettledListener): () => void {
+  settledListeners.add(listener)
+  return () => settledListeners.delete(listener)
+}
+
+function emitSettled(next: TransactionRecord, previous: TransactionRecord | null): void {
+  if (!previous || previous.status !== 'pending' || next.status === 'pending') return
+  for (const listener of settledListeners) {
+    try {
+      listener(next, previous)
+    } catch (err) {
+      console.error('[tx] settled listener', err)
+    }
+  }
+}
+
+function findByUnique(networkPk: string, txid: string, accountId: string): TransactionRecord | null {
+  const row = getDatabase()
+    .prepare<[string, string, string], TxRow>(
+      'SELECT * FROM transactions WHERE network_pk = ? AND txid = ? AND account_id = ?',
+    )
+    .get(networkPk, txid, accountId)
+  return row ? toRecord(row) : null
+}
+
+export function listPendingTransactions(): TransactionRecord[] {
+  return getDatabase()
+    .prepare<[], TxRow>(
+      "SELECT * FROM transactions WHERE status = 'pending' ORDER BY created_at ASC LIMIT 50",
+    )
+    .all()
+    .map(toRecord)
+}
+
+export function updateTransactionStatus(
+  id: string,
+  status: TransactionRecord['status'],
+  blockHeight: number | null,
+): TransactionRecord | null {
+  const previous = getTransaction(id)
+  if (!previous) return null
+  if (previous.status !== 'pending' && status === 'pending') return previous
+  if (previous.status === status && (blockHeight == null || previous.blockHeight === blockHeight)) {
+    return previous
+  }
+  getDatabase()
+    .prepare('UPDATE transactions SET status = ?, block_height = COALESCE(?, block_height), updated_at = ? WHERE id = ?')
+    .run(status, blockHeight, Date.now(), id)
+  const next = getTransaction(id)
+  if (next) emitSettled(next, previous)
+  return next
 }
 
 export function listTransactions(query?: { accountId?: string; networkPk?: string }): TransactionRecord[] {

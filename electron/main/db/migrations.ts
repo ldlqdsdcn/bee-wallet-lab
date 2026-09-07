@@ -348,6 +348,122 @@ const migrations: Migration[] = [
       `)
     },
   },
+  {
+    version: 9,
+    description: 'issued ERC-20 deployments so the issue page can list them',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE token_issues (
+          id               TEXT PRIMARY KEY,
+          network_pk       TEXT NOT NULL,
+          account_id       TEXT NOT NULL,
+          token_pk         TEXT,
+          transaction_id   TEXT,
+          from_address     TEXT NOT NULL,
+          name             TEXT NOT NULL,
+          symbol           TEXT NOT NULL,
+          decimals         INTEGER NOT NULL,
+          supply           TEXT NOT NULL,
+          supply_minor     TEXT NOT NULL,
+          contract_address TEXT,
+          txid             TEXT NOT NULL,
+          explorer_url     TEXT,
+          status           TEXT NOT NULL CHECK (status IN ('pending','confirmed','failed')),
+          created_at       INTEGER NOT NULL,
+          updated_at       INTEGER NOT NULL
+        );
+        CREATE UNIQUE INDEX idx_token_issues_txid ON token_issues(txid);
+        CREATE INDEX idx_token_issues_network ON token_issues(network_pk, created_at DESC);
+      `)
+    },
+  },
+  {
+    version: 10,
+    description: 'dedicated HD derived key table (address / pubkey / encrypted privkey)',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE hd_keys (
+          id                    TEXT PRIMARY KEY,
+          wallet_id             TEXT NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,
+          wallet_type           TEXT NOT NULL CHECK (wallet_type IN ('bitcoin','web3','tron','solana')),
+          account_index         INTEGER NOT NULL,
+          address_index         INTEGER NOT NULL,
+          root_path             TEXT NOT NULL,
+          address               TEXT NOT NULL,
+          public_key            TEXT NOT NULL,
+          encrypted_private_key TEXT NOT NULL,
+          created_at            INTEGER NOT NULL,
+          updated_at            INTEGER NOT NULL
+        );
+        CREATE UNIQUE INDEX idx_hd_keys_path
+          ON hd_keys(wallet_id, wallet_type, account_index, address_index);
+        CREATE INDEX idx_hd_keys_wallet
+          ON hd_keys(wallet_id, wallet_type, address_index);
+      `)
+    },
+  },
+  {
+    version: 11,
+    description: 'HD airdrop jobs and per-recipient items for retry after test releases',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE hd_airdrop_jobs (
+          id             TEXT PRIMARY KEY,
+          wallet_id      TEXT NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,
+          account_id     TEXT NOT NULL,
+          network_pk     TEXT NOT NULL,
+          token_pk       TEXT NOT NULL,
+          from_address   TEXT NOT NULL,
+          symbol         TEXT NOT NULL,
+          decimals       INTEGER NOT NULL,
+          amount_mode    TEXT NOT NULL CHECK (amount_mode IN ('fixed','range')),
+          amount_text    TEXT NOT NULL,
+          from_index     INTEGER NOT NULL,
+          to_index       INTEGER NOT NULL,
+          account_index  INTEGER NOT NULL,
+          status         TEXT NOT NULL CHECK (status IN ('running','done','stopped','failed')),
+          total          INTEGER NOT NULL,
+          queued         INTEGER NOT NULL,
+          pending        INTEGER NOT NULL,
+          confirmed      INTEGER NOT NULL,
+          failed         INTEGER NOT NULL,
+          skipped        INTEGER NOT NULL,
+          current_index  INTEGER,
+          last_txid      TEXT,
+          last_error     TEXT,
+          estimated_ms   INTEGER NOT NULL,
+          started_at     INTEGER NOT NULL,
+          finished_at    INTEGER,
+          created_at     INTEGER NOT NULL,
+          updated_at     INTEGER NOT NULL
+        );
+        CREATE INDEX idx_hd_airdrop_jobs_wallet
+          ON hd_airdrop_jobs(wallet_id, network_pk, created_at DESC);
+
+        CREATE TABLE hd_airdrop_items (
+          id            TEXT PRIMARY KEY,
+          job_id        TEXT NOT NULL REFERENCES hd_airdrop_jobs(id) ON DELETE CASCADE,
+          address_index INTEGER NOT NULL,
+          to_address    TEXT NOT NULL,
+          amount        TEXT NOT NULL,
+          amount_minor  TEXT NOT NULL,
+          status        TEXT NOT NULL CHECK (status IN ('queued','pending','confirmed','failed','skipped')),
+          txid          TEXT,
+          explorer_url  TEXT,
+          error         TEXT,
+          attempt_count INTEGER NOT NULL DEFAULT 0,
+          created_at    INTEGER NOT NULL,
+          updated_at    INTEGER NOT NULL
+        );
+        CREATE UNIQUE INDEX idx_hd_airdrop_items_job_index
+          ON hd_airdrop_items(job_id, address_index);
+        CREATE INDEX idx_hd_airdrop_items_job_status
+          ON hd_airdrop_items(job_id, status, address_index);
+        CREATE UNIQUE INDEX idx_hd_airdrop_items_txid
+          ON hd_airdrop_items(txid) WHERE txid IS NOT NULL;
+      `)
+    },
+  },
 ]
 
 export const LATEST_SCHEMA_VERSION = migrations[migrations.length - 1].version

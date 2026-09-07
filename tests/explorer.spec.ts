@@ -38,6 +38,9 @@ describe('区块链浏览器地址', () => {
     expect(addressExplorerUrl(network({ walletType: 'web3', chainId: '8453' }), '0xabc')).toBe(
       'https://basescan.org/address/0xabc',
     )
+    expect(addressExplorerUrl(network({ walletType: 'web3', chainId: '84532' }), '0xabc')).toBe(
+      'https://sepolia.basescan.org/address/0xabc',
+    )
   })
 
   it('Bitcoin / TRON 走 mempool 与 tronscan', () => {

@@ -39,3 +39,7 @@ export function bitcoinAddressLabel(type: string | null | undefined): string {
   if (type === 'p2tr') return 'Taproot'
   return type ?? ''
 }
+
+export function networkLabel(network: { networkName: string; chainName?: string | null }): string {
+  return network.chainName ? `${network.networkName} (${network.chainName})` : network.networkName
+}

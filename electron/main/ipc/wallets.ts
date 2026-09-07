@@ -4,6 +4,10 @@ import type {
   CreateWalletInput,
   DeriveAccountInput,
   DerivedAddress,
+  HdDerivedEvmKey,
+  HdDeriveEvmInput,
+  HdDeriveEvmResult,
+  HdKeyRecord,
   ImportPrivateKeyInput,
   ImportWalletInput,
   MnemonicDraft,
@@ -110,5 +114,35 @@ export function registerWalletIpc(): void {
 
   handle<DeriveAccountInput, DerivedAddress>(IPC.accountPreviewDerivation, (arg) =>
     wallets.previewDerivation(requireObject<DeriveAccountInput>(arg)),
+  )
+
+  handle<HdDeriveEvmInput, HdDeriveEvmResult>(IPC.accountHdDeriveEvm, (arg) => {
+    const input = requireObject<HdDeriveEvmInput>(arg)
+    if (!input.walletId) throw invalidArg('walletId 不能为空')
+    return wallets.batchDeriveEvm(input)
+  })
+
+  handle<{ walletId: string; accountIndex?: number }, HdKeyRecord[]>(IPC.accountHdKeyList, (arg) =>
+    wallets.listHdKeyTable(requireString(arg?.walletId, 'walletId'), arg?.accountIndex),
+  )
+
+  handle<{ walletId: string; password: string; accountIndex?: number }, HdDerivedEvmKey[]>(
+    IPC.accountHdKeyUnlock,
+    (arg) =>
+      wallets.unlockHdKeyTable(
+        requireString(arg?.walletId, 'walletId'),
+        requireString(arg?.password, 'password'),
+        arg?.accountIndex,
+      ),
+  )
+
+  handle<{ walletId: string; password: string; accountIndex?: number }, number>(
+    IPC.accountHdKeyClear,
+    (arg) =>
+      wallets.clearHdKeyTable(
+        requireString(arg?.walletId, 'walletId'),
+        requireString(arg?.password, 'password'),
+        arg?.accountIndex,
+      ),
   )
 }

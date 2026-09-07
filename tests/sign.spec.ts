@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { hexToBytes } from '@noble/hashes/utils'
 import { formatMinor, parseDecimalToMinor } from '../electron/main/util/amount'
 import { personalSign, recoverPersonalSignAddress, verifyPersonalSign } from '../electron/main/sign/evm'
+import { signAndSerializeEvmTx } from '../electron/main/chain/evm'
 import { signBitcoinMessage, verifyBitcoinMessage } from '../electron/main/sign/bitcoin'
 import { evmAddressFromPrivateKey } from '../electron/main/derive/evm'
 import { bitcoinAddressFromPublicKey } from '../electron/main/derive/bitcoin'
@@ -49,5 +50,26 @@ describe('消息签名', () => {
     expect(verified.valid).toBe(true)
     expect(verified.recoveredAddress).toBe(address)
     expect(verifySolanaMessage('other', signature, address).valid).toBe(false)
+  })
+})
+
+describe('EVM 转账签名', () => {
+  it('把 Uint8Array 私钥交给 viem 时不再重复加 0x', async () => {
+    const signed = await signAndSerializeEvmTx({
+      privateKey: PRIVATE_KEY,
+      chainId: 1,
+      nonce: 0,
+      to: '0x1111111111111111111111111111111111111111',
+      value: 1n,
+      gasLimit: 21000n,
+      fee: {
+        eip1559: true,
+        maxFeePerGas: 1_000_000_000n,
+        maxPriorityFeePerGas: 1_000_000_000n,
+        gasPrice: null,
+      },
+    })
+    expect(signed.hex.startsWith('0x')).toBe(true)
+    expect(signed.hash).toMatch(/^0x[0-9a-f]{64}$/)
   })
 })

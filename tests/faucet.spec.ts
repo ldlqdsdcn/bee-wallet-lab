@@ -40,6 +40,9 @@ describe('内置水龙头', () => {
   })
 
   it('Sepolia / Nile / Solana Devnet / BTC Testnet 有内置项', () => {
+    expect(builtinFaucetsFor(network({ walletType: 'web3', chainId: '84532', networkScope: 'testnet' })).some((item) =>
+      item.url.includes('base'),
+    )).toBe(true)
     expect(builtinFaucetsFor(network({ walletType: 'web3', chainId: '11155111', networkScope: 'testnet' })).length).toBeGreaterThan(
       0,
     )

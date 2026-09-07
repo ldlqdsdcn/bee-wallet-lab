@@ -38,6 +38,11 @@ import { registerSignIpc } from './sign'
 import { registerRpcIpc } from './rpc'
 import { registerProxyIpc } from './proxy'
 import { registerFaucetIpc } from './faucet'
+import { registerTokenIpc } from './token'
+import { registerHdAirdropIpc } from './hdAirdrop'
+import { refreshAppMenu } from '../appMenu'
+import { startTransactionWatch, stopTransactionWatch } from '../history/watch'
+import { recoverInterruptedHdAirdrops, stopAllHdAirdrops } from '../hdAirdrop/service'
 
 function registerVaultIpc(): void {
   handle<void, VaultStatus>(IPC.vaultStatus, () => vault.getStatus())
@@ -180,8 +185,11 @@ export function registerAllIpc(): void {
   registerRpcIpc()
   registerProxyIpc()
   registerFaucetIpc()
+  registerTokenIpc()
+  registerHdAirdropIpc()
   registerPlaceholders()
   initWalletAuth()
+  recoverInterruptedHdAirdrops()
 
   vault.onVaultEvent((event) => {
     if (event === 'unlocked') {
@@ -190,9 +198,19 @@ export function registerAllIpc(): void {
       } catch {
         /* 没有鉴权钱包或密文失效都不影响解锁本身 */
       }
-      void syncCatalog().then((result) => broadcast(IPC_EVENT.catalogUpdated, result)).catch(() => undefined)
+      void syncCatalog().then((result) => {
+        broadcast(IPC_EVENT.catalogUpdated, result)
+        refreshAppMenu()
+      }).catch(() => undefined)
+      startTransactionWatch()
+    }
+    if (event === 'locked') {
+      stopAllHdAirdrops()
+      stopTransactionWatch()
     }
     broadcast(event === 'locked' ? IPC_EVENT.vaultLocked : IPC_EVENT.vaultUnlocked, vault.getStatus())
     broadcast(IPC_EVENT.backendStatusChanged)
   })
+
+  if (vault.getStatus().unlocked) startTransactionWatch()
 }

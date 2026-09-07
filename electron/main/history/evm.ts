@@ -38,6 +38,7 @@ const ETHERSCAN_V1: Record<string, string> = {
   '97': 'https://api-testnet.bscscan.com/api',
   '42161': 'https://api.arbiscan.io/api',
   '8453': 'https://api.basescan.org/api',
+  '84532': 'https://api-sepolia.basescan.org/api',
   '10': 'https://api-optimistic.etherscan.io/api',
   '137': 'https://api.polygonscan.com/api',
   '43114': 'https://api.snowtrace.io/api',

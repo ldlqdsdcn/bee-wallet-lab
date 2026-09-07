@@ -9,6 +9,7 @@ const EVM_ADDRESS_URL: Record<string, string> = {
   '56': 'https://bscscan.com/address/{address}',
   '97': 'https://testnet.bscscan.com/address/{address}',
   '8453': 'https://basescan.org/address/{address}',
+  '84532': 'https://sepolia.basescan.org/address/{address}',
   '10': 'https://optimistic.etherscan.io/address/{address}',
   '137': 'https://polygonscan.com/address/{address}',
   '43114': 'https://snowtrace.io/address/{address}',

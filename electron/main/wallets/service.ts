@@ -10,7 +10,9 @@ import {
   BITCOIN_ADDRESS_TYPES,
   derive,
   deriveAddress,
+  deriveEvmRange,
   deriveFromPrivateKey,
+  normalizeEvmRange,
   generateMnemonicPhrase,
   assertMnemonic,
   mnemonicToSeed,
@@ -57,12 +59,25 @@ import {
 import { withTransaction } from '../db/sqlite'
 import { IpcError, invalidArg, notFound } from '../ipc/registry'
 import { normalizePickerQuery } from './query'
+import {
+  decryptHdPrivateKey,
+  deleteHdKeys,
+  listExistingHdIndexes,
+  listHdKeyRows,
+  listHdKeys,
+  reencryptHdKeys,
+  upsertHdKeys,
+} from '../db/repos/hdKeyRepo'
 import type {
   AccountRecord,
   BitcoinAddressType,
   CreateWalletInput,
   DeriveAccountInput,
   DerivedAddress,
+  HdDerivedEvmKey,
+  HdDeriveEvmInput,
+  HdDeriveEvmResult,
+  HdKeyRecord,
   ImportPrivateKeyInput,
   ImportWalletInput,
   MnemonicDraft,
@@ -446,6 +461,56 @@ export function importPrivateKey(input: ImportPrivateKeyInput): AccountRecord {
   }
 }
 
+export function batchDeriveEvm(input: HdDeriveEvmInput): HdDeriveEvmResult {
+  if (!verifyPassword(input.password)) throw new IpcError('INVALID_ARG', '主密码不正确')
+  const wallet = requireWallet(input.walletId)
+  const fromIndex = input.fromIndex ?? 1
+  const toIndex = input.toIndex
+  const accountIndex = input.accountIndex ?? 0
+  let range: { fromIndex: number; toIndex: number }
+  try {
+    range = normalizeEvmRange(fromIndex, toIndex)
+  } catch (err) {
+    throw invalidArg(err instanceof Error ? err.message : '派生范围不合法')
+  }
+  const existing = listExistingHdIndexes(
+    wallet.id,
+    'web3',
+    accountIndex,
+    range.fromIndex,
+    range.toIndex,
+  )
+  const requested = range.toIndex - range.fromIndex + 1
+  if (existing.length >= requested) {
+    throw invalidArg(`第 ${range.fromIndex}–${range.toIndex} 号已经生成过，无需重复执行`)
+  }
+
+  const secrets = decryptWalletSecrets(wallet)
+  const seed = mnemonicToSeed(secrets.mnemonic, secrets.passphrase ?? undefined)
+  try {
+    const derived = deriveEvmRange({
+      seed,
+      accountIndex,
+      fromIndex: range.fromIndex,
+      toIndex: range.toIndex,
+      skipIndexes: existing,
+    })
+    const saved = upsertHdKeys(wallet.id, 'web3', accountIndex, derived)
+    return {
+      walletId: wallet.id,
+      walletName: wallet.name,
+      accountIndex,
+      fromIndex: range.fromIndex,
+      toIndex: range.toIndex,
+      saved,
+      skipped: existing.length,
+      rows: derived,
+    }
+  } finally {
+    wipe(seed)
+  }
+}
+
 export function revealPrivateKey(accountId: string, password: string): string {
   if (!verifyPassword(password)) throw new IpcError('INVALID_ARG', '主密码不正确')
   const account = requireAccount(accountId)
@@ -551,9 +616,38 @@ function getAuthIdentity(): AuthIdentity {
   }
 }
 
+export function listHdKeyTable(walletId: string, accountIndex?: number): HdKeyRecord[] {
+  requireWallet(walletId)
+  return listHdKeys(walletId, accountIndex)
+}
+
+export function unlockHdKeyTable(
+  walletId: string,
+  password: string,
+  accountIndex?: number,
+): HdDerivedEvmKey[] {
+  if (!verifyPassword(password)) throw new IpcError('INVALID_ARG', '主密码不正确')
+  requireWallet(walletId)
+  return listHdKeyRows(walletId, accountIndex).map((row) => ({
+    id: row.id,
+    index: row.address_index,
+    path: row.root_path,
+    address: row.address,
+    publicKey: row.public_key,
+    privateKey: decryptHdPrivateKey(row),
+  }))
+}
+
+export function clearHdKeyTable(walletId: string, password: string, accountIndex?: number): number {
+  if (!verifyPassword(password)) throw new IpcError('INVALID_ARG', '主密码不正确')
+  requireWallet(walletId)
+  return deleteHdKeys(walletId, accountIndex)
+}
+
 export function reencryptWalletSecrets(oldKek: Buffer, newKek: Buffer): void {
   reencryptWallets(oldKek, newKek)
   reencryptImportedAccounts(oldKek, newKek)
+  reencryptHdKeys(oldKek, newKek)
 }
 
 export function initWalletAuth(): void {
