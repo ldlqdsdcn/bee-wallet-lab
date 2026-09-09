@@ -8,9 +8,23 @@ import { getTransaction, upsertTransaction } from '../db/repos/transactionRepo'
 import { findTokenIssueByTxid, updateTokenIssue } from '../db/repos/tokenIssueRepo'
 import { upsertCatalogToken } from '../catalog/maintain'
 import { fetchEvmReceipt } from '../chain/evm'
-import { parseEvmReceipt } from '../history/status'
+import { fetchSolanaSignatureStatus } from '../chain/solana'
+import { parseEvmReceipt, parseSolanaSignatureStatus } from '../history/status'
 import { broadcast } from '../ipc/registry'
 import { parseCreatedContract } from './encode'
+
+const pendingTokenIcons = new Map<string, string>()
+
+export function rememberIssuedTokenIcon(contractAddress: string, icon: string): void {
+  const trimmed = icon.trim()
+  if (trimmed) pendingTokenIcons.set(contractAddress, trimmed)
+}
+
+function consumeIssuedTokenIcon(contractAddress: string): string | undefined {
+  const icon = pendingTokenIcons.get(contractAddress)
+  pendingTokenIcons.delete(contractAddress)
+  return icon
+}
 
 function emitIssue(issue: IssuedTokenRecord, extra?: { token?: TokenRecord; record?: TransactionRecord }): void {
   broadcast(IPC_EVENT.catalogUpdated, { kind: 'issue' })
@@ -84,9 +98,75 @@ export function finalizeIssuedTokenFromReceipt(txid: string, receipt: unknown): 
   return token
 }
 
+export function finalizeIssuedSolanaToken(txid: string, statusPayload: unknown): TokenRecord | null {
+  const issue = findTokenIssueByTxid(txid)
+  if (!issue || issue.status !== 'pending') return null
+
+  const parsed = parseSolanaSignatureStatus(statusPayload)
+  if (parsed.status === 'pending') return null
+  if (parsed.status === 'failed') {
+    const next = updateTokenIssue(issue.id, { status: 'failed' }) ?? { ...issue, status: 'failed' as const }
+    const existing = issue.transactionId ? getTransaction(issue.transactionId) : null
+    emitIssue(next, { record: existing ?? undefined })
+    return null
+  }
+
+  const mint = issue.contractAddress?.trim() ?? ''
+  if (!mint) {
+    const next = updateTokenIssue(issue.id, { status: 'failed' }) ?? { ...issue, status: 'failed' as const }
+    emitIssue(next)
+    return null
+  }
+
+  let token: TokenRecord
+  try {
+    token = upsertCatalogToken({
+      networkPk: issue.networkPk,
+      name: issue.name,
+      symbol: issue.symbol,
+      decimals: issue.decimals,
+      contractAddress: mint,
+      tokenStandard: 'spl',
+      tokenIcon: consumeIssuedTokenIcon(mint),
+      isDefaultSelected: true,
+    })
+  } catch (err) {
+    console.warn('[token-issue] 写入 Solana 目录失败', err instanceof Error ? err.message : err)
+    updateTokenIssue(issue.id, { contractAddress: mint, status: 'confirmed' })
+    return null
+  }
+
+  const saved =
+    updateTokenIssue(issue.id, {
+      contractAddress: mint,
+      tokenPk: token.id,
+      status: 'confirmed',
+    }) ?? { ...issue, contractAddress: mint, tokenPk: token.id, status: 'confirmed' as const }
+
+  const existing = issue.transactionId ? getTransaction(issue.transactionId) : null
+  let record: TransactionRecord | null = existing
+  if (existing) {
+    record = upsertTransaction({
+      ...existing,
+      toAddress: mint,
+      tokenPk: token.id,
+      status: parsed.status,
+      blockHeight: parsed.blockHeight ?? existing.blockHeight,
+    })
+  }
+
+  emitIssue(saved, { token, record: record ?? undefined })
+  return token
+}
+
 export async function tryFinalizeIssuedToken(network: NetworkRecord, txid: string): Promise<TokenRecord | null> {
   const issue = findTokenIssueByTxid(txid)
   if (!issue || issue.status !== 'pending') return null
+  if (network.walletType === 'solana') {
+    const status = await fetchSolanaSignatureStatus(network, txid)
+    if (!status) return null
+    return finalizeIssuedSolanaToken(txid, status)
+  }
   const receipt = await fetchEvmReceipt(network, txid)
   if (!receipt) return null
   return finalizeIssuedTokenFromReceipt(txid, receipt)

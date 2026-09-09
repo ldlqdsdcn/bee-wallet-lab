@@ -67,7 +67,7 @@ async function pollOne(record: TransactionRecord): Promise<void> {
   if (next.status === 'pending') return
   lastPolled.delete(record.id)
   updateTransactionStatus(record.id, next.status, next.blockHeight)
-  if (network.walletType === 'web3') {
+  if (network.walletType === 'web3' || network.walletType === 'solana') {
     await tryFinalizeIssuedToken(network, record.txid)
   }
 }

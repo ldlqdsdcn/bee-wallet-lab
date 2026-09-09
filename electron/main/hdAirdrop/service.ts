@@ -51,6 +51,7 @@ import {
   type EvmFeeQuote,
 } from '../chain/evm'
 import { watchTransaction } from '../history/watch'
+import { holdIdleLock } from '../security/vault'
 import { estimateAirdropDurationMs, formatDuration, randomBigIntInclusive } from './amount'
 
 const MAX_RECIPIENTS = 20_000
@@ -437,6 +438,7 @@ async function executeJob(
 ): Promise<void> {
   const runtime: Runtime = { stopRequested: false }
   runtimes.set(jobId, runtime)
+  const releaseIdleLock = holdIdleLock()
   const contract = contractOf(ctx.token)
   let nonce = await getEvmNonce(ctx.network, ctx.account.address)
 
@@ -517,6 +519,7 @@ async function executeJob(
     })
   } finally {
     runtimes.delete(jobId)
+    releaseIdleLock()
   }
 
   const latest = refreshHdAirdropJobCounts(jobId) ?? getStoredJob(jobId)

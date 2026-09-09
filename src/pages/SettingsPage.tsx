@@ -104,6 +104,7 @@ export default function SettingsPage() {
       </Card>
 
       <Card title="自动锁定">
+        <p className="mb-3 text-xs text-ink-500">批量转账进行中会暂停空闲锁定，任务结束后恢复。点「立即锁定」仍会停掉任务。</p>
         <div className="flex flex-wrap gap-2">
           {AUTO_LOCK_OPTIONS.map((minutes) => (
             <Button

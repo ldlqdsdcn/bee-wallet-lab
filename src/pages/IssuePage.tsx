@@ -10,7 +10,7 @@ import type {
 } from '@shared/types'
 import { accountApi, on, tokenApi } from '../lib/bridge'
 import { AccountAddress } from '../components/AccountAddress'
-import { Alert, Button, Card, Field, Select } from '../components/ui'
+import { Alert, Button, Card, Field, Select, TextArea } from '../components/ui'
 import { addressExplorerUrl, explorerTabTitle, txExplorerUrl } from '../lib/explorer'
 import { formatAmount, shorten } from '../lib/format'
 import { useBrowserStore } from '../store/browserStore'
@@ -55,6 +55,11 @@ export default function IssuePage() {
   const [symbol, setSymbol] = useState('')
   const [decimals, setDecimals] = useState('18')
   const [supply, setSupply] = useState('1000000000')
+  const [description, setDescription] = useState('')
+  const [logoUrl, setLogoUrl] = useState('')
+  const [website, setWebsite] = useState('')
+  const [metadataUri, setMetadataUri] = useState('')
+  const [copiedJson, setCopiedJson] = useState(false)
   const [preview, setPreview] = useState<TokenIssuePreview | null>(null)
   const [result, setResult] = useState<TokenIssueResult | null>(null)
   const [issues, setIssues] = useState<IssuedTokenRecord[]>([])
@@ -62,6 +67,9 @@ export default function IssuePage() {
   const [busy, setBusy] = useState(false)
 
   const evm = network?.walletType === 'web3'
+  const solana = network?.walletType === 'solana'
+  const canIssue = evm || solana
+  const chainLabel = evm ? 'ERC-20' : solana ? 'SPL' : ''
 
   useEffect(() => {
     if (!currentWalletId) {
@@ -74,7 +82,8 @@ export default function IssuePage() {
   useEffect(() => {
     setPreview(null)
     setResult(null)
-  }, [networkPk])
+    setDecimals(network?.walletType === 'solana' ? '9' : '18')
+  }, [networkPk, network?.walletType])
 
   useEffect(() => {
     if (!networkPk) {
@@ -109,9 +118,9 @@ export default function IssuePage() {
   }, [networkPk])
 
   const filteredAccounts = useMemo(() => {
-    if (!evm) return []
-    return accounts.filter((item) => item.walletType === 'web3')
-  }, [accounts, evm])
+    if (!network || !canIssue) return []
+    return accounts.filter((item) => item.walletType === network.walletType)
+  }, [accounts, network, canIssue])
 
   useEffect(() => {
     if (accountId && filteredAccounts.some((item) => item.id === accountId)) return
@@ -170,7 +179,9 @@ export default function IssuePage() {
         <h1 className="text-lg font-semibold text-ink-200">发行代币</h1>
         <p className="mt-1 text-xs text-ink-500">
           {network ? network.networkName : '请先在侧栏选择网络'}
-          {' · 固定总量 ERC-20，一次性铸给当前账户'}
+          {canIssue
+            ? ` · 固定总量 ${chainLabel}，一次性铸给当前账户`
+            : ' · 请先选择 EVM 或 Solana 网络'}
         </p>
       </div>
 
@@ -249,9 +260,11 @@ export default function IssuePage() {
         )}
       </Card>
 
-      {!evm ? (
+      {!canIssue ? (
         <Card title="当前网络不支持">
-          <p className="text-sm text-ink-400">发行 ERC-20 需要 EVM 网络，例如 Ethereum、BSC、Base、Sepolia。</p>
+          <p className="text-sm text-ink-400">
+            发币支持 EVM 上的 ERC-20，以及 Solana 上的固定总量 SPL。请切换到 Ethereum、Base、BSC 或 Solana。
+          </p>
           <Button className="mt-3" variant="ghost" onClick={openPicker}>
             切换网络
           </Button>
@@ -261,16 +274,16 @@ export default function IssuePage() {
           <div className="space-y-3">
             <Select
               label="发行账户"
-              hint="合约部署后，全部代币会打到这个地址"
+              hint={solana ? '创建 mint 后，全部代币会打到这个地址' : '合约部署后，全部代币会打到这个地址'}
               value={accountId}
               onChange={(e) => setAccountId(e.target.value)}
             >
               {filteredAccounts.length === 0 ? (
-                <option value="">当前钱包没有 EVM 账户</option>
+                <option value="">{solana ? '当前钱包没有 Solana 账户' : '当前钱包没有 EVM 账户'}</option>
               ) : (
                 filteredAccounts.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.label || 'EVM'} · {shorten(item.address, 8, 6)}
+                    {item.label || (solana ? 'Solana' : 'EVM')} · {shorten(item.address, 8, 6)}
                   </option>
                 ))
               )}
@@ -279,7 +292,8 @@ export default function IssuePage() {
               label="代币名称"
               placeholder="例如 Bee Token"
               value={name}
-              maxLength={64}
+              maxLength={solana ? 32 : 64}
+              hint={solana ? 'Metaplex 链上名称最长 32 个字符' : undefined}
               onChange={(e) => {
                 setName(e.target.value)
                 setPreview(null)
@@ -289,8 +303,9 @@ export default function IssuePage() {
               label="代币符号"
               placeholder="例如 BEE"
               value={symbol}
-              maxLength={16}
+              maxLength={solana ? 10 : 16}
               className="uppercase"
+              hint={solana ? 'Metaplex 链上符号最长 10 位' : undefined}
               onChange={(e) => {
                 setSymbol(e.target.value.toUpperCase())
                 setPreview(null)
@@ -300,9 +315,13 @@ export default function IssuePage() {
               label="精度（decimals）"
               type="number"
               min={0}
-              max={18}
+              max={solana ? 9 : 18}
               value={decimals}
-              hint="常用 18。总量按这个精度换算成最小单位后写入合约。"
+              hint={
+                solana
+                  ? 'Solana 常用 6 或 9。总量按这个精度换算成最小单位，不能超过 u64。'
+                  : '常用 18。总量按这个精度换算成最小单位后写入合约。'
+              }
               onChange={(e) => {
                 setDecimals(e.target.value)
                 setPreview(null)
@@ -312,7 +331,11 @@ export default function IssuePage() {
               <Field
                 label="发行总量"
                 value={supply}
-                hint="默认 10 亿枚。全部一次铸给发行账户，之后不能再增发。"
+                hint={
+                  solana
+                    ? '默认 10 亿枚。一次铸给发行账户，并关掉增发。'
+                    : '默认 10 亿枚。全部一次铸给发行账户，之后不能再增发。'
+                }
                 onChange={(e) => {
                   setSupply(e.target.value)
                   setPreview(null)
@@ -336,18 +359,90 @@ export default function IssuePage() {
               </div>
             </div>
 
+            {solana ? (
+              <div className="space-y-3 rounded-lg border border-ink-700 px-3 py-3">
+                <p className="text-xs text-ink-400">
+                  Solana 链上只存名称、符号和一份元数据 URI。Logo、官网写在这份 JSON 里，需要你先托管到可公开访问的地址（GitHub raw、自己的站点或 IPFS），再把链接填进下面的 URI。
+                </p>
+                <TextArea
+                  label="简介（可选）"
+                  placeholder="一句话介绍这个代币"
+                  maxLength={200}
+                  value={description}
+                  onChange={(e) => {
+                    setDescription(e.target.value)
+                    setPreview(null)
+                  }}
+                />
+                <Field
+                  label="Logo 地址（可选）"
+                  placeholder="https://…/logo.png"
+                  value={logoUrl}
+                  hint="图片的公开 URL，不是把图片上传到链上"
+                  onChange={(e) => {
+                    setLogoUrl(e.target.value)
+                    setPreview(null)
+                  }}
+                />
+                <Field
+                  label="官网（可选）"
+                  placeholder="https://example.com"
+                  value={website}
+                  onChange={(e) => {
+                    setWebsite(e.target.value)
+                    setPreview(null)
+                  }}
+                />
+                <Field
+                  label="元数据 URI"
+                  placeholder="https://…/metadata.json"
+                  value={metadataUri}
+                  hint="托管后的 JSON 地址，最长 200 个字符。不填则链上只有名称符号，logo 只留在本机目录。"
+                  onChange={(e) => {
+                    setMetadataUri(e.target.value)
+                    setPreview(null)
+                  }}
+                />
+              </div>
+            ) : null}
+
             {preview ? (
               <div className="space-y-1 rounded-lg bg-ink-900 px-3 py-2 text-xs text-ink-400">
                 <p>
                   {preview.name}（{preview.symbol}）· {formatAmount(preview.supply)} 枚 · {preview.decimals} 位精度
                 </p>
                 <p>接收地址 {shorten(preview.from)}</p>
-                <p>预估 Gas {preview.feeText}</p>
+                {preview.contractAddress ? <p>Mint {shorten(preview.contractAddress)}</p> : null}
+                {preview.metadataUri ? <p className="break-all">元数据 URI {preview.metadataUri}</p> : null}
+                <p>预估费用 {preview.feeText}</p>
                 {preview.warnings.map((item) => (
                   <p key={item} className="text-honey-400">
                     {item}
                   </p>
                 ))}
+                {preview.metadataJson ? (
+                  <div className="mt-2 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-ink-300">待托管的元数据 JSON</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="px-2 py-1 text-xs"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(preview.metadataJson ?? '').then(() => {
+                            setCopiedJson(true)
+                            window.setTimeout(() => setCopiedJson(false), 1500)
+                          })
+                        }}
+                      >
+                        {copiedJson ? '已复制' : '复制'}
+                      </Button>
+                    </div>
+                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-ink-950 px-2 py-1 font-mono text-[11px] text-ink-300">
+                      {preview.metadataJson}
+                    </pre>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -360,7 +455,9 @@ export default function IssuePage() {
                       : '交易已确认'
                     : result.transaction.status === 'failed'
                       ? '部署失败'
-                      : '已广播，正在等待合约地址…'}
+                      : solana
+                        ? '已广播，正在等待确认…'
+                        : '已广播，正在等待合约地址…'}
                 </p>
                 <p className="sensitive break-all font-mono text-[11px] text-ink-300">{result.txid}</p>
                 {contractAddress ? (
@@ -387,7 +484,7 @@ export default function IssuePage() {
                       className="px-2 py-1 text-xs"
                       onClick={() => openExplorer(contractUrl, explorerTabTitle(contractUrl))}
                     >
-                      查看合约
+                      {solana ? '查看代币' : '查看合约'}
                     </Button>
                   ) : null}
                   {result.token ? (
@@ -422,6 +519,14 @@ export default function IssuePage() {
                         symbol,
                         decimals: Number(decimals),
                         supply,
+                        ...(solana
+                          ? {
+                              description,
+                              logoUrl,
+                              website,
+                              metadataUri,
+                            }
+                          : {}),
                       }),
                     )
                   })
@@ -445,7 +550,11 @@ export default function IssuePage() {
             </div>
 
             {!account ? (
-              <p className="text-xs text-ink-500">当前钱包没有 EVM 账户，请先到「钱包与账户」派生。</p>
+              <p className="text-xs text-ink-500">
+                {solana
+                  ? '当前钱包没有 Solana 账户，请先到「钱包与账户」派生。'
+                  : '当前钱包没有 EVM 账户，请先到「钱包与账户」派生。'}
+              </p>
             ) : null}
           </div>
         </Card>

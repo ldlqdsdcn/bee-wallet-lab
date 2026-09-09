@@ -488,6 +488,14 @@ export interface TokenIssueInput {
   decimals: number
   /** 人类可读总量，例如 1000000000 */
   supply: string
+  /** Solana：简介，写入链下元数据 JSON */
+  description?: string
+  /** Solana：logo 图片 https 地址 */
+  logoUrl?: string
+  /** Solana：官网 */
+  website?: string
+  /** Solana：已托管的 Metaplex 元数据 JSON 地址，最长 200 */
+  metadataUri?: string
 }
 
 export interface TokenIssuePreview {
@@ -501,6 +509,13 @@ export interface TokenIssuePreview {
   feeText: string
   feeMinor: string
   warnings: string[]
+  /** Solana 预览时已生成的 mint 地址；ERC-20 部署后才有 */
+  contractAddress?: string | null
+  logoUrl?: string | null
+  website?: string | null
+  metadataUri?: string | null
+  /** 给用户复制去托管的元数据 JSON */
+  metadataJson?: string | null
 }
 
 export interface TokenIssueResult {
