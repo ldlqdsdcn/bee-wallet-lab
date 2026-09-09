@@ -251,7 +251,7 @@ export default function HdAirdropPage() {
           {currentWallet ? `当前钱包：${currentWallet.name}` : '请先选择钱包'}
           {' · '}
           {network ? network.networkName : '请先选择网络'}
-          {' · 两万笔大约 2.5 小时，RPC 慢可能 4–6 小时。每笔单独记账，失败可重试'}
+          {' · 进行中不会因空闲自动锁定。电脑请保持不休眠。每笔单独记账，失败可重试'}
         </p>
       </div>
 

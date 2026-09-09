@@ -19,18 +19,34 @@ export interface NormalizedIssue {
   supplyMinor: bigint
 }
 
-export function normalizeIssueFields(input: {
-  name?: string
-  symbol?: string
-  decimals?: number
-  supply?: string
-}): NormalizedIssue {
+export function normalizeIssueFields(
+  input: {
+    name?: string
+    symbol?: string
+    decimals?: number
+    supply?: string
+  },
+  opts?: {
+    maxDecimals?: number
+    maxSupplyMinor?: bigint
+    defaultDecimals?: number
+    maxNameLength?: number
+    maxSymbolLength?: number
+  },
+): NormalizedIssue {
+  const maxName = opts?.maxNameLength ?? 64
+  const maxSymbol = opts?.maxSymbolLength ?? 16
   const name = (input.name ?? '').trim()
-  if (name.length < 1 || name.length > 64) throw invalidArg('代币名称需要 1 到 64 个字符')
+  if (name.length < 1 || name.length > maxName) throw invalidArg(`代币名称需要 1 到 ${maxName} 个字符`)
   const symbol = (input.symbol ?? '').trim().toUpperCase()
-  if (!/^[A-Z0-9]{1,16}$/.test(symbol)) throw invalidArg('代币符号需为 1 到 16 位字母或数字')
-  const decimals = Number(input.decimals ?? DEFAULT_TOKEN_DECIMALS)
-  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18) throw invalidArg('精度需为 0 到 18 的整数')
+  if (!new RegExp(`^[A-Z0-9]{1,${maxSymbol}}$`).test(symbol)) {
+    throw invalidArg(`代币符号需为 1 到 ${maxSymbol} 位字母或数字`)
+  }
+  const maxDecimals = opts?.maxDecimals ?? 18
+  const decimals = Number(input.decimals ?? opts?.defaultDecimals ?? DEFAULT_TOKEN_DECIMALS)
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > maxDecimals) {
+    throw invalidArg(`精度需为 0 到 ${maxDecimals} 的整数`)
+  }
   const supply = (input.supply ?? DEFAULT_TOKEN_SUPPLY).trim()
   let supplyMinor: bigint
   try {
@@ -39,6 +55,9 @@ export function normalizeIssueFields(input: {
     throw invalidArg(err instanceof Error ? err.message : '发行总量不合法')
   }
   if (supplyMinor <= 0n) throw invalidArg('发行总量必须大于 0')
+  if (opts?.maxSupplyMinor != null && supplyMinor > opts.maxSupplyMinor) {
+    throw invalidArg('发行总量超过链上允许的最大值')
+  }
   return { name, symbol, decimals, supply, supplyMinor }
 }
 

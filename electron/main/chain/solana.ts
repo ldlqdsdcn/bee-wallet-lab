@@ -14,10 +14,13 @@ import { providerPost } from '../rpc/fetch'
 const SYSTEM_PROGRAM = '11111111111111111111111111111111'
 const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
 const ASSOCIATED_TOKEN_PROGRAM = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'
+const METADATA_PROGRAM = 'metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s'
 const SYSVAR_RENT = 'SysvarRent111111111111111111111111111111111'
 const PDA_MARKER = new TextEncoder().encode('ProgramDerivedAddress')
 const SIGNATURE_FEE_LAMPORTS = 5_000n
 const ATA_RENT_LAMPORTS = 2_039_280n
+const MINT_ACCOUNT_SIZE = 82
+const METADATA_ACCOUNT_SIZE = 679
 
 interface JsonRpcResponse<T> {
   result?: T
@@ -86,6 +89,15 @@ function findProgramAddress(seeds: Uint8Array[], programId: Uint8Array): Uint8Ar
     if (!isOnCurve(hash)) return hash
   }
   throw new Error('无法计算 Associated Token Account')
+}
+
+export function metadataAddress(mint: string): string {
+  return base58.encode(
+    findProgramAddress(
+      [new TextEncoder().encode('metadata'), pk(METADATA_PROGRAM), pk(mint)],
+      pk(METADATA_PROGRAM),
+    ),
+  )
 }
 
 export function associatedTokenAddress(owner: string, mint: string): string {
@@ -236,9 +248,45 @@ function compileMessage(input: {
   return concat([header, accountKeys, pk(input.blockhash), compactU16(compiled.length), ...compiled])
 }
 
-function signLegacyTx(message: Uint8Array, privateKey: Uint8Array): Uint8Array {
-  const signature = ed25519.sign(message, privateKey)
-  return concat([compactU16(1), signature, message])
+function signLegacyTx(message: Uint8Array, ...privateKeys: Uint8Array[]): Uint8Array {
+  const signatures = privateKeys.map((key) => ed25519.sign(message, key))
+  return concat([compactU16(signatures.length), ...signatures, message])
+}
+
+function coptionNone(): Uint8Array {
+  return new Uint8Array(4)
+}
+
+function borshString(value: string): Uint8Array {
+  const bytes = new TextEncoder().encode(value)
+  return concat([u32le(bytes.length), bytes])
+}
+
+export function encodeSystemCreateAccount(lamports: bigint, space: number, owner: string): Uint8Array {
+  return concat([u32le(0), u64le(lamports), u64le(BigInt(space)), pk(owner)])
+}
+
+export function encodeInitializeMint2(decimals: number, mintAuthority: string): Uint8Array {
+  return concat([Uint8Array.of(20, decimals), pk(mintAuthority), coptionNone()])
+}
+
+export function encodeMintTo(amount: bigint): Uint8Array {
+  return concat([Uint8Array.of(7), u64le(amount)])
+}
+
+export function encodeSetMintAuthorityNone(): Uint8Array {
+  return concat([Uint8Array.of(6, 0), coptionNone()])
+}
+
+export function encodeCreateMetadataV3(name: string, symbol: string, uri = '', mutable = true): Uint8Array {
+  return concat([
+    Uint8Array.of(33),
+    borshString(name),
+    borshString(symbol),
+    borshString(uri),
+    new Uint8Array(2),
+    Uint8Array.of(0, 0, 0, mutable ? 1 : 0, 0),
+  ])
 }
 
 function systemTransferIx(from: string, to: string, lamports: bigint): CompiledIx {
@@ -249,6 +297,70 @@ function systemTransferIx(from: string, to: string, lamports: bigint): CompiledI
       { address: to, signer: false, writable: true },
     ],
     data: concat([u32le(2), u64le(lamports)]),
+  }
+}
+
+function systemCreateAccountIx(from: string, newAccount: string, lamports: bigint, space: number, owner: string): CompiledIx {
+  return {
+    programId: SYSTEM_PROGRAM,
+    accounts: [
+      { address: from, signer: true, writable: true },
+      { address: newAccount, signer: true, writable: true },
+    ],
+    data: encodeSystemCreateAccount(lamports, space, owner),
+  }
+}
+
+function initializeMint2Ix(mint: string, decimals: number, mintAuthority: string): CompiledIx {
+  return {
+    programId: TOKEN_PROGRAM,
+    accounts: [{ address: mint, signer: false, writable: true }],
+    data: encodeInitializeMint2(decimals, mintAuthority),
+  }
+}
+
+function mintToIx(mint: string, dest: string, authority: string, amount: bigint): CompiledIx {
+  return {
+    programId: TOKEN_PROGRAM,
+    accounts: [
+      { address: mint, signer: false, writable: true },
+      { address: dest, signer: false, writable: true },
+      { address: authority, signer: true, writable: false },
+    ],
+    data: encodeMintTo(amount),
+  }
+}
+
+function setMintAuthorityNoneIx(mint: string, currentAuthority: string): CompiledIx {
+  return {
+    programId: TOKEN_PROGRAM,
+    accounts: [
+      { address: mint, signer: false, writable: true },
+      { address: currentAuthority, signer: true, writable: false },
+    ],
+    data: encodeSetMintAuthorityNone(),
+  }
+}
+
+function createMetadataV3Ix(
+  mint: string,
+  payer: string,
+  name: string,
+  symbol: string,
+  uri: string,
+): CompiledIx {
+  const metadata = metadataAddress(mint)
+  return {
+    programId: METADATA_PROGRAM,
+    accounts: [
+      { address: metadata, signer: false, writable: true },
+      { address: mint, signer: false, writable: false },
+      { address: payer, signer: true, writable: false },
+      { address: payer, signer: true, writable: true },
+      { address: payer, signer: false, writable: false },
+      { address: SYSTEM_PROGRAM, signer: false, writable: false },
+    ],
+    data: encodeCreateMetadataV3(name, symbol, uri, true),
   }
 }
 
@@ -315,6 +427,80 @@ export async function buildAndSignSolanaTx(input: {
   const signature = base58.encode(wire.slice(1, 65))
   const wireBase64 = Buffer.from(wire).toString('base64')
   return { signature, wireBase64, feeLamports }
+}
+
+async function getRentExempt(network: NetworkRecord, space: number): Promise<bigint> {
+  const value = await solanaRpc<number>(network, 'getMinimumBalanceForRentExemption', [space])
+  return BigInt(value ?? 0)
+}
+
+export async function quoteSolanaIssueFee(network: NetworkRecord): Promise<bigint> {
+  const mintRent = await getRentExempt(network, MINT_ACCOUNT_SIZE)
+  const ataRent = await getRentExempt(network, 165)
+  const metadataRent = await getRentExempt(network, METADATA_ACCOUNT_SIZE)
+  return SIGNATURE_FEE_LAMPORTS * 2n + mintRent + ataRent + metadataRent
+}
+
+export async function buildAndSignSolanaIssueTx(input: {
+  network: NetworkRecord
+  payerKey: Uint8Array
+  mintKey: Uint8Array
+  payer: string
+  mint: string
+  decimals: number
+  amount: bigint
+  name: string
+  symbol: string
+  uri?: string
+  withMetadata?: boolean
+}): Promise<{ signature: string; wireBase64: string; feeLamports: bigint }> {
+  const fromPk = base58.encode(solanaPublicKey(input.payerKey))
+  if (fromPk !== input.payer) throw new Error('付款私钥与账户地址不匹配')
+  const mintPk = base58.encode(solanaPublicKey(input.mintKey))
+  if (mintPk !== input.mint) throw new Error('mint 私钥与地址不匹配')
+
+  const mintRent = await getRentExempt(input.network, MINT_ACCOUNT_SIZE)
+  const ataRent = await getRentExempt(input.network, 165)
+  const metadataRent = input.withMetadata === false ? 0n : await getRentExempt(input.network, METADATA_ACCOUNT_SIZE)
+  const ata = associatedTokenAddress(input.payer, input.mint)
+  const blockhash = await getRecentBlockhash(input.network)
+  const instructions: CompiledIx[] = [
+    systemCreateAccountIx(input.payer, input.mint, mintRent, MINT_ACCOUNT_SIZE, TOKEN_PROGRAM),
+    initializeMint2Ix(input.mint, input.decimals, input.payer),
+    createAtaIx(input.payer, input.payer, input.mint, ata),
+    mintToIx(input.mint, ata, input.payer, input.amount),
+  ]
+  if (input.withMetadata !== false) {
+    instructions.push(createMetadataV3Ix(input.mint, input.payer, input.name, input.symbol, input.uri ?? ''))
+  }
+  instructions.push(setMintAuthorityNoneIx(input.mint, input.payer))
+
+  const message = compileMessage({ payer: input.payer, blockhash, instructions })
+  const wire = signLegacyTx(message, input.payerKey, input.mintKey)
+  return {
+    signature: base58.encode(wire.slice(1, 65)),
+    wireBase64: Buffer.from(wire).toString('base64'),
+    feeLamports: SIGNATURE_FEE_LAMPORTS * 2n + mintRent + ataRent + metadataRent,
+  }
+}
+
+export async function waitForSolanaConfirmation(
+  network: NetworkRecord,
+  signature: string,
+  timeoutMs = 45_000,
+): Promise<unknown | null> {
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    const status = await fetchSolanaSignatureStatus(network, signature)
+    if (status) {
+      const row = status as { err?: unknown; confirmationStatus?: string }
+      if (row.err != null) return status
+      const confirmation = String(row.confirmationStatus ?? '').toLowerCase()
+      if (confirmation === 'confirmed' || confirmation === 'finalized') return status
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+  }
+  return null
 }
 
 export async function broadcastSolanaTx(network: NetworkRecord, wireBase64: string): Promise<string> {

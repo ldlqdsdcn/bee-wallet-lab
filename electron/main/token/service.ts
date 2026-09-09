@@ -1,7 +1,7 @@
 /**
- * 在当前 EVM 网络部署固定总量 ERC-20，并把合约写入本地代币目录。
+ * 发行固定总量代币：EVM 上部署 ERC-20，Solana 上创建 SPL mint。
  */
-import type { IssuedTokenRecord, TokenIssueInput, TokenIssuePreview, TokenIssueResult } from '@shared/types'
+import type { IssuedTokenRecord, NetworkRecord, TokenIssueInput, TokenIssuePreview, TokenIssueResult } from '@shared/types'
 import { IPC_EVENT } from '../../../shared/ipc'
 import { newId } from '../security/crypto'
 import { formatMinor } from '../util/amount'
@@ -25,11 +25,20 @@ import {
   waitForEvmReceipt,
   type EvmFeeQuote,
 } from '../chain/evm'
+import {
+  broadcastSolanaTx,
+  buildAndSignSolanaIssueTx,
+  explorerUrlForSolana,
+  quoteSolanaIssueFee,
+  waitForSolanaConfirmation,
+} from '../chain/solana'
 import { watchTransaction } from '../history/watch'
 import { encodeFixedErc20Deploy, normalizeIssueFields } from './encode'
-import { finalizeIssuedTokenFromReceipt } from './pending'
+import { finalizeIssuedTokenFromReceipt, finalizeIssuedSolanaToken, rememberIssuedTokenIcon } from './pending'
+import { createMintKeypair, normalizeSolanaIssueFields, normalizeSolanaMetadata } from './solanaIssue'
 
-interface StoredDraft {
+interface EvmDraft {
+  kind: 'evm'
   input: TokenIssueInput
   preview: TokenIssuePreview
   fields: ReturnType<typeof normalizeIssueFields>
@@ -39,20 +48,42 @@ interface StoredDraft {
   createdAt: number
 }
 
+interface SolanaDraft {
+  kind: 'solana'
+  input: TokenIssueInput
+  preview: TokenIssuePreview
+  fields: ReturnType<typeof normalizeIssueFields>
+  metadata: ReturnType<typeof normalizeSolanaMetadata>
+  mintSecret: Uint8Array
+  mintAddress: string
+  createdAt: number
+}
+
+type StoredDraft = EvmDraft | SolanaDraft
+
 const drafts = new Map<string, StoredDraft>()
 const DRAFT_TTL_MS = 10 * 60 * 1000
+
+function wipeDraft(draft: StoredDraft): void {
+  if (draft.kind === 'solana') draft.mintSecret.fill(0)
+}
 
 function prune(): void {
   const now = Date.now()
   for (const [id, draft] of drafts) {
-    if (now - draft.createdAt > DRAFT_TTL_MS) drafts.delete(id)
+    if (now - draft.createdAt > DRAFT_TTL_MS) {
+      wipeDraft(draft)
+      drafts.delete(id)
+    }
   }
 }
 
-function requireNetwork(id: string) {
+function requireNetwork(id: string): NetworkRecord {
   const network = getNetwork(id)
   if (!network) throw notFound('网络不存在')
-  if (network.walletType !== 'web3') throw invalidArg('只能在 EVM 网络发行 ERC-20')
+  if (network.walletType !== 'web3' && network.walletType !== 'solana') {
+    throw invalidArg('只能在 EVM 或 Solana 网络发行代币')
+  }
   return network
 }
 
@@ -75,6 +106,11 @@ async function withAccountPrivateKeyAsync<T>(
 export async function previewTokenIssue(input: TokenIssueInput): Promise<TokenIssuePreview> {
   prune()
   const network = requireNetwork(input.networkPk)
+  if (network.walletType === 'solana') return previewSolanaIssue(network, input)
+  return previewEvmIssue(network, input)
+}
+
+async function previewEvmIssue(network: NetworkRecord, input: TokenIssueInput): Promise<TokenIssuePreview> {
   const account = getAccount(input.accountId)
   if (account.walletType !== 'web3') throw invalidArg('请选择 EVM 账户')
   const fields = normalizeIssueFields(input)
@@ -106,6 +142,7 @@ export async function previewTokenIssue(input: TokenIssueInput): Promise<TokenIs
     warnings,
   }
   drafts.set(preview.draftId, {
+    kind: 'evm',
     input,
     preview,
     fields,
@@ -117,12 +154,77 @@ export async function previewTokenIssue(input: TokenIssueInput): Promise<TokenIs
   return preview
 }
 
+async function previewSolanaIssue(network: NetworkRecord, input: TokenIssueInput): Promise<TokenIssuePreview> {
+  const account = getAccount(input.accountId)
+  if (account.walletType !== 'solana') throw invalidArg('请选择 Solana 账户')
+  const fields = normalizeSolanaIssueFields(input)
+  const metadata = normalizeSolanaMetadata({
+    name: fields.name,
+    symbol: fields.symbol,
+    description: input.description,
+    logoUrl: input.logoUrl,
+    website: input.website,
+    metadataUri: input.metadataUri,
+  })
+  const mint = createMintKeypair()
+  const feeMinor = await quoteSolanaIssueFee(network)
+  const warnings: string[] = []
+  if (network.networkScope === 'mainnet') {
+    warnings.push('当前是 Solana 主网，会消耗真实 SOL（含 mint / ATA / 元数据租金）。')
+  }
+  warnings.push('总量一次铸给当前账户，随后关掉增发权限。名称和符号写入 Metaplex。')
+  if (metadata.metadataUri) {
+    warnings.push('链上元数据 URI 会指向你托管的 JSON，钱包和浏览器才能显示 logo、官网。')
+  } else if (metadata.logoUrl || metadata.website || metadata.description) {
+    warnings.push('已生成元数据 JSON。请把它传到可公开访问的 https 地址，把链接填进「元数据 URI」再预览一次，否则链上只有名称符号，logo/官网只留在本机。')
+  } else {
+    warnings.push('未填 logo/官网。可以只发名称符号；若要钱包显示图标，请补 logo 和元数据 URI。')
+  }
+  warnings.push(`Mint 地址预览：${mint.address}`)
+  const preview: TokenIssuePreview = {
+    draftId: newId(),
+    from: account.address,
+    name: fields.name,
+    symbol: fields.symbol,
+    decimals: fields.decimals,
+    supply: fields.supply,
+    supplyMinor: fields.supplyMinor.toString(),
+    feeText: `${formatMinor(feeMinor, 9)} ${network.coinEasy ?? 'SOL'}`,
+    feeMinor: feeMinor.toString(),
+    warnings,
+    contractAddress: mint.address,
+    logoUrl: metadata.logoUrl || null,
+    website: metadata.website || null,
+    metadataUri: metadata.metadataUri || null,
+    metadataJson: metadata.metadataJson,
+  }
+  drafts.set(preview.draftId, {
+    kind: 'solana',
+    input,
+    preview,
+    fields,
+    metadata,
+    mintSecret: mint.secret,
+    mintAddress: mint.address,
+    createdAt: Date.now(),
+  })
+  return preview
+}
+
 export async function submitTokenIssue(draftId: string): Promise<TokenIssueResult> {
   prune()
   const draft = drafts.get(draftId)
   if (!draft) throw invalidArg('发行预览已过期，请重新预览')
   drafts.delete(draftId)
+  try {
+    if (draft.kind === 'solana') return await submitSolanaIssue(draft)
+    return await submitEvmIssue(draft)
+  } finally {
+    wipeDraft(draft)
+  }
+}
 
+async function submitEvmIssue(draft: EvmDraft): Promise<TokenIssueResult> {
   const network = requireNetwork(draft.input.networkPk)
   const account = getAccount(draft.input.accountId)
   const accountRow = requireAccountRow(draft.input.accountId)
@@ -192,11 +294,137 @@ export async function submitTokenIssue(draftId: string): Promise<TokenIssueResul
   return { txid, explorerUrl, contractAddress: null, token: null, transaction, issue }
 }
 
+async function submitSolanaIssue(draft: SolanaDraft): Promise<TokenIssueResult> {
+  const network = requireNetwork(draft.input.networkPk)
+  if (network.walletType !== 'solana') throw invalidArg('预览与当前网络不一致')
+  const account = getAccount(draft.input.accountId)
+  if (account.walletType !== 'solana') throw invalidArg('请选择 Solana 账户')
+  const accountRow = requireAccountRow(draft.input.accountId)
+
+  const signed = await withAccountPrivateKeyAsync(accountRow, async (privateKey) => {
+    try {
+      return await buildAndSignSolanaIssueTx({
+        network,
+        payerKey: privateKey,
+        mintKey: draft.mintSecret,
+        payer: account.address,
+        mint: draft.mintAddress,
+        decimals: draft.fields.decimals,
+        amount: draft.fields.supplyMinor,
+        name: draft.fields.name,
+        symbol: draft.fields.symbol,
+        uri: draft.metadata.metadataUri,
+        withMetadata: true,
+      })
+    } catch (err) {
+      console.warn('[token-issue] 带元数据签名失败，改为不写 Metaplex', err instanceof Error ? err.message : err)
+      return buildAndSignSolanaIssueTx({
+        network,
+        payerKey: privateKey,
+        mintKey: draft.mintSecret,
+        payer: account.address,
+        mint: draft.mintAddress,
+        decimals: draft.fields.decimals,
+        amount: draft.fields.supplyMinor,
+        name: draft.fields.name,
+        symbol: draft.fields.symbol,
+        uri: draft.metadata.metadataUri,
+        withMetadata: false,
+      })
+    }
+  })
+
+  let txid: string
+  try {
+    txid = await broadcastSolanaTx(network, signed.wireBase64)
+  } catch (err) {
+    const signedPlain = await withAccountPrivateKeyAsync(accountRow, (privateKey) =>
+      buildAndSignSolanaIssueTx({
+        network,
+        payerKey: privateKey,
+        mintKey: draft.mintSecret,
+        payer: account.address,
+        mint: draft.mintAddress,
+        decimals: draft.fields.decimals,
+        amount: draft.fields.supplyMinor,
+        name: draft.fields.name,
+        symbol: draft.fields.symbol,
+        uri: draft.metadata.metadataUri,
+        withMetadata: false,
+      }),
+    )
+    try {
+      txid = await broadcastSolanaTx(network, signedPlain.wireBase64)
+    } catch {
+      throw err instanceof Error ? err : new Error(String(err))
+    }
+  }
+
+  const explorerUrl = explorerUrlForSolana(txid, network)
+  const transaction = upsertTransaction({
+    id: newId(),
+    networkPk: network.id,
+    accountId: account.id,
+    txid,
+    direction: 'send',
+    fromAddress: account.address,
+    toAddress: draft.mintAddress,
+    tokenPk: null,
+    symbol: draft.fields.symbol,
+    amount: draft.fields.supply,
+    fee: formatMinor(BigInt(draft.preview.feeMinor), 9),
+    status: 'pending',
+    blockHeight: null,
+    rawHex: signed.wireBase64,
+    createdAt: Date.now(),
+    explorerUrl,
+  })
+  if (draft.metadata.logoUrl) rememberIssuedTokenIcon(draft.mintAddress, draft.metadata.logoUrl)
+  const issue = insertTokenIssue({
+    id: newId(),
+    networkPk: network.id,
+    accountId: account.id,
+    tokenPk: null,
+    transactionId: transaction.id,
+    fromAddress: account.address,
+    name: draft.fields.name,
+    symbol: draft.fields.symbol,
+    decimals: draft.fields.decimals,
+    supply: draft.fields.supply,
+    supplyMinor: draft.fields.supplyMinor.toString(),
+    contractAddress: draft.mintAddress,
+    txid,
+    explorerUrl,
+    status: 'pending',
+  })
+  watchTransaction(transaction)
+  broadcast(IPC_EVENT.catalogUpdated, { kind: 'issue' })
+  broadcast(IPC_EVENT.transactionUpdated, { record: transaction, issue, contractAddress: draft.mintAddress })
+
+  void waitForSolanaConfirmation(network, txid)
+    .then((status) => {
+      if (status) finalizeIssuedSolanaToken(txid, status)
+    })
+    .catch((err) => {
+      console.warn('[token-issue] 等待 Solana 确认失败', err instanceof Error ? err.message : err)
+    })
+
+  return {
+    txid,
+    explorerUrl,
+    contractAddress: draft.mintAddress,
+    token: null,
+    transaction,
+    issue,
+  }
+}
+
 function looksLikeIssuedToken(txid: string, tokenPk: string | null, toAddress: string): boolean {
   if (findTokenIssueByTxid(txid) || !tokenPk) return false
   const token = getToken(tokenPk)
   if (!token?.isToken || !token.contractAddress) return false
-  if (token.tokenStandard && token.tokenStandard !== 'erc20') return false
+  const standard = (token.tokenStandard ?? '').toLowerCase()
+  if (standard && standard !== 'erc20' && standard !== 'spl') return false
   return token.contractAddress.toLowerCase() === toAddress.toLowerCase()
 }
 

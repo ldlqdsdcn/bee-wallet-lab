@@ -47,6 +47,7 @@ const state: VaultState = {
 }
 
 let idleTimer: NodeJS.Timeout | null = null
+let idleHoldCount = 0
 const listeners = new Set<(event: VaultEvent) => void>()
 
 export function onVaultEvent(listener: (event: VaultEvent) => void): () => void {
@@ -227,6 +228,16 @@ export function touch(): void {
   if (isUnlocked()) scheduleIdleTimer()
 }
 
+/** 批量转账等长任务进行中暂停空闲自动锁定；手动点锁定仍然有效。 */
+export function holdIdleLock(): () => void {
+  idleHoldCount += 1
+  touch()
+  return () => {
+    idleHoldCount = Math.max(0, idleHoldCount - 1)
+    touch()
+  }
+}
+
 function clearIdleTimer(): void {
   if (idleTimer) {
     clearTimeout(idleTimer)
@@ -240,6 +251,10 @@ function scheduleIdleTimer(): void {
   if (state.autoLockMinutes <= 0) return
   const timeout = state.autoLockMinutes * 60_000
   idleTimer = setTimeout(() => {
+    if (idleHoldCount > 0) {
+      scheduleIdleTimer()
+      return
+    }
     if (Date.now() - state.lastActivityAt >= timeout) {
       lock()
     } else {
