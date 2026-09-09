@@ -10,6 +10,8 @@
     "build:mac": "npm run compile && electron-builder --mac",
     "build:win": "npm run compile && electron-builder --win",
     "build:linux": "npm run compile && electron-builder --linux",
+    "sign:linux": "bash scripts/sign-linux-release.sh",
+    "verify:linux": "bash scripts/verify-linux-release.sh",
     "compile:erc20": "node scripts/compile-erc20.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
