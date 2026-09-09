@@ -74,7 +74,7 @@
       }
     ],
     "category": "Utility",
-    "maintainer": "Bee Wallet Lab",
+    "maintainer": "Bee Wallet Lab <ldlqdsdcn@gmail.com>",
     "synopsis": "开源区块链钱包实验室",
     "desktop": {
       "StartupWMClass": "bee-wallet-lab"

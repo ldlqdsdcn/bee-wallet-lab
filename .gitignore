@@ -14,6 +14,10 @@ lerna-debug.log*
 *.pem
 *.key
 *.p12
+*.sec
+# GPG 私钥只许留在本机，禁止进仓库
+packaging/linux/*.sec
+packaging/linux/*private*
 
 node_modules
 dist

@@ -43,3 +43,12 @@ SQLite 文件在 Electron `userData` 目录下的 `bee-wallet.db`。助记词、
 - 导出助记词 / 揭示私钥需要再次输入主密码
 - 锁定后内存 KEK 清零
 - Infura / TronGrid 密钥只存在本机 `.env`，不进 git
+
+## 下载安装（Ubuntu / Debian）
+
+从 [GitHub Releases](https://github.com/ldlqdsdcn/bee-wallet-lab/releases) 下载即可用，不必先装证书。
+
+- **AppImage**：`chmod +x bee-wallet-*-linux-x64.AppImage` 后运行
+- **deb**：`sudo apt install ./bee-wallet-*-linux-x64.deb`
+
+图形界面若提示未认证，选仍要安装。可选校验步骤见 [docs/linux-signing.md](docs/linux-signing.md)。打 `v*` tag 会由 Actions 自动打包并上传 Release。
