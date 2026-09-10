@@ -615,6 +615,114 @@ export interface TxLabDecoded {
   warnings: string[]
 }
 
+/* -------------------------------- ABI 工具 -------------------------------- */
+
+export interface AbiParamInfo {
+  name: string
+  type: string
+  indexed?: boolean
+  components?: AbiParamInfo[]
+}
+
+export interface AbiFunctionInfo {
+  name: string
+  signature: string
+  selector: string
+  stateMutability: string
+  inputs: AbiParamInfo[]
+  outputs: AbiParamInfo[]
+}
+
+export interface AbiEventInfo {
+  name: string
+  signature: string
+  topic0: string | null
+  anonymous: boolean
+  inputs: AbiParamInfo[]
+}
+
+export interface AbiParsed {
+  name: string
+  contractAddress: string | null
+  abiJson: string
+  functions: AbiFunctionInfo[]
+  events: AbiEventInfo[]
+  warnings: string[]
+}
+
+export interface AbiContractRecord {
+  id: string
+  name: string
+  contractAddress: string | null
+  abiJson: string
+  functionCount: number
+  eventCount: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface AbiContractUpsertInput {
+  id?: string
+  name: string
+  contractAddress?: string | null
+  abiJson: string
+}
+
+export interface AbiEncodeInput {
+  abiJson: string
+  signature: string
+  args: string[]
+}
+
+export interface AbiEncodeResult {
+  signature: string
+  selector: string
+  calldata: string
+}
+
+export interface AbiDecodedValue {
+  name: string
+  type: string
+  indexed?: boolean
+  value: string
+}
+
+export interface AbiDecodeCallInput {
+  abiJson: string
+  data: string
+}
+
+export interface AbiDecodeCallResult {
+  name: string
+  signature: string
+  selector: string
+  args: AbiDecodedValue[]
+}
+
+export interface AbiDecodeResultInput {
+  abiJson: string
+  signature: string
+  data: string
+}
+
+export interface AbiDecodeResultOutput {
+  signature: string
+  values: AbiDecodedValue[]
+}
+
+export interface AbiDecodeEventInput {
+  abiJson: string
+  data: string
+  topics: string
+}
+
+export interface AbiDecodeEventResult {
+  name: string
+  signature: string
+  topic0: string | null
+  args: AbiDecodedValue[]
+}
+
 export interface TransactionRecord {
   id: string
   networkPk: string

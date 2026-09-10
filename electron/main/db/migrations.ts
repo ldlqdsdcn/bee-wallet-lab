@@ -480,6 +480,25 @@ const migrations: Migration[] = [
       `)
     },
   },
+  {
+    version: 13,
+    description: 'local ABI library for encode / decode tools',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE abi_contracts (
+          id                TEXT PRIMARY KEY,
+          name              TEXT NOT NULL,
+          contract_address  TEXT,
+          abi_json          TEXT NOT NULL,
+          function_count    INTEGER NOT NULL DEFAULT 0,
+          event_count       INTEGER NOT NULL DEFAULT 0,
+          created_at        INTEGER NOT NULL,
+          updated_at        INTEGER NOT NULL
+        );
+        CREATE INDEX idx_abi_contracts_name ON abi_contracts(name, updated_at);
+      `)
+    },
+  },
 ]
 
 export const LATEST_SCHEMA_VERSION = migrations[migrations.length - 1].version

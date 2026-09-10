@@ -9,6 +9,7 @@ import WalletsPage from './pages/WalletsPage'
 import HdDerivePage from './pages/HdDerivePage'
 import TransferPage from './pages/TransferPage'
 import TxLabPage from './pages/TxLabPage'
+import AbiToolsPage from './pages/AbiToolsPage'
 import IssuePage from './pages/IssuePage'
 import HdAirdropPage from './pages/HdAirdropPage'
 import ActivityPage from './pages/ActivityPage'
@@ -74,6 +75,7 @@ export default function App() {
             <Route path="hd" element={<HdDerivePage />} />
             <Route path="transfer" element={<TransferPage />} />
             <Route path="tx-lab" element={<TxLabPage />} />
+            <Route path="abi" element={<AbiToolsPage />} />
             <Route path="issue" element={<IssuePage />} />
             <Route path="hd-airdrop" element={<HdAirdropPage />} />
             <Route path="activity" element={<ActivityPage />} />
