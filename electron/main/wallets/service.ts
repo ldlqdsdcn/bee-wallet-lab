@@ -62,6 +62,7 @@ import { normalizePickerQuery } from './query'
 import {
   decryptHdPrivateKey,
   deleteHdKeys,
+  getHdKeyRow,
   listExistingHdIndexes,
   listHdKeyRows,
   listHdKeys,
@@ -636,6 +637,21 @@ export function unlockHdKeyTable(
     publicKey: row.public_key,
     privateKey: decryptHdPrivateKey(row),
   }))
+}
+
+export function revealHdKey(walletId: string, keyId: string, password: string): HdDerivedEvmKey {
+  if (!verifyPassword(password)) throw new IpcError('INVALID_ARG', '主密码不正确')
+  requireWallet(walletId)
+  const row = getHdKeyRow(keyId)
+  if (!row || row.wallet_id !== walletId) throw notFound('分层记录不存在')
+  return {
+    id: row.id,
+    index: row.address_index,
+    path: row.root_path,
+    address: row.address,
+    publicKey: row.public_key,
+    privateKey: decryptHdPrivateKey(row),
+  }
 }
 
 export function clearHdKeyTable(walletId: string, password: string, accountIndex?: number): number {

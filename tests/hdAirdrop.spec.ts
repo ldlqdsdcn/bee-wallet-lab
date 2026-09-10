@@ -53,3 +53,10 @@ describe('批量转账通道', () => {
     expect(IPC_EVENTS).toContain(IPC_EVENT.hdAirdropProgress)
   })
 })
+
+describe('分层钱包详情', () => {
+  it('单条揭示私钥通道已加入白名单', () => {
+    expect(IPC.accountHdKeyReveal).toBe('account:hdKeyReveal')
+    expect(IPC_CHANNELS).toContain(IPC.accountHdKeyReveal)
+  })
+})

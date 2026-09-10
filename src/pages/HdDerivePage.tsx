@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { HdDerivedEvmKey, HdKeyRecord } from '@shared/types'
 import { accountApi } from '../lib/bridge'
-import { Alert, Button, Card, Field } from '../components/ui'
+import { Alert, Button, Card, Field, Modal } from '../components/ui'
 import { shorten } from '../lib/format'
 import { useWalletStore } from '../store/walletStore'
 
@@ -49,6 +49,7 @@ export default function HdDerivePage() {
   const [saving, setSaving] = useState(false)
   const [hideKeys, setHideKeys] = useState(true)
   const [page, setPage] = useState(1)
+  const [detail, setDetail] = useState<HdDerivedEvmKey | null>(null)
 
   useEffect(() => {
     setQuery('')
@@ -57,6 +58,7 @@ export default function HdDerivePage() {
     setMessage(null)
     setHideKeys(true)
     setPage(1)
+    setDetail(null)
     setRows([])
     if (!currentId) return
     let alive = true
@@ -285,11 +287,22 @@ export default function HdDerivePage() {
           </p>
         ) : (
           <>
-            <KeyTable rows={pageRows} hideKeys={hideKeys} />
+            <KeyTable rows={pageRows} hideKeys={hideKeys} onDetail={setDetail} />
             <Pager page={currentPage} pageCount={pageCount} total={filtered.length} onPage={setPage} />
           </>
         )}
       </Card>
+      {detail ? (
+        <HdKeyDetailDialog
+          row={detail}
+          walletId={currentId}
+          onClose={() => setDetail(null)}
+          onUnlocked={(next) => {
+            setRows((prev) => prev.map((item) => (item.id === next.id ? next : item)))
+            setDetail(next)
+          }}
+        />
+      ) : null}
       {saving ? <SavingOverlay count={count} /> : null}
     </div>
   )
@@ -371,18 +384,27 @@ function Pager({
   )
 }
 
-function KeyTable({ rows, hideKeys }: { rows: HdDerivedEvmKey[]; hideKeys: boolean }) {
+function KeyTable({
+  rows,
+  hideKeys,
+  onDetail,
+}: {
+  rows: HdDerivedEvmKey[]
+  hideKeys: boolean
+  onDetail: (row: HdDerivedEvmKey) => void
+}) {
   return (
     <div className="overflow-auto rounded-lg border border-ink-700">
-      <div className="grid grid-cols-[64px_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1.1fr)_minmax(0,1.2fr)] gap-2 border-b border-ink-700 bg-ink-900 px-3 py-2 text-[11px] text-ink-500">
+      <div className="grid grid-cols-[64px_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1.1fr)_minmax(0,1.2fr)_64px] gap-2 border-b border-ink-700 bg-ink-900 px-3 py-2 text-[11px] text-ink-500">
         <span>序号</span>
         <span>路径</span>
         <span>地址</span>
         <span>公钥</span>
         <span>私钥</span>
+        <span>操作</span>
       </div>
       {rows.map((row) => (
-        <Row key={row.id ?? row.path} row={row} hideKeys={hideKeys} />
+        <Row key={row.id ?? row.path} row={row} hideKeys={hideKeys} onDetail={onDetail} />
       ))}
     </div>
   )
@@ -391,12 +413,14 @@ function KeyTable({ rows, hideKeys }: { rows: HdDerivedEvmKey[]; hideKeys: boole
 function Row({
   row,
   hideKeys,
+  onDetail,
 }: {
   row: HdDerivedEvmKey
   hideKeys: boolean
+  onDetail: (row: HdDerivedEvmKey) => void
 }) {
   return (
-    <div className="grid grid-cols-[64px_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1.1fr)_minmax(0,1.2fr)] items-center gap-2 border-b border-ink-800 px-3 py-2.5 text-xs">
+    <div className="grid grid-cols-[64px_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1.1fr)_minmax(0,1.2fr)_64px] items-center gap-2 border-b border-ink-800 px-3 py-2.5 text-xs">
       <span className="text-ink-400">{row.index}</span>
       <span className="truncate font-mono text-[11px] text-ink-500" title={row.path}>
         {row.path}
@@ -410,9 +434,127 @@ function Row({
           sensitive
         />
       ) : (
-        <span className="text-[11px] text-ink-600">已加密，先解锁</span>
+        <span className="text-[11px] text-ink-600">已加密</span>
       )}
+      <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => onDetail(row)}>
+        详情
+      </Button>
     </div>
+  )
+}
+
+function HdKeyDetailDialog({
+  row,
+  walletId,
+  onClose,
+  onUnlocked,
+}: {
+  row: HdDerivedEvmKey
+  walletId: string | null
+  onClose: () => void
+  onUnlocked: (row: HdDerivedEvmKey) => void
+}) {
+  const [password, setPassword] = useState('')
+  const [showKey, setShowKey] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const reveal = async () => {
+    if (!walletId || !row.id || !password) return
+    setBusy(true)
+    setError(null)
+    try {
+      const next = await accountApi.hdKeyReveal(walletId, row.id, password)
+      onUnlocked(next)
+      setShowKey(true)
+      setPassword('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal title="分层钱包详情" onClose={onClose} wide>
+      <p className="mt-1 text-xs text-ink-500">序号 {row.index} · 关闭窗口后私钥不再显示在弹框里。</p>
+      <div className="mt-4 space-y-3">
+        <DetailField label="序号" value={String(row.index)} />
+        <DetailField label="派生路径" value={row.path} />
+        <DetailField label="地址" value={row.address} />
+        <DetailField label="公钥" value={row.publicKey} />
+        {row.privateKey ? (
+          <div>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-ink-400">私钥</span>
+              <div className="flex gap-2">
+                <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => setShowKey((value) => !value)}>
+                  {showKey ? '隐藏' : '显示'}
+                </Button>
+                <CopyButton value={row.privateKey} />
+              </div>
+            </div>
+            <p className="sensitive break-all rounded-lg bg-ink-800 px-3 py-2 font-mono text-xs text-honey-400">
+              {showKey ? row.privateKey : '••••••••••••••••••••••••••••••••••••••••'}
+            </p>
+          </div>
+        ) : (
+          <div>
+            <p className="mb-2 text-xs text-ink-400">私钥已加密，输入主密码后可查看和复制。</p>
+            <Field
+              label="主密码"
+              type="password"
+              autoFocus
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && password && !busy) void reveal()
+              }}
+            />
+            {error ? <p className="mt-2 text-xs text-red-300">{error}</p> : null}
+            <Button className="mt-3" disabled={busy || !walletId || !row.id || !password} onClick={() => void reveal()}>
+              {busy ? '校验中…' : '解锁私钥'}
+            </Button>
+          </div>
+        )}
+      </div>
+      <div className="mt-5 flex justify-end">
+        <Button variant="ghost" onClick={onClose}>
+          关闭
+        </Button>
+      </div>
+    </Modal>
+  )
+}
+
+function DetailField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-ink-400">{label}</span>
+        <CopyButton value={value} />
+      </div>
+      <p className="break-all rounded-lg bg-ink-800 px-3 py-2 font-mono text-xs text-ink-200">{value}</p>
+    </div>
+  )
+}
+
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      className="px-2 py-1 text-xs"
+      onClick={() => {
+        void navigator.clipboard.writeText(value).then(() => {
+          setCopied(true)
+          window.setTimeout(() => setCopied(false), 1200)
+        })
+      }}
+    >
+      {copied ? '已复制' : '复制'}
+    </Button>
   )
 }
 

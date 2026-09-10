@@ -157,6 +157,8 @@ export const accountApi = {
     call<HdKeyRecord[]>(IPC.accountHdKeyList, { walletId, accountIndex }),
   hdKeyUnlock: (walletId: string, password: string, accountIndex?: number) =>
     call<HdDerivedEvmKey[]>(IPC.accountHdKeyUnlock, { walletId, password, accountIndex }),
+  hdKeyReveal: (walletId: string, keyId: string, password: string) =>
+    call<HdDerivedEvmKey>(IPC.accountHdKeyReveal, { walletId, keyId, password }),
   hdKeyClear: (walletId: string, password: string, accountIndex?: number) =>
     call<number>(IPC.accountHdKeyClear, { walletId, password, accountIndex }),
 }
