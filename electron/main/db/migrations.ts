@@ -464,6 +464,22 @@ const migrations: Migration[] = [
       `)
     },
   },
+  {
+    version: 12,
+    description: 'HD keys scoped by network and bitcoin address type',
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE hd_keys ADD COLUMN network_scope TEXT NOT NULL DEFAULT 'mainnet';
+        ALTER TABLE hd_keys ADD COLUMN address_type TEXT;
+        DROP INDEX IF EXISTS idx_hd_keys_path;
+        CREATE UNIQUE INDEX idx_hd_keys_path
+          ON hd_keys(
+            wallet_id, wallet_type, network_scope,
+            IFNULL(address_type, ''), account_index, address_index
+          );
+      `)
+    },
+  },
 ]
 
 export const LATEST_SCHEMA_VERSION = migrations[migrations.length - 1].version

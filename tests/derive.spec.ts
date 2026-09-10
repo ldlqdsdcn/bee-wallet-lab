@@ -24,6 +24,7 @@ import {
   encodeSolanaSecretKey,
   parseSolanaPrivateKey,
   deriveEvmRange,
+  deriveHdRange,
   normalizeEvmRange,
 } from '../electron/main/derive'
 import { slip10DeriveEd25519 } from '../electron/main/derive/slip10'
@@ -237,6 +238,52 @@ describe('EVM 地址', () => {
       expect(row.address).toBe(single.address)
       expect(row.publicKey).toBe(single.publicKey)
       expect(row.privateKey).toBe(`0x${bytesToHex(single.privateKey)}`)
+    }
+  })
+
+  it('波场 / Bitcoin / Solana 批量与逐条 derive 一致', () => {
+    const tronRows = deriveHdRange({
+      seed: SEED,
+      walletType: 'tron',
+      networkScope: 'mainnet',
+      fromIndex: 0,
+      toIndex: 2,
+    })
+    expect(tronRows[0]?.path).toBe("m/44'/195'/0'/0/0")
+    expect(isTronAddress(tronRows[0]!.address)).toBe(true)
+    for (const row of tronRows) {
+      const single = derive({ seed: SEED, walletType: 'tron', networkScope: 'mainnet', addressIndex: row.index })
+      expect(row.address).toBe(single.address)
+      expect(row.privateKey).toBe(`0x${bytesToHex(single.privateKey)}`)
+    }
+
+    const btcRows = deriveHdRange({
+      seed: SEED,
+      walletType: 'bitcoin',
+      networkScope: 'mainnet',
+      fromIndex: 0,
+      toIndex: 1,
+    })
+    expect(btcRows[0]?.path).toBe("m/84'/0'/0'/0/0")
+    for (const row of btcRows) {
+      const single = derive({ seed: SEED, walletType: 'bitcoin', networkScope: 'mainnet', addressIndex: row.index })
+      expect(row.address).toBe(single.address)
+      expect(row.privateKey).toBe(privateKeyToWif(single.privateKey, 'mainnet'))
+    }
+
+    const solRows = deriveHdRange({
+      seed: SEED,
+      walletType: 'solana',
+      networkScope: 'mainnet',
+      fromIndex: 0,
+      toIndex: 2,
+    })
+    expect(solRows[0]?.path).toBe("m/44'/501'/0'/0'")
+    expect(isSolanaAddress(solRows[0]!.address)).toBe(true)
+    for (const row of solRows) {
+      const single = derive({ seed: SEED, walletType: 'solana', networkScope: 'mainnet', addressIndex: row.index })
+      expect(row.address).toBe(single.address)
+      expect(row.privateKey).toBe(encodeSolanaSecretKey(single.privateKey))
     }
   })
 
