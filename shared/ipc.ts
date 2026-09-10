@@ -126,6 +126,11 @@ export const IPC = {
   hdAirdropJobs: 'hdAirdrop:jobs',
   hdAirdropItems: 'hdAirdrop:items',
   hdAirdropRetry: 'hdAirdrop:retry',
+
+  /* 交易实验室：只签名 / 解码 / 单独广播 */
+  txLabSign: 'txLab:sign',
+  txLabDecode: 'txLab:decode',
+  txLabBroadcast: 'txLab:broadcast',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

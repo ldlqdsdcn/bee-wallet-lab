@@ -278,6 +278,13 @@ export async function buildAndSignBitcoinTx(input: {
   }
 }
 
+/** 已签名（含隔离见证）原始交易的 txid，不含见证数据。 */
+export function bitcoinTxidFromHex(hex: string): string {
+  const raw = hexToBytes(hex.replace(/^0x/i, ''))
+  const tx = btc.Transaction.fromRaw(raw, { allowUnknownOutputs: true, allowUnknownInputs: true })
+  return tx.id
+}
+
 export async function broadcastBitcoinTx(rawTxHex: string, networkScope: NetworkScope): Promise<string> {
   const result = await esploraPost<unknown>(networkScope, 'tx', undefined, {
     rawBody: rawTxHex,

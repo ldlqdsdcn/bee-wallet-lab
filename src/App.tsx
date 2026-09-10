@@ -8,6 +8,7 @@ import HomePage from './pages/HomePage'
 import WalletsPage from './pages/WalletsPage'
 import HdDerivePage from './pages/HdDerivePage'
 import TransferPage from './pages/TransferPage'
+import TxLabPage from './pages/TxLabPage'
 import IssuePage from './pages/IssuePage'
 import HdAirdropPage from './pages/HdAirdropPage'
 import ActivityPage from './pages/ActivityPage'
@@ -72,6 +73,7 @@ export default function App() {
             <Route path="wallets" element={<WalletsPage />} />
             <Route path="hd" element={<HdDerivePage />} />
             <Route path="transfer" element={<TransferPage />} />
+            <Route path="tx-lab" element={<TxLabPage />} />
             <Route path="issue" element={<IssuePage />} />
             <Route path="hd-airdrop" element={<HdAirdropPage />} />
             <Route path="activity" element={<ActivityPage />} />

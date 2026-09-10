@@ -568,6 +568,53 @@ export interface BroadcastResult {
   transaction: TransactionRecord
 }
 
+export type TxLabRawFormat = 'hex' | 'base64' | 'json'
+
+/** 交易实验室：本地签名后的原始交易（尚未广播） */
+export interface TxLabSigned {
+  walletType: WalletType
+  networkPk: string
+  accountId: string
+  from: string
+  to: string
+  amount: string
+  symbol: string
+  feeText: string
+  raw: string
+  rawFormat: TxLabRawFormat
+  txid: string
+  signed: boolean
+  decoded: Record<string, string>
+}
+
+export interface TxLabBroadcastInput {
+  networkPk: string
+  raw: string
+  accountId?: string
+  from?: string
+  to?: string
+  amount?: string
+  symbol?: string
+  tokenPk?: string
+  fee?: string
+}
+
+export interface TxLabDecodeInput {
+  networkPk: string
+  raw: string
+}
+
+export interface TxLabDecoded {
+  walletType: WalletType
+  networkPk: string
+  raw: string
+  rawFormat: TxLabRawFormat
+  txid: string | null
+  signed: boolean
+  fields: Record<string, string>
+  warnings: string[]
+}
+
 export interface TransactionRecord {
   id: string
   networkPk: string
