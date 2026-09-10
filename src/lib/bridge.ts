@@ -55,6 +55,13 @@ import type {
   TxLabDecoded,
   TxLabDecodeInput,
   TxLabSigned,
+  AbiContractRecord,
+  AbiContractUpsertInput,
+  AbiDecodeCallResult,
+  AbiDecodeEventResult,
+  AbiDecodeResultOutput,
+  AbiEncodeResult,
+  AbiParsed,
   VaultStatus,
   VerifyMessageInput,
   VerifyMessageResult,
@@ -214,6 +221,22 @@ export const txLabApi = {
   sign: (draftId: string) => call<TxLabSigned>(IPC.txLabSign, { draftId }),
   decode: (input: TxLabDecodeInput) => call<TxLabDecoded>(IPC.txLabDecode, input),
   broadcast: (input: TxLabBroadcastInput) => call<BroadcastResult>(IPC.txLabBroadcast, input),
+}
+
+export const abiApi = {
+  parse: (abiJson: string, name?: string, contractAddress?: string) =>
+    call<AbiParsed>(IPC.abiParse, { abiJson, name, contractAddress }),
+  preset: (id: string) => call<{ id: string; name: string; abiJson: string }>(IPC.abiPreset, { id }),
+  list: () => call<AbiContractRecord[]>(IPC.abiList),
+  upsert: (input: AbiContractUpsertInput) => call<AbiContractRecord>(IPC.abiUpsert, input),
+  remove: (id: string) => call<true>(IPC.abiRemove, { id }),
+  encode: (abiJson: string, signature: string, args: string[]) =>
+    call<AbiEncodeResult>(IPC.abiEncode, { abiJson, signature, args }),
+  decodeCall: (abiJson: string, data: string) => call<AbiDecodeCallResult>(IPC.abiDecodeCall, { abiJson, data }),
+  decodeResult: (abiJson: string, signature: string, data: string) =>
+    call<AbiDecodeResultOutput>(IPC.abiDecodeResult, { abiJson, signature, data }),
+  decodeEvent: (abiJson: string, data: string, topics: string) =>
+    call<AbiDecodeEventResult>(IPC.abiDecodeEvent, { abiJson, data, topics }),
 }
 
 export const signApi = {

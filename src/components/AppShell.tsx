@@ -16,6 +16,7 @@ const navItems = [
   { to: '/hd', label: '分层钱包' },
   { to: '/transfer', label: '收款转账' },
   { to: '/tx-lab', label: '交易实验室' },
+  { to: '/abi', label: 'ABI 工具' },
   { to: '/issue', label: '发行代币' },
   { to: '/hd-airdrop', label: '批量转账' },
   { to: '/activity', label: '交易记录' },

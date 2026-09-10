@@ -84,6 +84,7 @@ function unlockedTemplate(): MenuItemConstructorOptions[] {
       submenu: [
         { label: '收款转账', click: () => navigate('/transfer') },
         { label: '交易实验室', click: () => navigate('/tx-lab') },
+        { label: 'ABI 工具', click: () => navigate('/abi') },
         { label: '发行代币', click: () => navigate('/issue') },
         { label: '批量转账', click: () => navigate('/hd-airdrop') },
         { label: '交易记录', click: () => navigate('/activity') },

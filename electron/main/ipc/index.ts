@@ -41,6 +41,7 @@ import { registerFaucetIpc } from './faucet'
 import { registerTokenIpc } from './token'
 import { registerHdAirdropIpc } from './hdAirdrop'
 import { registerTxLabIpc } from './txLab'
+import { registerAbiIpc } from './abi'
 import { refreshAppMenu } from '../appMenu'
 import { startTransactionWatch, stopTransactionWatch } from '../history/watch'
 import { recoverInterruptedHdAirdrops, stopAllHdAirdrops } from '../hdAirdrop/service'
@@ -189,6 +190,7 @@ export function registerAllIpc(): void {
   registerTokenIpc()
   registerHdAirdropIpc()
   registerTxLabIpc()
+  registerAbiIpc()
   registerPlaceholders()
   initWalletAuth()
   recoverInterruptedHdAirdrops()

@@ -131,6 +131,17 @@ export const IPC = {
   txLabSign: 'txLab:sign',
   txLabDecode: 'txLab:decode',
   txLabBroadcast: 'txLab:broadcast',
+
+  /* ABI 工具 */
+  abiParse: 'abi:parse',
+  abiPreset: 'abi:preset',
+  abiList: 'abi:list',
+  abiUpsert: 'abi:upsert',
+  abiRemove: 'abi:remove',
+  abiEncode: 'abi:encode',
+  abiDecodeCall: 'abi:decodeCall',
+  abiDecodeResult: 'abi:decodeResult',
+  abiDecodeEvent: 'abi:decodeEvent',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]
