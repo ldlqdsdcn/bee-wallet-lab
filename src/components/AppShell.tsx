@@ -18,6 +18,7 @@ const navItems = [
   { to: '/tx-lab', label: '交易实验室' },
   { to: '/abi', label: 'ABI 工具' },
   { to: '/contract', label: '合约交互' },
+  { to: '/dev-tools', label: '开发工具' },
   { to: '/issue', label: '发行代币' },
   { to: '/hd-airdrop', label: '批量转账' },
   { to: '/activity', label: '交易记录' },
