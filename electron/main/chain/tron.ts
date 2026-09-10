@@ -102,6 +102,64 @@ export async function createTrc20Tx(input: {
   return { ...nested, txID }
 }
 
+export async function callTronContract(input: {
+  from: string
+  contract: string
+  selector: string
+  parameter: string
+  networkScope: NetworkScope
+}): Promise<string> {
+  const payload = await trongrid<Record<string, unknown>>(
+    'wallet/triggerconstantcontract',
+    {
+      owner_address: input.from,
+      contract_address: input.contract,
+      function_selector: input.selector,
+      parameter: input.parameter,
+      visible: true,
+    },
+    input.networkScope,
+  )
+  const result = asRecord(payload.result)
+  if (result && result.result === false) {
+    throw new Error(asString(result.message) || asString(payload.message) || '合约只读调用失败')
+  }
+  const results = payload.constant_result
+  const hex = Array.isArray(results) ? String(results[0] ?? '') : ''
+  return hex
+}
+
+export async function createTronContractTx(input: {
+  from: string
+  contract: string
+  selector: string
+  parameter: string
+  feeLimitSun: bigint
+  callValueSun?: bigint
+  networkScope: NetworkScope
+}): Promise<TronUnsignedTx> {
+  const payload = await trongrid<Record<string, unknown>>(
+    'wallet/triggersmartcontract',
+    {
+      owner_address: input.from,
+      contract_address: input.contract,
+      function_selector: input.selector,
+      parameter: input.parameter,
+      fee_limit: Number(input.feeLimitSun),
+      call_value: Number(input.callValueSun ?? 0n),
+      visible: true,
+    },
+    input.networkScope,
+  )
+  const nested = asRecord(payload.transaction) ?? payload
+  const txID = asString(nested.txID ?? nested.txid)
+  if (!txID) {
+    const message = asString(asRecord(payload.result)?.message, '创建合约交易失败')
+    throw new Error(message)
+  }
+  return { ...nested, txID }
+}
+
 export function signTronTx(unsigned: TronUnsignedTx, privateKey: Uint8Array): TronUnsignedTx {
   const txidHex = unsigned.txID.replace(/^0x/, '')
   if (!/^[0-9a-fA-F]{64}$/.test(txidHex)) throw new Error('TRON txID 不合法')

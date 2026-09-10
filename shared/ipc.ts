@@ -142,6 +142,11 @@ export const IPC = {
   abiDecodeCall: 'abi:decodeCall',
   abiDecodeResult: 'abi:decodeResult',
   abiDecodeEvent: 'abi:decodeEvent',
+
+  /* 合约交互：读 / 写预览 / 只签名 */
+  contractRead: 'contract:read',
+  contractPreview: 'contract:preview',
+  contractSign: 'contract:sign',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]
