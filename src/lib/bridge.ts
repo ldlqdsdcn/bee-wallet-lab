@@ -29,6 +29,7 @@ import type {
   HdAirdropJob,
   HdAirdropPreview,
   HdAirdropRetryInput,
+  HdKeyQuery,
   HdKeyRecord,
   ImportWalletInput,
   MnemonicDraft,
@@ -153,14 +154,13 @@ export const accountApi = {
   remove: (accountId: string) => call<true>(IPC.accountRemove, { accountId }),
   preview: (input: DeriveAccountInput) => call<DerivedAddress>(IPC.accountPreviewDerivation, input),
   hdDeriveEvm: (input: HdDeriveEvmInput) => call<HdDeriveEvmResult>(IPC.accountHdDeriveEvm, input),
-  hdKeyList: (walletId: string, accountIndex?: number) =>
-    call<HdKeyRecord[]>(IPC.accountHdKeyList, { walletId, accountIndex }),
-  hdKeyUnlock: (walletId: string, password: string, accountIndex?: number) =>
-    call<HdDerivedEvmKey[]>(IPC.accountHdKeyUnlock, { walletId, password, accountIndex }),
+  hdKeyList: (query: HdKeyQuery) => call<HdKeyRecord[]>(IPC.accountHdKeyList, query),
+  hdKeyUnlock: (query: HdKeyQuery & { password: string }) =>
+    call<HdDerivedEvmKey[]>(IPC.accountHdKeyUnlock, query),
   hdKeyReveal: (walletId: string, keyId: string, password: string) =>
     call<HdDerivedEvmKey>(IPC.accountHdKeyReveal, { walletId, keyId, password }),
-  hdKeyClear: (walletId: string, password: string, accountIndex?: number) =>
-    call<number>(IPC.accountHdKeyClear, { walletId, password, accountIndex }),
+  hdKeyClear: (query: HdKeyQuery & { password: string }) =>
+    call<number>(IPC.accountHdKeyClear, query),
 }
 
 export const catalogApi = {

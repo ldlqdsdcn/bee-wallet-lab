@@ -121,19 +121,34 @@ export interface DeriveAccountInput {
   label?: string
 }
 
-/** 批量派生 EVM 分层地址；默认生成 1..toIndex */
-export interface HdDeriveEvmInput {
+/** 批量派生分层地址；默认生成 1..toIndex。不传 walletType 时按 EVM。 */
+export interface HdDeriveInput {
   walletId: string
   password: string
   toIndex: number
   fromIndex?: number
   accountIndex?: number
+  walletType?: WalletType
+  networkScope?: NetworkScope
+  addressType?: BitcoinAddressType | null
+}
+
+export type HdDeriveEvmInput = HdDeriveInput
+
+export interface HdKeyQuery {
+  walletId: string
+  accountIndex?: number
+  walletType?: WalletType
+  networkScope?: NetworkScope
+  addressType?: BitcoinAddressType | null
 }
 
 export interface HdKeyRecord {
   id: string
   walletId: string
   walletType: WalletType
+  networkScope: NetworkScope
+  addressType: BitcoinAddressType | null
   accountIndex: number
   addressIndex: number
   path: string

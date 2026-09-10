@@ -1,12 +1,58 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import type { HdDerivedEvmKey, HdKeyRecord } from '@shared/types'
+import type { BitcoinAddressType, HdDerivedEvmKey, HdKeyQuery, HdKeyRecord, NetworkRecord, WalletType } from '@shared/types'
 import { accountApi } from '../lib/bridge'
-import { Alert, Button, Card, Field, Modal } from '../components/ui'
+import { Alert, Button, Card, Field, Modal, Select } from '../components/ui'
 import { shorten } from '../lib/format'
 import { useWalletStore } from '../store/walletStore'
+import { currentNetworkOf, useNetworkStore } from '../store/networkStore'
 
 const PAGE_SIZE = 50
+
+const BTC_TYPES: { value: BitcoinAddressType; label: string }[] = [
+  { value: 'p2wpkh', label: 'Native SegWit（bc1q）' },
+  { value: 'p2tr', label: 'Taproot（bc1p）' },
+  { value: 'p2sh-p2wpkh', label: 'Nested SegWit（3…）' },
+  { value: 'p2pkh', label: 'Legacy（1…）' },
+]
+
+function chainLabel(type: WalletType): string {
+  if (type === 'web3') return 'EVM'
+  if (type === 'tron') return '波场'
+  if (type === 'solana') return 'Solana'
+  return 'Bitcoin'
+}
+
+function pathHint(network: NetworkRecord | null, addressType: BitcoinAddressType): string {
+  if (!network) return ''
+  switch (network.walletType) {
+    case 'web3':
+      return "m/44'/60'/{account}'/0/{index}"
+    case 'tron':
+      return "m/44'/195'/{account}'/0/{index}"
+    case 'solana':
+      return "m/44'/501'/{account}'/{index}'"
+    case 'bitcoin': {
+      const purpose = { p2pkh: 44, 'p2sh-p2wpkh': 49, p2wpkh: 84, p2tr: 86 }[addressType]
+      const coin = network.networkScope === 'testnet' ? 1 : 0
+      return `m/${purpose}'/${coin}'/{account}'/0/{index}`
+    }
+  }
+}
+
+function hdQuery(
+  walletId: string,
+  network: NetworkRecord,
+  addressType: BitcoinAddressType,
+  accountIndex?: number,
+): HdKeyQuery {
+  return {
+    walletId,
+    walletType: network.walletType,
+    accountIndex,
+    ...(network.walletType === 'bitcoin' ? { networkScope: network.networkScope, addressType } : {}),
+  }
+}
 
 function asRow(item: HdKeyRecord): HdDerivedEvmKey {
   return {
@@ -29,7 +75,7 @@ function exportCsv(walletName: string, rows: HdDerivedEvmKey[]): void {
   link.href = url
   const first = rows[0]?.index ?? 0
   const last = rows[rows.length - 1]?.index ?? 0
-  link.download = `${walletName}-hd-evm-${first}-${last}.csv`
+  link.download = `${walletName}-hd-${first}-${last}.csv`
   link.click()
   URL.revokeObjectURL(url)
 }
@@ -37,6 +83,12 @@ function exportCsv(walletName: string, rows: HdDerivedEvmKey[]): void {
 export default function HdDerivePage() {
   const current = useWalletStore((s) => s.current)
   const currentId = useWalletStore((s) => s.currentId)
+  const networks = useNetworkStore((s) => s.networks)
+  const networkPk = useNetworkStore((s) => s.currentPk)
+  const openPicker = useNetworkStore((s) => s.openPicker)
+  const network = currentNetworkOf({ networks, currentPk: networkPk })
+  const evm = network?.walletType === 'web3'
+  const [addressType, setAddressType] = useState<BitcoinAddressType>('p2wpkh')
   const [toIndex, setToIndex] = useState('20000')
   const [fromIndex, setFromIndex] = useState('1')
   const [accountIndex, setAccountIndex] = useState('0')
@@ -60,10 +112,10 @@ export default function HdDerivePage() {
     setPage(1)
     setDetail(null)
     setRows([])
-    if (!currentId) return
+    if (!currentId || !network) return
     let alive = true
     void accountApi
-      .hdKeyList(currentId)
+      .hdKeyList(hdQuery(currentId, network, addressType))
       .then((list) => {
         if (!alive) return
         setRows(list.map(asRow))
@@ -75,7 +127,7 @@ export default function HdDerivePage() {
     return () => {
       alive = false
     }
-  }, [currentId])
+  }, [currentId, networkPk, network?.walletType, network?.networkScope, addressType])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -125,14 +177,19 @@ export default function HdDerivePage() {
     setError(null)
     setMessage(null)
     try {
+      if (!network) throw new Error('请先选择网络')
+      const query = hdQuery(currentId, network, addressType, Number(accountIndex))
       const next = await accountApi.hdDeriveEvm({
         walletId: currentId,
         password,
         fromIndex: Number(fromIndex),
         toIndex: Number(toIndex),
         accountIndex: Number(accountIndex),
+        walletType: network.walletType,
+        networkScope: network.networkScope,
+        addressType: network.walletType === 'bitcoin' ? addressType : null,
       })
-      const list = await accountApi.hdKeyList(currentId)
+      const list = await accountApi.hdKeyList(query)
       const unlocked = new Map(next.rows.map((row) => [row.index, row.privateKey]))
       setRows(
         list.map((item) => ({
@@ -161,21 +218,35 @@ export default function HdDerivePage() {
           <h1 className="text-lg font-semibold text-ink-200">分层钱包</h1>
           <p className="mt-1 text-xs text-ink-500">
             {current ? `当前钱包：${current.name}` : '请先创建或选择钱包'}
-            {' · 只显示这个钱包的分层记录，切换侧栏钱包会跟着换'}
-            {' · EVM · m/44\'/60\'/{account}\'/0/{index}'}
+            {' · '}
+            {network ? network.networkName : '请先选择网络'}
+            {network
+              ? ` · ${chainLabel(network.walletType)} · ${pathHint(network, addressType)}`
+              : ''}
           </p>
         </div>
-        <Link
-          to="/hd-airdrop"
-          className="shrink-0 rounded-lg border border-ink-600 px-3 py-1.5 text-xs text-ink-200 hover:border-honey-500 hover:text-honey-400"
-        >
-          批量转账
-        </Link>
+        {evm ? (
+          <Link
+            to="/hd-airdrop"
+            className="shrink-0 rounded-lg border border-ink-600 px-3 py-1.5 text-xs text-ink-200 hover:border-honey-500 hover:text-honey-400"
+          >
+            批量转账
+          </Link>
+        ) : null}
       </div>
 
       <Alert>{error}</Alert>
       {message ? <p className="rounded-lg border border-honey-600/30 bg-honey-600/10 px-3 py-2 text-xs text-honey-400">{message}</p> : null}
 
+      {!network ? (
+        <Card title="请先选择网络">
+          <p className="text-sm text-ink-400">分层地址按侧栏当前网络派生：EVM、波场、Bitcoin、Solana 各走自己的路径。</p>
+          <Button className="mt-3" variant="ghost" onClick={openPicker}>
+            切换网络
+          </Button>
+        </Card>
+      ) : (
+        <>
       <Card title="批量派生并入库">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field
@@ -183,7 +254,7 @@ export default function HdDerivePage() {
             type="number"
             min={0}
             value={fromIndex}
-            hint="默认从 1 开始，0 是钱包里已有的第一个 EVM 账户"
+            hint={`默认从 1 开始，0 是钱包里已有的第一个 ${chainLabel(network.walletType)} 账户`}
             onChange={(e) => setFromIndex(e.target.value)}
           />
           <Field
@@ -195,6 +266,20 @@ export default function HdDerivePage() {
             hint="例如 20000，会生成从起始到这个序号的全部地址"
             onChange={(e) => setToIndex(e.target.value)}
           />
+          {network.walletType === 'bitcoin' ? (
+            <Select
+              label="地址格式"
+              value={addressType}
+              hint="同一序号不同格式是不同地址"
+              onChange={(e) => setAddressType(e.target.value as BitcoinAddressType)}
+            >
+              {BTC_TYPES.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </Select>
+          ) : null}
           <Field
             label="account（第 3 层）"
             type="number"
@@ -229,7 +314,11 @@ export default function HdDerivePage() {
             onClick={() =>
               void run(async () => {
                 if (!currentId) return
-                const unlockedRows = await accountApi.hdKeyUnlock(currentId, password)
+                if (!network) return
+                const unlockedRows = await accountApi.hdKeyUnlock({
+                  ...hdQuery(currentId, network, addressType),
+                  password,
+                })
                 setRows(unlockedRows)
                 setHideKeys(false)
                 setPassword('')
@@ -255,8 +344,17 @@ export default function HdDerivePage() {
             onClick={() =>
               void run(async () => {
                 if (!currentId) return
-                if (!window.confirm(`确定清空「${current?.name ?? '当前钱包'}」的 ${rows.length} 条分层记录？`)) return
-                await accountApi.hdKeyClear(currentId, password)
+                if (!network) return
+                if (
+                  !window.confirm(
+                    `确定清空「${current?.name ?? '当前钱包'}」在 ${network.networkName} 上的 ${rows.length} 条分层记录？`,
+                  )
+                )
+                  return
+                await accountApi.hdKeyClear({
+                  ...hdQuery(currentId, network, addressType),
+                  password,
+                })
                 setRows([])
                 setPage(1)
                 setPassword('')
@@ -282,7 +380,7 @@ export default function HdDerivePage() {
         {rows.length === 0 ? (
           <p className="text-sm text-ink-400">
             {current
-              ? `「${current.name}」还没有分层记录。生成后只保存在这个钱包下。`
+              ? `「${current.name}」在 ${network.networkName} 还没有分层记录。生成后只保存在这个钱包下。`
               : '请先在侧栏选择钱包。'}
           </p>
         ) : (
@@ -292,6 +390,8 @@ export default function HdDerivePage() {
           </>
         )}
       </Card>
+        </>
+      )}
       {detail ? (
         <HdKeyDetailDialog
           row={detail}

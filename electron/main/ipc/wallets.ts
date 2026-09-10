@@ -7,6 +7,7 @@ import type {
   HdDerivedEvmKey,
   HdDeriveEvmInput,
   HdDeriveEvmResult,
+  HdKeyQuery,
   HdKeyRecord,
   ImportPrivateKeyInput,
   ImportWalletInput,
@@ -119,21 +120,26 @@ export function registerWalletIpc(): void {
   handle<HdDeriveEvmInput, HdDeriveEvmResult>(IPC.accountHdDeriveEvm, (arg) => {
     const input = requireObject<HdDeriveEvmInput>(arg)
     if (!input.walletId) throw invalidArg('walletId 不能为空')
-    return wallets.batchDeriveEvm(input)
+    return wallets.batchDeriveHd(input)
   })
 
-  handle<{ walletId: string; accountIndex?: number }, HdKeyRecord[]>(IPC.accountHdKeyList, (arg) =>
-    wallets.listHdKeyTable(requireString(arg?.walletId, 'walletId'), arg?.accountIndex),
+  handle<HdKeyQuery, HdKeyRecord[]>(IPC.accountHdKeyList, (arg) =>
+    wallets.listHdKeyTable({
+      ...requireObject<HdKeyQuery>(arg),
+      walletId: requireString(arg?.walletId, 'walletId'),
+    }),
   )
 
-  handle<{ walletId: string; password: string; accountIndex?: number }, HdDerivedEvmKey[]>(
+  handle<HdKeyQuery & { password: string }, HdDerivedEvmKey[]>(
     IPC.accountHdKeyUnlock,
-    (arg) =>
-      wallets.unlockHdKeyTable(
-        requireString(arg?.walletId, 'walletId'),
-        requireString(arg?.password, 'password'),
-        arg?.accountIndex,
-      ),
+    (arg) => {
+      const input = requireObject<HdKeyQuery & { password: string }>(arg)
+      return wallets.unlockHdKeyTable({
+        ...input,
+        walletId: requireString(input.walletId, 'walletId'),
+        password: requireString(input.password, 'password'),
+      })
+    },
   )
 
   handle<{ walletId: string; keyId: string; password: string }, HdDerivedEvmKey>(
@@ -146,13 +152,12 @@ export function registerWalletIpc(): void {
       ),
   )
 
-  handle<{ walletId: string; password: string; accountIndex?: number }, number>(
-    IPC.accountHdKeyClear,
-    (arg) =>
-      wallets.clearHdKeyTable(
-        requireString(arg?.walletId, 'walletId'),
-        requireString(arg?.password, 'password'),
-        arg?.accountIndex,
-      ),
-  )
+  handle<HdKeyQuery & { password: string }, number>(IPC.accountHdKeyClear, (arg) => {
+    const input = requireObject<HdKeyQuery & { password: string }>(arg)
+    return wallets.clearHdKeyTable({
+      ...input,
+      walletId: requireString(input.walletId, 'walletId'),
+      password: requireString(input.password, 'password'),
+    })
+  })
 }

@@ -29,6 +29,7 @@ export * from './evm'
 export * from './tron'
 export * from './solana'
 export * from './evmRange'
+export * from './hdRange'
 
 export interface DeriveInput extends PathInput {
   seed: Uint8Array

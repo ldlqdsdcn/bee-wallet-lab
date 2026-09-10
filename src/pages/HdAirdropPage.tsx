@@ -141,7 +141,7 @@ export default function HdAirdropPage() {
     }
     void accountApi.list(currentWalletId).then(setAccounts)
     void accountApi
-      .hdKeyList(currentWalletId)
+      .hdKeyList({ walletId: currentWalletId, walletType: 'web3' })
       .then((rows) => setHdCount(rows.length))
       .catch(() => setHdCount(0))
   }, [currentWalletId])
