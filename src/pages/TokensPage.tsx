@@ -4,6 +4,7 @@ import { IPC_EVENT } from '@shared/ipc'
 import { catalogApi, on, settingsApi } from '../lib/bridge'
 import { Alert, Button, Card, Field } from '../components/ui'
 import { NetworkIcon } from '../components/NetworkSelect'
+import { useT } from '../i18n'
 
 const TYPE_LABEL: Record<WalletType, string> = {
   bitcoin: 'Bitcoin',
@@ -34,12 +35,12 @@ function networkLabel(network: NetworkRecord): string {
   return network.chainName ? `${network.networkName} (${network.chainName})` : network.networkName
 }
 
-function contractHint(network: NetworkRecord | undefined): string {
-  if (!network) return '留空表示原生币'
-  if (network.walletType === 'bitcoin') return 'Bitcoin 只支持原生币，请留空'
-  if (network.walletType === 'tron') return '留空=TRX；合约为 T 开头地址'
-  if (network.walletType === 'solana') return '留空=SOL；否则填 mint 地址'
-  return '留空=原生币；否则填 0x 合约'
+function contractHint(network: NetworkRecord | undefined, t: ReturnType<typeof useT>): string {
+  if (!network) return t('tokens.hintNative')
+  if (network.walletType === 'bitcoin') return t('tokens.hintBtc')
+  if (network.walletType === 'tron') return t('tokens.hintTron')
+  if (network.walletType === 'solana') return t('tokens.hintSol')
+  return t('tokens.hintEvm')
 }
 
 function fromRecord(item: TokenRecord): TokenForm {
@@ -53,6 +54,7 @@ function fromRecord(item: TokenRecord): TokenForm {
 }
 
 export default function TokensPage() {
+  const t = useT()
   const [networks, setNetworks] = useState<NetworkRecord[]>([])
   const [networkPk, setNetworkPk] = useState('')
   const [tokens, setTokens] = useState<TokenRecord[]>([])
@@ -160,7 +162,7 @@ export default function TokensPage() {
   const save = () =>
     run(async () => {
       const decimals = form.decimals.trim() === '' ? undefined : Number(form.decimals)
-      if (decimals != null && !Number.isFinite(decimals)) throw new Error('精度无效')
+      if (decimals != null && !Number.isFinite(decimals)) throw new Error(t('tokens.invalidDecimals'))
       const input: TokenUpsertInput = {
         id: editingId ?? undefined,
         networkPk,
@@ -171,7 +173,7 @@ export default function TokensPage() {
         tokenId: form.tokenId,
       }
       await catalogApi.upsertToken(input)
-      setMessage(editingId ? '代币已保存' : '代币已添加')
+      setMessage(editingId ? t('tokens.saved') : t('tokens.added'))
       resetForm()
     })
 
@@ -185,7 +187,7 @@ export default function TokensPage() {
   const restore = () =>
     run(async () => {
       const result = await catalogApi.sync(true)
-      setMessage(`已恢复内置目录：${result.networks} 个网络 / ${result.tokens} 个代币`)
+      setMessage(t('tokens.restored', { networks: result.networks, tokens: result.tokens }))
       const list = await catalogApi.networks()
       setNetworks(list)
     })
@@ -194,8 +196,8 @@ export default function TokensPage() {
     <div className="mx-auto flex max-w-6xl gap-5">
       <aside className="w-60 shrink-0 rounded-xl border border-ink-700 bg-ink-800/60">
         <div className="border-b border-ink-700 px-4 py-3">
-          <h1 className="text-sm font-semibold text-ink-200">网络</h1>
-          <p className="mt-1 text-[11px] text-ink-600">每个网络单独维护代币列表</p>
+          <h1 className="text-sm font-semibold text-ink-200">{t('tokens.sidebar')}</h1>
+          <p className="mt-1 text-[11px] text-ink-600">{t('tokens.sidebarHint')}</p>
         </div>
         <div className="max-h-[calc(100vh-10rem)] overflow-y-auto p-2">
           {grouped.map((group) => (
@@ -218,9 +220,9 @@ export default function TokensPage() {
                     <NetworkIcon src={item.icon} name={item.networkName} size={18} />
                     <span className="min-w-0 flex-1 truncate">{networkLabel(item)}</span>
                     {item.source === 'custom' ? (
-                      <span className="shrink-0 text-[10px] text-ink-600">自建</span>
+                      <span className="shrink-0 text-[10px] text-ink-600">{t('common.customSource')}</span>
                     ) : item.networkScope === 'testnet' ? (
-                      <span className="shrink-0 text-[10px] text-ink-600">测试</span>
+                      <span className="shrink-0 text-[10px] text-ink-600">{t('common.testShort')}</span>
                     ) : null}
                   </button>
                 )
@@ -233,53 +235,54 @@ export default function TokensPage() {
       <div className="min-w-0 flex-1 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-lg font-semibold text-ink-200">代币维护</h1>
+            <h1 className="text-lg font-semibold text-ink-200">{t('tokens.title')}</h1>
             <p className="mt-1 text-xs text-ink-500">
-              {current ? networkLabel(current) : '选择网络'}
-              {' · 合约留空表示原生币 · 恢复内置不会删自定义代币'}
+              {current ? networkLabel(current) : t('tokens.pickNetwork')}
+              {' · '}
+              {t('tokens.hint')}
             </p>
           </div>
           <Button variant="ghost" disabled={busy} onClick={() => void restore()}>
-            恢复内置
+            {t('common.restore')}
           </Button>
         </div>
 
         {error ? <Alert>{error}</Alert> : null}
         {message ? <p className="text-xs text-honey-400">{message}</p> : null}
 
-        <Card title={editingId ? '编辑代币' : '添加代币'}>
+        <Card title={editingId ? t('tokens.edit') : t('tokens.add')}>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field
-              label="名称"
+              label={t('tokens.name')}
               value={form.name}
               placeholder="USD Coin"
               onChange={(e) => patch({ name: e.target.value })}
             />
             <Field
-              label="符号"
+              label={t('tokens.symbol')}
               value={form.symbol}
               placeholder="USDC"
               onChange={(e) => patch({ symbol: e.target.value })}
             />
             <Field
-              label="精度"
+              label={t('tokens.decimals')}
               value={form.decimals}
               placeholder={current?.walletType === 'solana' ? '9' : '18'}
-              hint="留空则按链默认：BTC 8 / EVM 18 / TRX 6 / SOL 9"
+              hint={t('tokens.decimalsHint')}
               onChange={(e) => patch({ decimals: e.target.value })}
             />
             <Field
-              label="CoinGecko id（可选）"
+              label={t('tokens.coinId')}
               value={form.tokenId}
               placeholder="usd-coin"
               onChange={(e) => patch({ tokenId: e.target.value })}
             />
             <div className="sm:col-span-2">
               <Field
-                label="合约地址"
+                label={t('tokens.contract')}
                 value={form.contractAddress}
-                placeholder={contractHint(current)}
-                hint={contractHint(current)}
+                placeholder={contractHint(current, t)}
+                hint={contractHint(current, t)}
                 disabled={current?.walletType === 'bitcoin'}
                 onChange={(e) => patch({ contractAddress: e.target.value })}
               />
@@ -287,19 +290,19 @@ export default function TokensPage() {
           </div>
           <div className="mt-4 flex gap-2">
             <Button disabled={busy || !networkPk || !form.symbol.trim()} onClick={() => void save()}>
-              {editingId ? '保存' : '添加'}
+              {editingId ? t('common.save') : t('common.add')}
             </Button>
             {editingId ? (
               <Button variant="ghost" disabled={busy} onClick={resetForm}>
-                取消
+                {t('common.cancel')}
               </Button>
             ) : null}
           </div>
         </Card>
 
-        <Card title={`代币列表 · ${tokens.length}`}>
+        <Card title={t('tokens.list', { count: tokens.length })}>
           {tokens.length === 0 ? (
-            <p className="text-sm text-ink-400">这个网络还没有代币。添加网络时会自动写入原生币。</p>
+            <p className="text-sm text-ink-400">{t('tokens.empty')}</p>
           ) : (
             <ul className="divide-y divide-ink-700">
               {tokens.map((item) => (
@@ -311,37 +314,37 @@ export default function TokensPage() {
                         {item.name && item.name !== item.symbol ? ` · ${item.name}` : ''}
                       </span>
                       <span className="rounded bg-ink-700 px-1.5 py-0.5 text-[10px] uppercase text-ink-400">
-                        {item.source === 'builtin' ? '内置' : '自建'}
+                        {item.source === 'builtin' ? t('common.builtin') : t('common.customSource')}
                       </span>
                       {!item.isToken ? (
-                        <span className="rounded bg-honey-600/20 px-1.5 py-0.5 text-[10px] text-honey-400">原生</span>
+                        <span className="rounded bg-honey-600/20 px-1.5 py-0.5 text-[10px] text-honey-400">{t('common.native')}</span>
                       ) : item.tokenStandard ? (
                         <span className="text-[10px] text-ink-600">{item.tokenStandard}</span>
                       ) : null}
                     </div>
                     <p className="mt-0.5 truncate font-mono text-xs text-ink-500">
-                      精度 {item.decimals}
+                      {t('tokens.decimalsLine', { n: item.decimals })}
                       {item.contractAddress ? ` · ${item.contractAddress}` : ''}
                       {item.tokenId ? ` · ${item.tokenId}` : ''}
                     </p>
                   </div>
                   <div className="flex shrink-0 gap-2">
                     <Button variant="ghost" className="px-2 py-1 text-xs" disabled={busy} onClick={() => startEdit(item)}>
-                      编辑
+                      {t('common.edit')}
                     </Button>
                     <Button
                       variant="ghost"
                       className="px-2 py-1 text-xs hover:border-red-500 hover:text-red-400"
                       disabled={busy}
                       onClick={() => {
-                        if (!window.confirm(`确定删除 ${item.symbol}？`)) return
+                        if (!window.confirm(t('tokens.deleteConfirm', { symbol: item.symbol }))) return
                         void run(async () => {
                           await catalogApi.removeToken(item.id)
                           if (editingId === item.id) resetForm()
                         })
                       }}
                     >
-                      删除
+                      {t('common.delete')}
                     </Button>
                   </div>
                 </li>

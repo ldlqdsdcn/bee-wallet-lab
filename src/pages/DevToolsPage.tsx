@@ -7,6 +7,7 @@ import type {
 } from '@shared/types'
 import { devToolsApi } from '../lib/bridge'
 import { Alert, Button, Card, Select, TextArea } from '../components/ui'
+import { useT } from '../i18n'
 
 type Tab = 'json' | 'hex' | 'hash'
 
@@ -24,6 +25,7 @@ const CONVERT_MODES: { value: DevConvertMode; label: string }[] = [
 ]
 
 export default function DevToolsPage() {
+  const t = useT()
   const [tab, setTab] = useState<Tab>('json')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -62,8 +64,8 @@ export default function DevToolsPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <div>
-        <h1 className="text-lg font-semibold text-ink-200">开发工具</h1>
-        <p className="mt-1 text-xs text-ink-500">JSON 格式化与折叠、Hex ↔ UTF-8 / Base64、SHA-256 / Keccak-256 等哈希</p>
+        <h1 className="text-lg font-semibold text-ink-200">{t('dev.title')}</h1>
+        <p className="mt-1 text-xs text-ink-500">{t('dev.subtitle')}</p>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -97,7 +99,7 @@ export default function DevToolsPage() {
                   })
                 }
               >
-                格式化
+                {t('dev.format')}
               </Button>
               <Button
                 variant="ghost"
@@ -110,21 +112,21 @@ export default function DevToolsPage() {
                   })
                 }
               >
-                压缩
+                {t('dev.minify')}
               </Button>
               {jsonResult ? (
                 <>
                   <Button variant="ghost" onClick={() => setExpandAll(true)}>
-                    全部展开
+                    {t('dev.expand')}
                   </Button>
                   <Button variant="ghost" onClick={() => setExpandAll(false)}>
-                    全部折叠
+                    {t('dev.collapse')}
                   </Button>
                   <Button variant="ghost" onClick={() => void copy('pretty', jsonResult.pretty)}>
-                    {copied === 'pretty' ? '已复制' : '复制格式化'}
+                    {copied === 'pretty' ? t('common.copied') : t('dev.copyPretty')}
                   </Button>
                   <Button variant="ghost" onClick={() => void copy('min', jsonResult.minified)}>
-                    {copied === 'min' ? '已复制' : '复制压缩'}
+                    {copied === 'min' ? t('common.copied') : t('dev.copyMin')}
                   </Button>
                 </>
               ) : null}
@@ -151,7 +153,7 @@ export default function DevToolsPage() {
         <Card title="Hex Tools">
           <div className="space-y-3">
             <Select
-              label="转换"
+              label={t('dev.convert')}
               value={hexMode}
               onChange={(e) => {
                 setHexMode(e.target.value as DevConvertMode)
@@ -165,9 +167,15 @@ export default function DevToolsPage() {
               ))}
             </Select>
             <TextArea
-              label="输入"
+              label={t('dev.input')}
               className="sensitive min-h-28 font-mono text-xs"
-              hint={hexHint(hexMode)}
+              hint={
+                hexMode === 'utf8-to-hex'
+                  ? t('dev.hintUtf8')
+                  : hexMode === 'base64-to-hex'
+                    ? t('dev.hintB64')
+                    : t('dev.hintHex')
+              }
               value={hexText}
               onChange={(e) => setHexText(e.target.value)}
             />
@@ -179,16 +187,16 @@ export default function DevToolsPage() {
                 })
               }
             >
-              转换
+              {t('dev.convert')}
             </Button>
             {hexResult ? (
               <div className="space-y-2">
-                <p className="text-xs text-ink-500">{hexResult.bytes} 字节</p>
+                <p className="text-xs text-ink-500">{t('dev.bytes', { count: hexResult.bytes })}</p>
                 <pre className="sensitive max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-ink-900 px-3 py-2 font-mono text-[11px] text-ink-300">
-                  {hexResult.output || '（空）'}
+                  {hexResult.output || t('common.empty')}
                 </pre>
                 <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => void copy('hex', hexResult.output)}>
-                  {copied === 'hex' ? '已复制' : '复制结果'}
+                  {copied === 'hex' ? t('common.copied') : t('dev.copyResult')}
                 </Button>
               </div>
             ) : null}
@@ -199,14 +207,14 @@ export default function DevToolsPage() {
       {tab === 'hash' ? (
         <Card title="Hash Tools">
           <div className="space-y-3">
-            <Select label="输入编码" value={hashEncoding} onChange={(e) => setHashEncoding(e.target.value as 'utf8' | 'hex')}>
-              <option value="utf8">UTF-8 文本</option>
-              <option value="hex">Hex 字节</option>
+            <Select label={t('dev.hashEncoding')} value={hashEncoding} onChange={(e) => setHashEncoding(e.target.value as 'utf8' | 'hex')}>
+              <option value="utf8">{t('dev.utf8Text')}</option>
+              <option value="hex">{t('dev.hexBytes')}</option>
             </Select>
             <TextArea
-              label="输入"
+              label={t('dev.input')}
               className="sensitive min-h-28 font-mono text-xs"
-              hint={hashEncoding === 'hex' ? '十六进制，可带 0x' : '按 UTF-8 计算摘要'}
+              hint={hashEncoding === 'hex' ? t('dev.hashHintHex') : t('dev.hashHintUtf8')}
               value={hashText}
               onChange={(e) => setHashText(e.target.value)}
             />
@@ -218,11 +226,11 @@ export default function DevToolsPage() {
                 })
               }
             >
-              计算
+              {t('dev.compute')}
             </Button>
             {hashResult ? (
               <div className="space-y-2">
-                <p className="text-xs text-ink-500">{hashResult.bytes} 字节</p>
+                <p className="text-xs text-ink-500">{t('dev.bytes', { count: hashResult.bytes })}</p>
                 {hashResult.hashes.map((item) => (
                   <div key={item.algo} className="rounded-lg bg-ink-900 px-3 py-2">
                     <div className="mb-1 flex items-center justify-between gap-2">
@@ -232,7 +240,7 @@ export default function DevToolsPage() {
                         className="px-2 py-1 text-xs"
                         onClick={() => void copy(item.algo, item.hex)}
                       >
-                        {copied === item.algo ? '已复制' : '复制'}
+                        {copied === item.algo ? t('common.copied') : t('common.copy')}
                       </Button>
                     </div>
                     <p className="sensitive break-all font-mono text-[11px] text-ink-300">{item.hex}</p>
@@ -245,12 +253,6 @@ export default function DevToolsPage() {
       ) : null}
     </div>
   )
-}
-
-function hexHint(mode: DevConvertMode): string {
-  if (mode === 'utf8-to-hex') return '任意文本，按 UTF-8 编码'
-  if (mode === 'base64-to-hex') return '标准 Base64'
-  return '十六进制，可带 0x 或空格'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

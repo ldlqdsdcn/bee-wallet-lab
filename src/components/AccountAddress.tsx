@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { shorten } from '../lib/format'
 import { explorerTabTitle } from '../lib/explorer'
 import { useBrowserStore } from '../store/browserStore'
+import { useT } from '../i18n'
 
 export function AccountAddress({
   address,
@@ -12,6 +13,7 @@ export function AccountAddress({
   explorerUrl: string | null
   label?: string
 }) {
+  const t = useT()
   const open = useBrowserStore((s) => s.open)
   const [copied, setCopied] = useState(false)
 
@@ -36,7 +38,7 @@ export function AccountAddress({
         className="shrink-0 text-[11px] text-honey-400 hover:text-honey-500"
         onClick={() => void copy()}
       >
-        {copied ? '已复制' : '复制'}
+        {copied ? t('common.copied') : t('common.copy')}
       </button>
       {explorerUrl ? (
         <button
@@ -44,7 +46,7 @@ export function AccountAddress({
           className="shrink-0 text-[11px] text-honey-400 hover:text-honey-500"
           onClick={() => open(explorerUrl, explorerTabTitle(explorerUrl))}
         >
-          浏览器
+          {t('common.browser')}
         </button>
       ) : null}
     </div>

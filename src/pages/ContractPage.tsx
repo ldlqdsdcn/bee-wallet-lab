@@ -19,12 +19,14 @@ import { shorten, walletTypeLabel } from '../lib/format'
 import { useBrowserStore } from '../store/browserStore'
 import { useWalletStore } from '../store/walletStore'
 import { currentNetworkOf, useNetworkStore } from '../store/networkStore'
+import { useT, type MessageKey } from '../i18n'
 
 function isRead(fn: AbiFunctionInfo): boolean {
   return fn.stateMutability === 'view' || fn.stateMutability === 'pure'
 }
 
 export default function ContractPage() {
+  const t = useT()
   const currentWalletId = useWalletStore((s) => s.currentId)
   const networks = useNetworkStore((s) => s.networks)
   const networkPk = useNetworkStore((s) => s.currentPk)
@@ -153,26 +155,27 @@ export default function ContractPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <div>
-        <h1 className="text-lg font-semibold text-ink-200">合约交互</h1>
+        <h1 className="text-lg font-semibold text-ink-200">{t('contract.title')}</h1>
         <p className="mt-1 text-xs text-ink-500">
-          {network ? `${network.networkName} · ${walletTypeLabel(network.walletType)}` : '请先在侧栏选择网络'}
-          {' · 读取 view/pure，写入后可只签名或再广播'}
+          {network ? `${network.networkName} · ${walletTypeLabel(network.walletType)}` : t('contract.needNetwork')}
+          {' · '}
+          {t('contract.subtitle')}
         </p>
       </div>
 
       <Alert>{error}</Alert>
 
       {!supported ? (
-        <Card title="当前网络">
-          <p className="text-sm text-ink-400">合约交互只支持 EVM 和 TRON，请在侧栏切换网络。</p>
+        <Card title={t('network.current')}>
+          <p className="text-sm text-ink-400">{t('contract.unsupported')}</p>
         </Card>
       ) : (
         <>
-          <Card title="合约">
+          <Card title={t('contract.card')}>
             <div className="space-y-3">
-              <Select label="调用账户" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+              <Select label={t('contract.caller')} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
                 {filteredAccounts.length === 0 ? (
-                  <option value="">当前网络没有可用账户</option>
+                  <option value="">{t('transfer.noAccount')}</option>
                 ) : (
                   filteredAccounts.map((item) => (
                     <option key={item.id} value={item.id}>
@@ -182,15 +185,15 @@ export default function ContractPage() {
                 )}
               </Select>
               <Field
-                label="合约地址"
+                label={t('contract.address')}
                 className="sensitive"
                 value={contractAddress}
-                placeholder={network.walletType === 'tron' ? 'T… 或 0x…' : '0x…'}
+                placeholder={network.walletType === 'tron' ? t('contract.addressPhTron') : '0x…'}
                 onChange={(e) => setContractAddress(e.target.value)}
               />
               {saved.length > 0 ? (
                 <Select
-                  label="已保存 ABI"
+                  label={t('contract.savedAbi')}
                   value={savedId}
                   onChange={(e) => {
                     const id = e.target.value
@@ -203,10 +206,10 @@ export default function ContractPage() {
                     })
                   }}
                 >
-                  <option value="">选择已导入的 ABI</option>
+                  <option value="">{t('abi.pickSaved')}</option>
                   {saved.map((item) => (
                     <option key={item.id} value={item.id}>
-                      {item.name} · {item.functionCount} 函数
+                      {t('contract.fnCount', { name: item.name, count: item.functionCount })}
                     </option>
                   ))}
                 </Select>
@@ -214,7 +217,7 @@ export default function ContractPage() {
               <TextArea
                 label="ABI JSON"
                 className="sensitive min-h-28 font-mono text-xs"
-                hint="可从「ABI 工具」保存后在这里选用，或直接粘贴"
+                hint={t('contract.abiHint')}
                 value={abiText}
                 onChange={(e) => setAbiText(e.target.value)}
               />
@@ -227,7 +230,7 @@ export default function ContractPage() {
                     })
                   }
                 >
-                  解析 ABI
+                  {t('contract.parseAbi')}
                 </Button>
                 <Button
                   variant="ghost"
@@ -240,7 +243,7 @@ export default function ContractPage() {
                     })
                   }
                 >
-                  载入 ERC-20
+                  {t('abi.loadErc20')}
                 </Button>
               </div>
             </div>
@@ -250,18 +253,18 @@ export default function ContractPage() {
             <>
               <div className="flex gap-2">
                 <Button variant={tab === 'read' ? 'primary' : 'ghost'} onClick={() => setTab('read')}>
-                  读取
+                  {t('contract.read')}
                 </Button>
                 <Button variant={tab === 'write' ? 'primary' : 'ghost'} onClick={() => setTab('write')}>
-                  写入
+                  {t('contract.write')}
                 </Button>
               </div>
 
               <Card title={tab === 'read' ? 'Read Contract' : 'Write Contract'}>
                 <div className="space-y-3">
-                  <Select label="函数" value={fnSig} onChange={(e) => setFnSig(e.target.value)}>
+                  <Select label={t('contract.fn')} value={fnSig} onChange={(e) => setFnSig(e.target.value)}>
                     {functions.length === 0 ? (
-                      <option value="">{tab === 'read' ? '没有 view / pure 函数' : '没有可写函数'}</option>
+                      <option value="">{tab === 'read' ? t('contract.noRead') : t('contract.noWrite')}</option>
                     ) : (
                       functions.map((item) => (
                         <option key={item.signature} value={item.signature}>
@@ -278,7 +281,7 @@ export default function ContractPage() {
                       key={`${selectedFn.signature}-${index}`}
                       label={paramLabel(input, index)}
                       className="sensitive font-mono"
-                      hint={paramHint(input)}
+                      hint={paramHint(input, t)}
                       value={args[index] ?? ''}
                       onChange={(e) => setArgs((prev) => prev.map((item, i) => (i === index ? e.target.value : item)))}
                     />
@@ -286,7 +289,7 @@ export default function ContractPage() {
 
                   {tab === 'write' && selectedFn?.stateMutability === 'payable' ? (
                     <Field
-                      label={`附带 ${network.coinEasy || (network.walletType === 'tron' ? 'TRX' : 'ETH')}`}
+                      label={t('contract.value', { symbol: network.coinEasy || (network.walletType === 'tron' ? 'TRX' : 'ETH') })}
                       value={value}
                       onChange={(e) => setValue(e.target.value)}
                     />
@@ -294,11 +297,11 @@ export default function ContractPage() {
 
                   {tab === 'write' ? (
                     <>
-                      <Select label="费率" value={feeLevel} onChange={(e) => setFeeLevel(e.target.value as FeeLevel)}>
-                        <option value="low">慢</option>
-                        <option value="medium">标准</option>
-                        <option value="high">快</option>
-                        <option value="custom">自定义</option>
+                      <Select label={t('common.fee')} value={feeLevel} onChange={(e) => setFeeLevel(e.target.value as FeeLevel)}>
+                        <option value="low">{t('common.slow')}</option>
+                        <option value="medium">{t('common.standard')}</option>
+                        <option value="high">{t('common.fast')}</option>
+                        <option value="custom">{t('common.custom')}</option>
                       </Select>
                       {feeLevel === 'custom' && network.walletType === 'web3' ? (
                         <div className="grid gap-3 sm:grid-cols-2">
@@ -316,13 +319,13 @@ export default function ContractPage() {
                       ) : null}
                       {network.walletType === 'web3' ? (
                         <div className="grid gap-3 sm:grid-cols-2">
-                          <Field label="Nonce（可空）" value={nonce} onChange={(e) => setNonce(e.target.value)} />
-                          <Field label="Gas Limit（可空）" value={gasLimit} onChange={(e) => setGasLimit(e.target.value)} />
+                          <Field label={t('contract.nonce')} value={nonce} onChange={(e) => setNonce(e.target.value)} />
+                          <Field label={t('contract.gas')} value={gasLimit} onChange={(e) => setGasLimit(e.target.value)} />
                         </div>
                       ) : (
                         <Field
                           label="feeLimit (TRX)"
-                          hint="默认 40"
+                          hint={t('contract.feeLimitHint')}
                           value={feeLimit}
                           onChange={(e) => setFeeLimit(e.target.value)}
                         />
@@ -348,7 +351,7 @@ export default function ContractPage() {
                         })
                       }
                     >
-                      调用
+                      {t('contract.call')}
                     </Button>
                   ) : (
                     <div className="flex flex-wrap gap-2">
@@ -379,7 +382,7 @@ export default function ContractPage() {
                           })
                         }
                       >
-                        预览
+                        {t('common.preview')}
                       </Button>
                       <Button
                         disabled={busy || !preview}
@@ -392,7 +395,7 @@ export default function ContractPage() {
                           })
                         }
                       >
-                        签名（不广播）
+                        {t('txLab.signOnly')}
                       </Button>
                     </div>
                   )}
@@ -402,7 +405,7 @@ export default function ContractPage() {
                       <p>
                         {preview.signature} → {shorten(preview.contractAddress)}
                       </p>
-                      <p>手续费 {preview.feeText}</p>
+                      <p>{t('transfer.feeText', { fee: preview.feeText })}</p>
                       {preview.value !== '0' ? <p>value {preview.value}</p> : null}
                       {preview.warnings.map((item) => (
                         <p key={item} className="text-honey-400">
@@ -416,7 +419,7 @@ export default function ContractPage() {
                     <div className="space-y-2 rounded-lg bg-ink-900 px-3 py-2">
                       <p className="font-mono text-[11px] text-ink-400">{readResult.signature}</p>
                       {readResult.values.length === 0 ? (
-                        <p className="text-xs text-ink-500">没有返回值</p>
+                        <p className="text-xs text-ink-500">{t('contract.noReturn')}</p>
                       ) : (
                         readResult.values.map((item) => (
                           <p key={`${item.name}-${item.type}`} className="break-all font-mono text-[11px] text-ink-300">
@@ -429,7 +432,7 @@ export default function ContractPage() {
                         className="px-2 py-1 text-xs"
                         onClick={() => void copy('read', JSON.stringify(readResult, null, 2))}
                       >
-                        {copied === 'read' ? '已复制' : '复制结果'}
+                        {copied === 'read' ? t('common.copied') : t('contract.copyResult')}
                       </Button>
                     </div>
                   ) : null}
@@ -439,7 +442,7 @@ export default function ContractPage() {
           ) : null}
 
           {signed ? (
-            <Card title="已签名，尚未广播">
+            <Card title={t('txLab.signed')}>
               <div className="space-y-3">
                 <p className="text-xs text-ink-500">
                   {signed.signature} · Tx Hash {shorten(signed.txid, 10, 8)}
@@ -449,7 +452,7 @@ export default function ContractPage() {
                 </pre>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => void copy('raw', signed.raw)}>
-                    {copied === 'raw' ? '已复制' : '复制 Raw'}
+                    {copied === 'raw' ? t('common.copied') : t('txLab.copyRaw')}
                   </Button>
                   <Button
                     disabled={busy || Boolean(receipt)}
@@ -470,7 +473,7 @@ export default function ContractPage() {
                       })
                     }
                   >
-                    广播
+                    {t('common.broadcast')}
                   </Button>
                 </div>
               </div>
@@ -478,19 +481,19 @@ export default function ContractPage() {
           ) : null}
 
           {receipt ? (
-            <Card title="广播结果">
+            <Card title={t('txLab.result')}>
               <div className="space-y-2">
                 <p className="text-xs text-honey-400">
                   {receipt.transaction.status === 'confirmed'
-                    ? '交易已确认'
+                    ? t('transfer.confirmed')
                     : receipt.transaction.status === 'failed'
-                      ? '交易失败'
-                      : '已广播，正在确认…'}
+                      ? t('transfer.failed')
+                      : t('transfer.pending')}
                 </p>
                 <p className="sensitive break-all font-mono text-[11px] text-ink-300">{receipt.txid}</p>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => void copy('txid', receipt.txid)}>
-                    {copied === 'txid' ? '已复制' : '复制 Tx Hash'}
+                    {copied === 'txid' ? t('common.copied') : t('txLab.copyHash')}
                   </Button>
                   {receipt.explorerUrl ? (
                     <Button
@@ -498,7 +501,7 @@ export default function ContractPage() {
                       className="px-2 py-1 text-xs"
                       onClick={() => openExplorer(receipt.explorerUrl!, explorerTabTitle(receipt.explorerUrl!))}
                     >
-                      在浏览器中查看
+                      {t('transfer.openExplorer')}
                     </Button>
                   ) : null}
                 </div>
@@ -515,9 +518,9 @@ function paramLabel(input: AbiParamInfo, index: number): string {
   return `${input.name || `arg${index}`} (${input.type})`
 }
 
-function paramHint(input: AbiParamInfo): string | undefined {
-  if (input.type === 'address') return '0x 地址，TRON 也可用 T 开头地址'
-  if (input.type.endsWith('[]') || input.type.startsWith('tuple')) return '请填 JSON'
+function paramHint(input: AbiParamInfo, t: (key: MessageKey) => string): string | undefined {
+  if (input.type === 'address') return t('abi.hintAddress')
+  if (input.type.endsWith('[]') || input.type.startsWith('tuple')) return t('abi.hintJson')
   return undefined
 }
 

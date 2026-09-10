@@ -96,7 +96,7 @@ export class BridgeError extends Error {
 
 function bridge() {
   if (typeof window === 'undefined' || !window.beeWallet) {
-    throw new BridgeError('NO_BRIDGE', '未检测到主进程桥接，请在 Electron 中运行')
+    throw new BridgeError('NO_BRIDGE', 'No main-process bridge. Run this app in Electron.')
   }
   return window.beeWallet
 }
@@ -104,7 +104,7 @@ function bridge() {
 export async function call<T>(channel: IpcChannel, payload?: unknown): Promise<T> {
   const result = await bridge().invoke<T>(channel, payload)
   if (!result.ok) {
-    throw new BridgeError(result.error?.code ?? 'INTERNAL', result.error?.message ?? '调用失败')
+    throw new BridgeError(result.error?.code ?? 'INTERNAL', result.error?.message ?? 'Request failed')
   }
   return result.data as T
 }

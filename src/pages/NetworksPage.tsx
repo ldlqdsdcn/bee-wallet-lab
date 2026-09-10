@@ -5,6 +5,7 @@ import { IPC_EVENT } from '@shared/ipc'
 import { catalogApi, on } from '../lib/bridge'
 import { Alert, Button, Card, Field, Select } from '../components/ui'
 import { NetworkIcon } from '../components/NetworkSelect'
+import { useT } from '../i18n'
 
 const TYPE_LABEL: Record<WalletType, string> = {
   bitcoin: 'Bitcoin',
@@ -28,11 +29,11 @@ const EMPTY: NetworkUpsertInput = {
   remark: '',
 }
 
-function chainHint(type: WalletType): string {
-  if (type === 'bitcoin') return '例如 Mainnet / Testnet'
-  if (type === 'tron') return '例如 728126428（主网）'
-  if (type === 'solana') return '主网 101，Devnet 103'
-  return '十进制 chainId，例如 1 / 56 / 42161'
+function chainHint(type: WalletType, t: ReturnType<typeof useT>): string {
+  if (type === 'bitcoin') return t('networks.hintBtc')
+  if (type === 'tron') return t('networks.hintTron')
+  if (type === 'solana') return t('networks.hintSol')
+  return t('networks.hintEvm')
 }
 
 function networkLabel(network: NetworkRecord): string {
@@ -56,6 +57,7 @@ function fromRecord(item: NetworkRecord): NetworkUpsertInput {
 }
 
 export default function NetworksPage() {
+  const t = useT()
   const [networks, setNetworks] = useState<NetworkRecord[]>([])
   const [form, setForm] = useState<NetworkUpsertInput>(EMPTY)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -130,7 +132,7 @@ export default function NetworksPage() {
   const applyLookup = async (query: { q?: string; chainId?: string }, typedName?: string) => {
     const result = await catalogApi.lookup(query)
     if (!result.supported) {
-      setError(result.hint ?? '暂不支持该网络')
+      setError(result.hint ?? t('networks.unsupported'))
       setMessage(null)
       if (typedName !== undefined) patch({ networkName: typedName })
       return
@@ -147,11 +149,14 @@ export default function NetworksPage() {
       coinId: result.network?.coinId || result.native?.tokenId || prev.coinId,
     }))
     const hot = result.tokens.map((item) => item.symbol).join(' / ')
-    const origin = result.source === 'remote' ? '目录站' : '本地预设'
+    const origin = result.source === 'remote' ? t('networks.lookupRemote') : t('networks.lookupLocal')
     setMessage(
-      `${origin}：${result.network.networkName}，主币 ${result.native?.symbol ?? result.network.coinEasy}${
-        hot ? `，热门 ${hot}` : ''
-      }`,
+      t('networks.lookupMsg', {
+        origin,
+        name: result.network.networkName,
+        symbol: result.native?.symbol ?? result.network.coinEasy ?? '',
+        hot: hot ? t('networks.lookupHot', { hot }) : '',
+      }),
     )
   }
 
@@ -161,7 +166,7 @@ export default function NetworksPage() {
         ...form,
         id: editingId ?? undefined,
       })
-      setMessage(editingId ? '网络已保存' : '网络已添加，并写入了主币和热门代币')
+      setMessage(editingId ? t('networks.saved') : t('networks.added'))
       resetForm()
     })
 
@@ -175,27 +180,27 @@ export default function NetworksPage() {
   const restore = () =>
     run(async () => {
       const result = await catalogApi.sync(true)
-      setMessage(`已恢复内置目录：${result.networks} 个网络 / ${result.tokens} 个代币`)
+      setMessage(t('networks.restored', { networks: result.networks, tokens: result.tokens }))
     })
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-lg font-semibold text-ink-200">网络维护</h1>
+          <h1 className="text-lg font-semibold text-ink-200">{t('networks.title')}</h1>
           <p className="mt-1 text-xs text-ink-500">
-            点常用链或输入 chainId / 名称，会先问目录站（设置了地址时），否则用本地预设，自动带上主币和热门代币。
+            {t('networks.hint')}
           </p>
         </div>
         <Button variant="ghost" disabled={busy} onClick={() => void restore()}>
-          恢复内置
+          {t('common.restore')}
         </Button>
       </div>
 
       <Alert>{error}</Alert>
       {message ? <p className="text-xs text-honey-400">{message}</p> : null}
 
-      <Card title={editingId ? '编辑网络' : '添加网络'}>
+      <Card title={editingId ? t('networks.edit') : t('networks.add')}>
         {!editingId ? (
           <div className="mb-4 flex flex-wrap gap-2">
             {featuredNetworkPresets().map((preset) => (
@@ -214,17 +219,17 @@ export default function NetworksPage() {
                 }}
               >
                 {preset.networkName}
-                {preset.supported ? ` · ${preset.coinEasy}` : ' · 未支持'}
+                {preset.supported ? ` · ${preset.coinEasy}` : ` · ${t('networks.unsupportedTag')}`}
               </button>
             ))}
           </div>
         ) : null}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field
-            label="名称"
+            label={t('networks.name')}
             value={form.networkName}
-            placeholder="例如 Base / Xone / Polygon"
-            hint="输入完整名称或 chainId 会自动匹配主币"
+            placeholder={t('networks.namePh')}
+            hint={t('networks.nameHint')}
             onChange={(e) => {
               const networkName = e.target.value
               patch({ networkName })
@@ -243,14 +248,14 @@ export default function NetworksPage() {
             }}
           />
           <Field
-            label="原生符号"
+            label={t('networks.symbol')}
             value={form.coinEasy ?? ''}
             placeholder="ETH / XOC / POL"
-            hint="主币符号。不填时按 chainId 匹配，EVM 未知链才默认 ETH"
+            hint={t('networks.symbolHint')}
             onChange={(e) => patch({ coinEasy: e.target.value })}
           />
           <Select
-            label="链类型"
+            label={t('networks.walletType')}
             value={form.walletType}
             onChange={(e) => patch({ walletType: e.target.value as WalletType, chainId: '' })}
           >
@@ -261,18 +266,18 @@ export default function NetworksPage() {
             ))}
           </Select>
           <Select
-            label="网络环境"
+            label={t('networks.scope')}
             value={form.networkScope}
             onChange={(e) => patch({ networkScope: e.target.value as NetworkScope })}
           >
-            <option value="mainnet">主网</option>
-            <option value="testnet">测试网</option>
+            <option value="mainnet">{t('common.mainnet')}</option>
+            <option value="testnet">{t('common.testnet')}</option>
           </Select>
           <Field
             label="chainId"
             value={form.chainId}
-            placeholder={chainHint(form.walletType)}
-            hint={chainHint(form.walletType)}
+            placeholder={chainHint(form.walletType, t)}
+            hint={chainHint(form.walletType, t)}
             onChange={(e) => {
               const chainId = e.target.value
               patch({ chainId })
@@ -290,51 +295,51 @@ export default function NetworksPage() {
             }}
           />
           <Field
-            label="链名称（可选）"
+            label={t('networks.chainName')}
             value={form.chainName ?? ''}
             placeholder="Mainnet"
             onChange={(e) => patch({ chainName: e.target.value })}
           />
           <Field
-            label="RPC 地址（可选）"
+            label={t('networks.rpc')}
             value={form.rpcUrl ?? ''}
             placeholder="https://"
             onChange={(e) => patch({ rpcUrl: e.target.value })}
           />
           <Field
-            label="浏览器（可选）"
+            label={t('networks.browser')}
             value={form.browser ?? ''}
             placeholder="https://..."
             onChange={(e) => patch({ browser: e.target.value })}
           />
           <Field
-            label="CoinGecko id（可选）"
+            label={t('networks.coinId')}
             value={form.coinId ?? ''}
             placeholder="ethereum"
-            hint="给原生币拉行情用，例如 ethereum、solana"
+            hint={t('networks.coinIdHint')}
             onChange={(e) => patch({ coinId: e.target.value })}
           />
           <Field
-            label="备注（可选）"
+            label={t('networks.remark')}
             value={form.remark ?? ''}
             onChange={(e) => patch({ remark: e.target.value })}
           />
         </div>
         <div className="mt-4 flex gap-2">
           <Button disabled={busy || !form.networkName.trim() || !form.chainId.trim()} onClick={() => void save()}>
-            {editingId ? '保存' : '添加'}
+            {editingId ? t('common.save') : t('common.add')}
           </Button>
           {editingId ? (
             <Button variant="ghost" disabled={busy} onClick={resetForm}>
-              取消
+              {t('common.cancel')}
             </Button>
           ) : null}
         </div>
       </Card>
 
-      <Card title={`网络列表 · ${networks.length}`}>
+      <Card title={t('networks.list', { count: networks.length })}>
         {networks.length === 0 ? (
-          <p className="text-sm text-ink-400">还没有网络。点「恢复内置」装入打包目录，或在上方添加自定义链。</p>
+          <p className="text-sm text-ink-400">{t('networks.empty')}</p>
         ) : (
           grouped.map((group) => (
             <div key={group.type} className="mb-4 last:mb-0">
@@ -347,10 +352,10 @@ export default function NetworksPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="truncate text-sm font-medium text-ink-200">{networkLabel(item)}</span>
                         <span className="rounded bg-ink-700 px-1.5 py-0.5 text-[10px] uppercase text-ink-400">
-                          {item.source === 'builtin' ? '内置' : '自建'}
+                          {item.source === 'builtin' ? t('common.builtin') : t('common.customSource')}
                         </span>
                         {item.networkScope === 'testnet' ? (
-                          <span className="text-[10px] text-ink-600">测试</span>
+                          <span className="text-[10px] text-ink-600">{t('common.testShort')}</span>
                         ) : null}
                       </div>
                       <p className="mt-0.5 font-mono text-xs text-ink-500">
@@ -360,21 +365,21 @@ export default function NetworksPage() {
                     </div>
                     <div className="flex shrink-0 gap-2">
                       <Button variant="ghost" className="px-2 py-1 text-xs" disabled={busy} onClick={() => startEdit(item)}>
-                        编辑
+                        {t('common.edit')}
                       </Button>
                       <Button
                         variant="ghost"
                         className="px-2 py-1 text-xs hover:border-red-500 hover:text-red-400"
                         disabled={busy}
                         onClick={() => {
-                          if (!window.confirm(`删除「${item.networkName}」会同时去掉该网络的代币和节点。确定？`)) return
+                          if (!window.confirm(t('networks.deleteConfirm', { name: item.networkName }))) return
                           void run(async () => {
                             await catalogApi.removeNetwork(item.id)
                             if (editingId === item.id) resetForm()
                           })
                         }}
                       >
-                        删除
+                        {t('common.delete')}
                       </Button>
                     </div>
                   </li>

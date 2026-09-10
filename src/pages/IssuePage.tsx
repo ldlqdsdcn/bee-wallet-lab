@@ -16,17 +16,21 @@ import { formatAmount, shorten } from '../lib/format'
 import { useBrowserStore } from '../store/browserStore'
 import { useWalletStore } from '../store/walletStore'
 import { currentNetworkOf, useNetworkStore } from '../store/networkStore'
+import { useT, type MessageKey } from '../i18n'
 
-const SUPPLY_PRESETS = [
-  { label: '10 亿', value: '1000000000' },
-  { label: '1 亿', value: '100000000' },
-  { label: '1000 万', value: '10000000' },
+const SUPPLY_PRESETS: { key: MessageKey; value: string }[] = [
+  { key: 'issue.supply1b', value: '1000000000' },
+  { key: 'issue.supply100m', value: '100000000' },
+  { key: 'issue.supply10m', value: '10000000' },
 ]
 
-function statusLabel(status: IssuedTokenRecord['status']): string {
-  if (status === 'confirmed') return '已确认'
-  if (status === 'failed') return '失败'
-  return '待确认'
+function statusLabel(
+  status: IssuedTokenRecord['status'],
+  t: ReturnType<typeof useT>,
+): string {
+  if (status === 'confirmed') return t('issue.statusConfirmed')
+  if (status === 'failed') return t('issue.statusFailed')
+  return t('issue.statusPending')
 }
 
 function statusClass(status: IssuedTokenRecord['status']): string {
@@ -41,6 +45,7 @@ function formatTime(at: number): string {
 }
 
 export default function IssuePage() {
+  const t = useT()
   const navigate = useNavigate()
   const currentWalletId = useWalletStore((s) => s.currentId)
   const networks = useNetworkStore((s) => s.networks)
@@ -176,21 +181,21 @@ export default function IssuePage() {
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <div>
-        <h1 className="text-lg font-semibold text-ink-200">发行代币</h1>
+        <h1 className="text-lg font-semibold text-ink-200">{t('issue.title')}</h1>
         <p className="mt-1 text-xs text-ink-500">
-          {network ? network.networkName : '请先在侧栏选择网络'}
+          {network ? network.networkName : t('issue.needNetworkSidebar')}
           {canIssue
-            ? ` · 固定总量 ${chainLabel}，一次性铸给当前账户`
-            : ' · 请先选择 EVM 或 Solana 网络'}
+            ? ` · ${t('issue.fixedMint', { chain: chainLabel })}`
+            : ` · ${t('issue.needEvmSol')}`}
         </p>
       </div>
 
       <Alert>{error}</Alert>
 
-      <Card title={`已部署 · ${issues.length}`}>
+      <Card title={t('issue.deployed', { count: issues.length })}>
         {issues.length === 0 ? (
           <p className="text-sm text-ink-400">
-            当前网络还没有通过本页部署过的代币。部署确认后会出现在这里，包含合约地址和发行总量。
+            {t('issue.empty')}
           </p>
         ) : (
           <ul className="divide-y divide-ink-700">
@@ -208,24 +213,24 @@ export default function IssuePage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm text-ink-200">
-                          {item.name}（{item.symbol}）
+                          {t('issue.nameSymbol', { name: item.name, symbol: item.symbol })}
                         </span>
-                        <span className={`text-[10px] ${statusClass(item.status)}`}>{statusLabel(item.status)}</span>
-                        <span className="text-[10px] text-ink-600">{item.decimals} 位精度</span>
+                        <span className={`text-[10px] ${statusClass(item.status)}`}>{statusLabel(item.status, t)}</span>
+                        <span className="text-[10px] text-ink-600">{t('issue.decimalsN', { n: item.decimals })}</span>
                       </div>
                       <p className="mt-0.5 text-[11px] text-ink-400">
-                        总量 {formatAmount(item.supply)} {item.symbol}
+                        {t('issue.supplyLine', { amount: formatAmount(item.supply), symbol: item.symbol })}
                         {item.createdAt ? ` · ${formatTime(item.createdAt)}` : ''}
                       </p>
                       {item.contractAddress ? (
                         <div className="mt-1">
-                          <AccountAddress label="合约" address={item.contractAddress} explorerUrl={contractUrl} />
+                          <AccountAddress label={t('issue.contract')} address={item.contractAddress} explorerUrl={contractUrl} />
                         </div>
                       ) : (
-                        <p className="mt-1 text-[11px] text-ink-500">合约地址确认中…</p>
+                        <p className="mt-1 text-[11px] text-ink-500">{t('issue.contractPending')}</p>
                       )}
                       <div className="mt-1">
-                        <AccountAddress label="交易" address={item.txid} explorerUrl={txUrl} />
+                        <AccountAddress label={t('issue.tx')} address={item.txid} explorerUrl={txUrl} />
                       </div>
                     </div>
                     <div className="flex shrink-0 flex-col gap-2">
@@ -239,7 +244,7 @@ export default function IssuePage() {
                             })
                           }
                         >
-                          转账
+                          {t('issue.transfer')}
                         </Button>
                       ) : null}
                       {txUrl ? (
@@ -248,7 +253,7 @@ export default function IssuePage() {
                           className="px-2 py-1 text-xs"
                           onClick={() => openExplorer(txUrl, explorerTabTitle(txUrl))}
                         >
-                          详情
+                          {t('issue.detail')}
                         </Button>
                       ) : null}
                     </div>
@@ -261,25 +266,25 @@ export default function IssuePage() {
       </Card>
 
       {!canIssue ? (
-        <Card title="当前网络不支持">
+        <Card title={t('issue.unsupported')}>
           <p className="text-sm text-ink-400">
-            发币支持 EVM 上的 ERC-20，以及 Solana 上的固定总量 SPL。请切换到 Ethereum、Base、BSC 或 Solana。
+            {t('issue.unsupportedBody')}
           </p>
           <Button className="mt-3" variant="ghost" onClick={openPicker}>
-            切换网络
+            {t('issue.switchNetwork')}
           </Button>
         </Card>
       ) : (
-        <Card title="代币参数">
+        <Card title={t('issue.params')}>
           <div className="space-y-3">
             <Select
-              label="发行账户"
-              hint={solana ? '创建 mint 后，全部代币会打到这个地址' : '合约部署后，全部代币会打到这个地址'}
+              label={t('issue.account')}
+              hint={solana ? t('issue.accountHintSol') : t('issue.accountHintEvm')}
               value={accountId}
               onChange={(e) => setAccountId(e.target.value)}
             >
               {filteredAccounts.length === 0 ? (
-                <option value="">{solana ? '当前钱包没有 Solana 账户' : '当前钱包没有 EVM 账户'}</option>
+                <option value="">{solana ? t('issue.noSol') : t('issue.noEvm')}</option>
               ) : (
                 filteredAccounts.map((item) => (
                   <option key={item.id} value={item.id}>
@@ -289,39 +294,35 @@ export default function IssuePage() {
               )}
             </Select>
             <Field
-              label="代币名称"
-              placeholder="例如 Bee Token"
+              label={t('issue.tokenName')}
+              placeholder={t('issue.tokenNamePh')}
               value={name}
               maxLength={solana ? 32 : 64}
-              hint={solana ? 'Metaplex 链上名称最长 32 个字符' : undefined}
+              hint={solana ? t('issue.nameHintSol') : undefined}
               onChange={(e) => {
                 setName(e.target.value)
                 setPreview(null)
               }}
             />
             <Field
-              label="代币符号"
-              placeholder="例如 BEE"
+              label={t('issue.tokenSymbol')}
+              placeholder={t('issue.tokenSymbolPh')}
               value={symbol}
               maxLength={solana ? 10 : 16}
               className="uppercase"
-              hint={solana ? 'Metaplex 链上符号最长 10 位' : undefined}
+              hint={solana ? t('issue.symbolHintSol') : undefined}
               onChange={(e) => {
                 setSymbol(e.target.value.toUpperCase())
                 setPreview(null)
               }}
             />
             <Field
-              label="精度（decimals）"
+              label={t('issue.decimalsLabel')}
               type="number"
               min={0}
               max={solana ? 9 : 18}
               value={decimals}
-              hint={
-                solana
-                  ? 'Solana 常用 6 或 9。总量按这个精度换算成最小单位，不能超过 u64。'
-                  : '常用 18。总量按这个精度换算成最小单位后写入合约。'
-              }
+              hint={solana ? t('issue.decimalsHintSol') : t('issue.decimalsHintEvm')}
               onChange={(e) => {
                 setDecimals(e.target.value)
                 setPreview(null)
@@ -329,13 +330,9 @@ export default function IssuePage() {
             />
             <div>
               <Field
-                label="发行总量"
+                label={t('issue.supplyLabel')}
                 value={supply}
-                hint={
-                  solana
-                    ? '默认 10 亿枚。一次铸给发行账户，并关掉增发。'
-                    : '默认 10 亿枚。全部一次铸给发行账户，之后不能再增发。'
-                }
+                hint={solana ? t('issue.supplyHintSol') : t('issue.supplyHintEvm')}
                 onChange={(e) => {
                   setSupply(e.target.value)
                   setPreview(null)
@@ -353,7 +350,7 @@ export default function IssuePage() {
                       setPreview(null)
                     }}
                   >
-                    {item.label}
+                    {t(item.key)}
                   </Button>
                 ))}
               </div>
@@ -362,11 +359,11 @@ export default function IssuePage() {
             {solana ? (
               <div className="space-y-3 rounded-lg border border-ink-700 px-3 py-3">
                 <p className="text-xs text-ink-400">
-                  Solana 链上只存名称、符号和一份元数据 URI。Logo、官网写在这份 JSON 里，需要你先托管到可公开访问的地址（GitHub raw、自己的站点或 IPFS），再把链接填进下面的 URI。
+                  {t('issue.solMetaHint')}
                 </p>
                 <TextArea
-                  label="简介（可选）"
-                  placeholder="一句话介绍这个代币"
+                  label={t('issue.desc')}
+                  placeholder={t('issue.descPh')}
                   maxLength={200}
                   value={description}
                   onChange={(e) => {
@@ -375,17 +372,17 @@ export default function IssuePage() {
                   }}
                 />
                 <Field
-                  label="Logo 地址（可选）"
+                  label={t('issue.logo')}
                   placeholder="https://…/logo.png"
                   value={logoUrl}
-                  hint="图片的公开 URL，不是把图片上传到链上"
+                  hint={t('issue.logoHint')}
                   onChange={(e) => {
                     setLogoUrl(e.target.value)
                     setPreview(null)
                   }}
                 />
                 <Field
-                  label="官网（可选）"
+                  label={t('issue.website')}
                   placeholder="https://example.com"
                   value={website}
                   onChange={(e) => {
@@ -394,10 +391,10 @@ export default function IssuePage() {
                   }}
                 />
                 <Field
-                  label="元数据 URI"
+                  label={t('issue.metaUri')}
                   placeholder="https://…/metadata.json"
                   value={metadataUri}
-                  hint="托管后的 JSON 地址，最长 200 个字符。不填则链上只有名称符号，logo 只留在本机目录。"
+                  hint={t('issue.metaUriHint')}
                   onChange={(e) => {
                     setMetadataUri(e.target.value)
                     setPreview(null)
@@ -409,12 +406,17 @@ export default function IssuePage() {
             {preview ? (
               <div className="space-y-1 rounded-lg bg-ink-900 px-3 py-2 text-xs text-ink-400">
                 <p>
-                  {preview.name}（{preview.symbol}）· {formatAmount(preview.supply)} 枚 · {preview.decimals} 位精度
+                  {t('issue.previewLine', {
+                    name: preview.name,
+                    symbol: preview.symbol,
+                    amount: formatAmount(preview.supply),
+                    decimals: preview.decimals,
+                  })}
                 </p>
-                <p>接收地址 {shorten(preview.from)}</p>
+                <p>{t('issue.receive', { address: shorten(preview.from) })}</p>
                 {preview.contractAddress ? <p>Mint {shorten(preview.contractAddress)}</p> : null}
-                {preview.metadataUri ? <p className="break-all">元数据 URI {preview.metadataUri}</p> : null}
-                <p>预估费用 {preview.feeText}</p>
+                {preview.metadataUri ? <p className="break-all">{t('issue.metaUri')} {preview.metadataUri}</p> : null}
+                <p>{t('issue.estFee', { fee: preview.feeText })}</p>
                 {preview.warnings.map((item) => (
                   <p key={item} className="text-honey-400">
                     {item}
@@ -423,7 +425,7 @@ export default function IssuePage() {
                 {preview.metadataJson ? (
                   <div className="mt-2 space-y-2">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-ink-300">待托管的元数据 JSON</span>
+                      <span className="text-ink-300">{t('issue.metaJson')}</span>
                       <Button
                         type="button"
                         variant="ghost"
@@ -435,7 +437,7 @@ export default function IssuePage() {
                           })
                         }}
                       >
-                        {copiedJson ? '已复制' : '复制'}
+                        {copiedJson ? t('common.copied') : t('common.copy')}
                       </Button>
                     </div>
                     <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-ink-950 px-2 py-1 font-mono text-[11px] text-ink-300">
@@ -451,13 +453,13 @@ export default function IssuePage() {
                 <p className="text-xs text-honey-400">
                   {result.transaction.status === 'confirmed'
                     ? contractAddress
-                      ? '部署已确认，代币已写入本地目录'
-                      : '交易已确认'
+                      ? t('issue.confirmedCatalog')
+                      : t('issue.confirmed')
                     : result.transaction.status === 'failed'
-                      ? '部署失败'
+                      ? t('issue.failed')
                       : solana
-                        ? '已广播，正在等待确认…'
-                        : '已广播，正在等待合约地址…'}
+                        ? t('issue.pendingSol')
+                        : t('issue.pendingEvm')}
                 </p>
                 <p className="sensitive break-all font-mono text-[11px] text-ink-300">{result.txid}</p>
                 {contractAddress ? (
@@ -465,7 +467,7 @@ export default function IssuePage() {
                 ) : null}
                 {result.token ? (
                   <p className="text-[11px] text-ink-400">
-                    已加入代币目录：{result.token.name} / {result.token.symbol}。到资产总览刷新即可看到余额。
+                    {t('issue.inCatalog', { name: result.token.name ?? result.token.symbol, symbol: result.token.symbol })}
                   </p>
                 ) : null}
                 <div className="flex flex-wrap gap-2">
@@ -475,7 +477,7 @@ export default function IssuePage() {
                       className="px-2 py-1 text-xs"
                       onClick={() => openExplorer(result.explorerUrl!, explorerTabTitle(result.explorerUrl!))}
                     >
-                      查看交易
+                      {t('issue.viewTx')}
                     </Button>
                   ) : null}
                   {contractUrl ? (
@@ -484,7 +486,7 @@ export default function IssuePage() {
                       className="px-2 py-1 text-xs"
                       onClick={() => openExplorer(contractUrl, explorerTabTitle(contractUrl))}
                     >
-                      {solana ? '查看代币' : '查看合约'}
+                      {solana ? t('issue.viewToken') : t('issue.viewContract')}
                     </Button>
                   ) : null}
                   {result.token ? (
@@ -497,7 +499,7 @@ export default function IssuePage() {
                         })
                       }
                     >
-                      去资产总览
+                      {t('issue.goHome')}
                     </Button>
                   ) : null}
                 </div>
@@ -532,7 +534,7 @@ export default function IssuePage() {
                   })
                 }
               >
-                预览
+                {t('issue.preview')}
               </Button>
               <Button
                 disabled={busy || !preview}
@@ -545,15 +547,13 @@ export default function IssuePage() {
                   })
                 }
               >
-                签名并部署
+                {t('issue.signDeploy')}
               </Button>
             </div>
 
             {!account ? (
               <p className="text-xs text-ink-500">
-                {solana
-                  ? '当前钱包没有 Solana 账户，请先到「钱包与账户」派生。'
-                  : '当前钱包没有 EVM 账户，请先到「钱包与账户」派生。'}
+                {solana ? t('issue.needSolAccount') : t('issue.needEvmAccount')}
               </p>
             ) : null}
           </div>

@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import type { AppSettings, VaultStatus } from '@shared/types'
 import { IPC_EVENT } from '@shared/ipc'
+import { normalizeLocale } from '@shared/locale'
+import { translate } from '@shared/i18n'
 import { BridgeError, on, settingsApi, vaultApi } from '../lib/bridge'
 
 interface VaultStoreState {
@@ -40,7 +42,7 @@ export const useVaultStore = create<VaultStoreState>((set, get) => ({
 
   initialize: async (password, confirm) => {
     if (password !== confirm) {
-      set({ error: '两次输入的主密码不一致' })
+      set({ error: translate(normalizeLocale(get().settings?.language), 'lock.mismatch') })
       return
     }
     set({ error: null })
@@ -65,11 +67,15 @@ export const useVaultStore = create<VaultStoreState>((set, get) => ({
   },
 
   updateSettings: async (patch) => {
+    const previous = get().settings
+    if (previous) {
+      set({ settings: { ...previous, ...patch }, error: null })
+    }
     try {
       const settings = await settingsApi.update(patch)
       set({ settings, status: await vaultApi.status() })
     } catch (err) {
-      set({ error: messageOf(err) })
+      set({ settings: previous, error: messageOf(err) })
     }
   },
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { AddressBookEntry, NetworkScope, WalletType } from '@shared/types'
 import { addressBookApi } from '../lib/bridge'
+import { useT } from '../i18n'
 
 /**
  * 地址簿选择器：转账页填写收款地址时使用（任务 7 接入）。
@@ -18,6 +19,7 @@ export default function AddressBookPicker({
   networkPk?: string | null
   onSelect: (entry: AddressBookEntry) => void
 }) {
+  const t = useT()
   const [entries, setEntries] = useState<AddressBookEntry[]>([])
   const [open, setOpen] = useState(false)
   const [keyword, setKeyword] = useState('')
@@ -58,7 +60,7 @@ export default function AddressBookPicker({
         className="text-xs text-honey-400 hover:text-honey-500"
         onClick={() => setOpen((v) => !v)}
       >
-        从地址簿选择
+        {t('picker.addressBook')}
       </button>
 
       {open ? (
@@ -66,12 +68,12 @@ export default function AddressBookPicker({
           <input
             autoFocus
             className="mb-2 w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-1.5 text-xs text-ink-200 outline-none focus:border-honey-500"
-            placeholder="搜索名称 / 地址"
+            placeholder={t('picker.search')}
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
           />
           {filtered.length === 0 ? (
-            <p className="px-1 py-2 text-xs text-ink-400">当前网络没有匹配的地址簿条目</p>
+            <p className="px-1 py-2 text-xs text-ink-400">{t('picker.empty')}</p>
           ) : (
             <ul className="max-h-64 overflow-y-auto">
               {filtered.map((entry) => (

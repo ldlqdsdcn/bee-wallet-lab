@@ -4,6 +4,7 @@ import { IPC_EVENT } from '@shared/ipc'
 import { catalogApi, on, rpcApi, settingsApi } from '../lib/bridge'
 import { Alert, Button, Card, Field } from '../components/ui'
 import { NetworkIcon } from '../components/NetworkSelect'
+import { useT } from '../i18n'
 
 const TYPE_LABEL: Record<WalletType, string> = {
   bitcoin: 'Bitcoin',
@@ -18,12 +19,12 @@ function networkLabel(network: NetworkRecord): string {
   return network.chainName ? `${network.networkName} (${network.chainName})` : network.networkName
 }
 
-function urlHint(network: NetworkRecord | undefined): string {
-  if (!network) return 'http 或 https 地址'
-  if (network.walletType === 'bitcoin') return 'Esplora REST 根路径，例如 https://mempool.space/api'
-  if (network.walletType === 'tron') return '全节点 HTTP，例如 https://api.trongrid.io'
-  if (network.walletType === 'solana') return 'JSON-RPC，例如 https://api.mainnet-beta.solana.com'
-  return 'JSON-RPC，例如 https://ethereum-rpc.publicnode.com'
+function urlHint(network: NetworkRecord | undefined, t: ReturnType<typeof useT>): string {
+  if (!network) return t('nodes.hintGeneric')
+  if (network.walletType === 'bitcoin') return t('nodes.hintBtc')
+  if (network.walletType === 'tron') return t('nodes.hintTron')
+  if (network.walletType === 'solana') return t('nodes.hintSol')
+  return t('nodes.hintEvm')
 }
 
 function latencyClass(ms: number | null, error: string | null): string {
@@ -34,8 +35,8 @@ function latencyClass(ms: number | null, error: string | null): string {
   return 'text-red-300'
 }
 
-function formatLatency(node: RpcNodeRecord): string {
-  if (node.lastError) return '失败'
+function formatLatency(node: RpcNodeRecord, t: ReturnType<typeof useT>): string {
+  if (node.lastError) return t('common.failed')
   if (node.lastLatencyMs == null) return '—'
   return `${node.lastLatencyMs} ms`
 }
@@ -46,6 +47,7 @@ function formatChecked(at: number | null): string {
 }
 
 export default function RpcNodesPage() {
+  const t = useT()
   const [networks, setNetworks] = useState<NetworkRecord[]>([])
   const [networkPk, setNetworkPk] = useState('')
   const [nodes, setNodes] = useState<RpcNodeRecord[]>([])
@@ -177,8 +179,8 @@ export default function RpcNodesPage() {
     <div className="mx-auto flex max-w-6xl gap-5">
       <aside className="w-60 shrink-0 rounded-xl border border-ink-700 bg-ink-800/60">
         <div className="border-b border-ink-700 px-4 py-3">
-          <h1 className="text-sm font-semibold text-ink-200">网络</h1>
-          <p className="mt-1 text-[11px] text-ink-600">每个网络单独维护节点列表</p>
+          <h1 className="text-sm font-semibold text-ink-200">{t('nodes.sidebar')}</h1>
+          <p className="mt-1 text-[11px] text-ink-600">{t('nodes.sidebarHint')}</p>
         </div>
         <div className="max-h-[calc(100vh-10rem)] overflow-y-auto p-2">
           {grouped.map((group) => (
@@ -198,7 +200,7 @@ export default function RpcNodesPage() {
                     <NetworkIcon src={item.icon} name={item.networkName} size={18} />
                     <span className="min-w-0 flex-1 truncate">{networkLabel(item)}</span>
                     {item.networkScope === 'testnet' ? (
-                      <span className="shrink-0 text-[10px] text-ink-600">测试</span>
+                      <span className="shrink-0 text-[10px] text-ink-600">{t('common.testShort')}</span>
                     ) : null}
                   </button>
                 )
@@ -211,52 +213,52 @@ export default function RpcNodesPage() {
       <div className="min-w-0 flex-1 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-lg font-semibold text-ink-200">节点维护</h1>
+            <h1 className="text-lg font-semibold text-ink-200">{t('nodes.title')}</h1>
             <p className="mt-1 text-xs text-ink-500">
-              {current ? networkLabel(current) : '选择网络'}
-              {selected ? ' · 已手动指定当前节点' : ' · 未指定时自动选通最快的节点'}
+              {current ? networkLabel(current) : t('network.pick')}
+              {selected ? ` · ${t('nodes.manual')}` : ` · ${t('nodes.auto')}`}
             </p>
           </div>
           <div className="flex shrink-0 gap-2">
             {selected ? (
               <Button variant="ghost" disabled={busy} onClick={() => void run(() => rpcApi.useAuto(networkPk).then(() => undefined))}>
-                改回自动
+                {t('nodes.useAuto')}
               </Button>
             ) : null}
             <Button variant="ghost" disabled={busy || !networkPk} onClick={() => void pingAll()}>
-              {pinging === 'all' ? '测速中…' : '全部测速'}
+              {pinging === 'all' ? t('common.pinging') : t('common.pingAll')}
             </Button>
             <Button
               variant="ghost"
               disabled={busy || !networkPk}
               onClick={() => void run(() => rpcApi.restore(networkPk).then(() => undefined))}
             >
-              恢复内置
+              {t('common.restore')}
             </Button>
           </div>
         </div>
 
         {error ? <Alert>{error}</Alert> : null}
 
-        <Card title="添加节点">
+        <Card title={t('nodes.add')}>
           <div className="grid grid-cols-[1fr_160px_auto] items-end gap-3">
             <Field
-              label="RPC 地址"
+              label={t('nodes.url')}
               value={url}
-              placeholder={urlHint(current)}
-              hint={urlHint(current)}
+              placeholder={urlHint(current, t)}
+              hint={urlHint(current, t)}
               onChange={(e) => setUrl(e.target.value)}
             />
-            <Field label="备注（可选）" value={label} placeholder="例如：本地 geth" onChange={(e) => setLabel(e.target.value)} />
+            <Field label={t('common.optionalMemo')} value={label} placeholder={t('nodes.labelPh')} onChange={(e) => setLabel(e.target.value)} />
             <Button disabled={busy || !url.trim() || !networkPk} onClick={() => void add()}>
-              添加
+              {t('common.add')}
             </Button>
           </div>
         </Card>
 
-        <Card title={`节点列表 · ${nodes.length}`}>
+        <Card title={t('nodes.list', { count: nodes.length })}>
           {nodes.length === 0 ? (
-            <p className="text-sm text-ink-400">这个网络还没有节点。同步目录后会自动写入内置公共节点。</p>
+            <p className="text-sm text-ink-400">{t('nodes.empty')}</p>
           ) : (
             <ul className="divide-y divide-ink-700">
               {nodes.map((node) => (
@@ -265,15 +267,15 @@ export default function RpcNodesPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="truncate text-sm font-medium text-ink-200">{node.label || node.url}</span>
                       {node.isSelected ? (
-                        <span className="rounded bg-honey-600/20 px-1.5 py-0.5 text-[10px] text-honey-400">当前</span>
+                        <span className="rounded bg-honey-600/20 px-1.5 py-0.5 text-[10px] text-honey-400">{t('common.current')}</span>
                       ) : null}
                       <span className="rounded bg-ink-700 px-1.5 py-0.5 text-[10px] uppercase text-ink-400">
-                        {node.source === 'builtin' ? '内置' : '自建'}
+                        {node.source === 'builtin' ? t('common.builtin') : t('common.customSource')}
                       </span>
                     </div>
                     <p className="mt-0.5 truncate font-mono text-xs text-ink-500">{node.url}</p>
                     <p className={`mt-1 text-xs ${latencyClass(node.lastLatencyMs, node.lastError)}`}>
-                      延迟 {formatLatency(node)}
+                      {t('common.latency', { value: formatLatency(node, t) })}
                       {formatChecked(node.lastCheckedAt) ? ` · ${formatChecked(node.lastCheckedAt)}` : ''}
                       {node.lastError ? ` · ${node.lastError}` : ''}
                     </p>
@@ -285,7 +287,7 @@ export default function RpcNodesPage() {
                       disabled={pinging !== null}
                       onClick={() => void pingOne(node.id)}
                     >
-                      {pinging === node.id ? '测速中…' : '测速'}
+                      {pinging === node.id ? t('common.pinging') : t('common.ping')}
                     </Button>
                     <Button
                       variant={node.isSelected ? 'primary' : 'ghost'}
@@ -293,7 +295,7 @@ export default function RpcNodesPage() {
                       disabled={busy || node.isSelected}
                       onClick={() => void run(() => rpcApi.select(node.id).then(() => undefined))}
                     >
-                      {node.isSelected ? '使用中' : '使用'}
+                      {node.isSelected ? t('common.inUse') : t('common.use')}
                     </Button>
                     <Button
                       variant="ghost"
@@ -301,7 +303,7 @@ export default function RpcNodesPage() {
                       disabled={busy}
                       onClick={() => void run(() => rpcApi.remove(node.id).then(() => undefined))}
                     >
-                      删除
+                      {t('common.delete')}
                     </Button>
                   </div>
                 </li>

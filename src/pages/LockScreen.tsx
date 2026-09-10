@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useVaultStore } from '../store/vaultStore'
 import { Alert, Button, Field } from '../components/ui'
+import { LanguageSwitch } from '../components/LanguageSwitch'
+import { useT } from '../i18n'
 import logoUrl from '../assets/logo.png'
 
 /**
@@ -8,6 +10,7 @@ import logoUrl from '../assets/logo.png'
  * 主密码只在本组件内短暂存在于 state，提交后立即清空。
  */
 export default function LockScreen() {
+  const t = useT()
   const status = useVaultStore((s) => s.status)
   const error = useVaultStore((s) => s.error)
   const initialize = useVaultStore((s) => s.initialize)
@@ -54,9 +57,11 @@ export default function LockScreen() {
           <img src={logoUrl} alt="Bee Wallet Lab" className="mx-auto mb-3 h-20 w-20 select-none" draggable={false} />
           <h1 className="text-lg font-semibold text-ink-200">Bee Wallet Lab</h1>
           <p className="mt-1 text-xs text-ink-400">
-            {needsSetup ? '设置主密码，用于加密本机的助记词与私钥' : '输入主密码解锁'}
+            {needsSetup ? t('lock.setupHint') : t('lock.unlockHint')}
           </p>
         </div>
+
+        <LanguageSwitch />
 
         <form
           className="space-y-4"
@@ -66,12 +71,12 @@ export default function LockScreen() {
           }}
         >
           <Field
-            label="主密码"
+            label={t('lock.password')}
             type="password"
             autoFocus
             autoComplete="off"
             value={password}
-            placeholder={needsSetup ? '至少 8 位，含字母与数字' : ''}
+            placeholder={needsSetup ? t('lock.placeholder') : ''}
             onChange={(e) => {
               clearError()
               setPassword(e.target.value)
@@ -79,7 +84,7 @@ export default function LockScreen() {
           />
           {needsSetup ? (
             <Field
-              label="确认主密码"
+              label={t('lock.confirm')}
               type="password"
               autoComplete="off"
               value={confirm}
@@ -93,18 +98,18 @@ export default function LockScreen() {
           <Alert>{error}</Alert>
 
           <Button type="submit" className="w-full" disabled={disabled}>
-            {countdown > 0 ? `请等待 ${countdown} 秒` : needsSetup ? '设置并进入' : '解锁'}
+            {countdown > 0
+              ? t('lock.wait', { seconds: countdown })
+              : needsSetup
+                ? t('lock.setup')
+                : t('lock.unlock')}
           </Button>
         </form>
 
         {needsSetup ? (
-          <p className="text-center text-xs leading-relaxed text-ink-600">
-            主密码不会被保存，也无法找回。忘记后只能用助记词重新导入钱包。
-          </p>
+          <p className="text-center text-xs leading-relaxed text-ink-600">{t('lock.forget')}</p>
         ) : status && status.failedAttempts > 0 ? (
-          <p className="text-center text-xs text-ink-600">
-            已连续失败 {status.failedAttempts} 次，多次失败会触发递增延迟
-          </p>
+          <p className="text-center text-xs text-ink-600">{t('lock.failed', { count: status.failedAttempts })}</p>
         ) : null}
       </div>
     </div>

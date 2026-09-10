@@ -6,6 +6,7 @@ import { Alert, Button, Card, Field } from '../components/ui'
 import { NetworkIcon } from '../components/NetworkSelect'
 import { explorerTabTitle } from '../lib/explorer'
 import { useBrowserStore } from '../store/browserStore'
+import { useT } from '../i18n'
 
 const TYPE_LABEL: Record<WalletType, string> = {
   bitcoin: 'Bitcoin',
@@ -21,6 +22,7 @@ function networkLabel(network: NetworkRecord): string {
 }
 
 export default function FaucetsPage() {
+  const t = useT()
   const open = useBrowserStore((s) => s.open)
   const [networks, setNetworks] = useState<NetworkRecord[]>([])
   const [networkPk, setNetworkPk] = useState('')
@@ -153,12 +155,12 @@ export default function FaucetsPage() {
     <div className="mx-auto flex max-w-6xl gap-5">
       <aside className="w-60 shrink-0 rounded-xl border border-ink-700 bg-ink-800/60">
         <div className="border-b border-ink-700 px-4 py-3">
-          <h1 className="text-sm font-semibold text-ink-200">测试网</h1>
-          <p className="mt-1 text-[11px] text-ink-600">主网没有水龙头</p>
+          <h1 className="text-sm font-semibold text-ink-200">{t('faucets.testnets')}</h1>
+          <p className="mt-1 text-[11px] text-ink-600">{t('faucets.noMainnet')}</p>
         </div>
         <div className="max-h-[calc(100vh-10rem)] overflow-y-auto p-2">
           {grouped.length === 0 ? (
-            <p className="px-2 py-3 text-xs text-ink-500">还没有测试网。到「网络维护」添加 Sepolia / Nile / Devnet 等。</p>
+            <p className="px-2 py-3 text-xs text-ink-500">{t('faucets.noTestnet')}</p>
           ) : (
             grouped.map((group) => (
               <div key={group.type} className="mb-3">
@@ -191,10 +193,11 @@ export default function FaucetsPage() {
       <div className="min-w-0 flex-1 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-lg font-semibold text-ink-200">水龙头</h1>
+            <h1 className="text-lg font-semibold text-ink-200">{t('faucets.title')}</h1>
             <p className="mt-1 text-xs text-ink-500">
-              {current ? networkLabel(current) : '选择测试网'}
-              {' · 本版手动维护，后续可从目录站同步内置项'}
+              {current ? networkLabel(current) : t('faucets.pick')}
+              {' · '}
+              {t('faucets.manualHint')}
             </p>
           </div>
           <Button
@@ -202,39 +205,39 @@ export default function FaucetsPage() {
             disabled={busy || !networkPk}
             onClick={() => void run(() => faucetApi.restore(networkPk).then(() => undefined))}
           >
-            恢复内置
+            {t('common.restore')}
           </Button>
         </div>
 
         {error ? <Alert>{error}</Alert> : null}
 
-        <Card title={editingId ? '编辑水龙头' : '添加水龙头'}>
+        <Card title={editingId ? t('faucets.edit') : t('faucets.add')}>
           <div className="grid grid-cols-[1fr_160px_auto] items-end gap-3">
             <Field
-              label="网站地址"
+              label={t('faucets.url')}
               value={url}
               placeholder="https://faucet.example.com"
-              hint="http 或 https。点列表里的「打开」会在应用内浏览器打开。"
+              hint={t('faucets.urlHint')}
               onChange={(e) => setUrl(e.target.value)}
             />
-            <Field label="备注（可选）" value={label} placeholder="例如：Alchemy" onChange={(e) => setLabel(e.target.value)} />
+            <Field label={t('common.optionalMemo')} value={label} placeholder={t('faucets.labelPh')} onChange={(e) => setLabel(e.target.value)} />
             <div className="flex gap-2">
               {editingId ? (
                 <Button variant="ghost" disabled={busy} onClick={resetForm}>
-                  取消
+                  {t('common.cancel')}
                 </Button>
               ) : null}
               <Button disabled={busy || !url.trim() || !networkPk} onClick={() => void save()}>
-                {editingId ? '保存' : '添加'}
+                {editingId ? t('common.save') : t('common.add')}
               </Button>
             </div>
           </div>
         </Card>
 
-        <Card title={`水龙头 · ${rows.length}`}>
+        <Card title={t('faucets.count', { count: rows.length })}>
           {rows.length === 0 ? (
             <p className="text-sm text-ink-400">
-              这个测试网还没有水龙头。添加一条，或点「恢复内置」写入常见水龙头。
+              {t('faucets.empty')}
             </p>
           ) : (
             <ul className="divide-y divide-ink-700">
@@ -244,7 +247,7 @@ export default function FaucetsPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="truncate text-sm font-medium text-ink-200">{item.label || item.url}</span>
                       <span className="rounded bg-ink-700 px-1.5 py-0.5 text-[10px] uppercase text-ink-400">
-                        {item.source === 'builtin' ? '内置' : '自建'}
+                        {item.source === 'builtin' ? t('common.builtin') : t('common.customSource')}
                       </span>
                     </div>
                     <p className="mt-0.5 truncate font-mono text-xs text-ink-500">{item.url}</p>
@@ -255,10 +258,10 @@ export default function FaucetsPage() {
                       className="px-2 py-1 text-xs"
                       onClick={() => open(item.url, item.label || explorerTabTitle(item.url))}
                     >
-                      打开
+                      {t('common.open')}
                     </Button>
                     <Button variant="ghost" className="px-2 py-1 text-xs" disabled={busy} onClick={() => edit(item)}>
-                      编辑
+                      {t('common.edit')}
                     </Button>
                     <Button
                       variant="ghost"
@@ -266,7 +269,7 @@ export default function FaucetsPage() {
                       disabled={busy}
                       onClick={() => void run(() => faucetApi.remove(item.id).then(() => undefined))}
                     >
-                      删除
+                      {t('common.delete')}
                     </Button>
                   </div>
                 </li>
