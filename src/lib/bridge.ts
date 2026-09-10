@@ -51,6 +51,10 @@ import type {
   TransactionRecord,
   TransferDraftInput,
   TransferPreview,
+  TxLabBroadcastInput,
+  TxLabDecoded,
+  TxLabDecodeInput,
+  TxLabSigned,
   VaultStatus,
   VerifyMessageInput,
   VerifyMessageResult,
@@ -204,6 +208,12 @@ export const transferApi = {
   transactions: (query?: { networkPk?: string; accountId?: string }) =>
     call<TransactionRecord[]>(IPC.transactionList, query ?? {}),
   syncTransactions: (networkPk: string) => call<TransactionRecord[]>(IPC.transactionSync, { networkPk }),
+}
+
+export const txLabApi = {
+  sign: (draftId: string) => call<TxLabSigned>(IPC.txLabSign, { draftId }),
+  decode: (input: TxLabDecodeInput) => call<TxLabDecoded>(IPC.txLabDecode, input),
+  broadcast: (input: TxLabBroadcastInput) => call<BroadcastResult>(IPC.txLabBroadcast, input),
 }
 
 export const signApi = {

@@ -1,5 +1,5 @@
 /**
- * 转账：预览（构建未签名意图）与提交（本地签名并直连节点广播）。
+ * 转账：预览（构建未签名意图）、只签名、以及签名后直连节点广播。
  */
 import type {
   AccountRecord,
@@ -9,49 +9,39 @@ import type {
   TokenRecord,
   TransferDraftInput,
   TransferPreview,
+  TxLabSigned,
 } from '@shared/types'
-import { IPC_EVENT } from '../../../shared/ipc'
 import { newId } from '../security/crypto'
 import { parseDecimalToMinor, formatMinor } from '../util/amount'
 import { getNetwork, getToken } from '../db/repos/catalogRepo'
 import { getAccountRow, listMatchingAccounts } from '../db/repos/accountRepo'
-import { upsertTransaction } from '../db/repos/transactionRepo'
-import { broadcast, invalidArg, notFound } from '../ipc/registry'
-import { watchTransaction } from '../history/watch'
+import { invalidArg, notFound } from '../ipc/registry'
 import { getAccount, withAccountPrivateKey } from '../wallets/service'
 import {
-  broadcastBitcoinTx,
+  bitcoinTxidFromHex,
   buildAndSignBitcoinTx,
-  explorerUrlForBitcoin,
   estimateVsize,
   fetchFeeRates,
   fetchUtxos,
 } from '../chain/bitcoin'
 import {
-  broadcastEvmTx,
   encodeErc20Transfer,
   estimateEvmGas,
-  explorerUrlForEvm,
   getEvmNonce,
   quoteEvmFees,
   signAndSerializeEvmTx,
   type EvmFeeQuote,
 } from '../chain/evm'
 import {
-  broadcastTronTx,
   createTrc20Tx,
   createTronNativeTx,
   estimateTronNativeFeeSun,
-  explorerUrlForTron,
   getTronAccount,
   signTronTx,
 } from '../chain/tron'
-import {
-  broadcastSolanaTx,
-  buildAndSignSolanaTx,
-  explorerUrlForSolana,
-  quoteSolanaFee,
-} from '../chain/solana'
+import { buildAndSignSolanaTx, quoteSolanaFee } from '../chain/solana'
+import { decodeRawTransaction } from '../txLab/decode'
+import { broadcastRawOnNetwork, feeDecimalsOf, persistBroadcastedTx } from '../txLab/service'
 import { isBitcoinAddress } from '../derive/bitcoin'
 import { isEvmAddress, toChecksumAddress } from '../derive/evm'
 import { isTronAddress } from '../derive/tron'
@@ -195,7 +185,7 @@ export async function previewTransfer(input: TransferDraftInput): Promise<Transf
     const value = contract ? 0n : amountMinor
     const data = contract ? encodeErc20Transfer(to, amountMinor) : undefined
     const quotes = await quoteEvmFees(network)
-    const quote = quotes[input.feeLevel === 'custom' ? 'medium' : input.feeLevel]
+    const quote = resolveEvmFeeQuote(quotes, input)
     const gasLimit = input.gasLimit
       ? BigInt(input.gasLimit)
       : await estimateEvmGas({ network, from: account.address, to: contract ?? to, value, data })
@@ -324,15 +314,38 @@ function buildPreview(input: {
   }
 }
 
-export async function submitTransfer(draftId: string): Promise<BroadcastResult> {
-  pruneDrafts()
-  const draft = drafts.get(draftId)
-  if (!draft) throw invalidArg('转账预览已过期，请重新预览')
-  drafts.delete(draftId)
+function resolveEvmFeeQuote(
+  quotes: Record<'low' | 'medium' | 'high', EvmFeeQuote>,
+  input: TransferDraftInput,
+): EvmFeeQuote {
+  const base = quotes[input.feeLevel === 'custom' ? 'medium' : input.feeLevel]
+  if (input.feeLevel !== 'custom' || !input.customFeeRate) return base
+  const gwei = Number(input.customFeeRate)
+  if (!Number.isFinite(gwei) || gwei <= 0) throw invalidArg('自定义费率不合法')
+  const wei = BigInt(Math.round(gwei * 1e9))
+  let priority = base.maxPriorityFeePerGas
+  if (input.customPriorityFee) {
+    const tip = Number(input.customPriorityFee)
+    if (!Number.isFinite(tip) || tip < 0) throw invalidArg('自定义优先费不合法')
+    priority = BigInt(Math.round(tip * 1e9))
+  }
+  if (priority > wei) priority = wei
+  return {
+    eip1559: base.eip1559,
+    maxFeePerGas: wei,
+    maxPriorityFeePerGas: priority,
+    gasPrice: base.eip1559 ? null : wei,
+  }
+}
 
+interface SignedDraftRaw {
+  txid: string
+  raw: string
+  rawFormat: TxLabSigned['rawFormat']
+}
+
+async function signStoredDraft(draft: StoredDraft): Promise<SignedDraftRaw> {
   const accountRow = requireAccountRow(draft.account.id)
-  let txid = ''
-  let rawHex: string | null = null
 
   if (draft.network.walletType === 'bitcoin') {
     if (!draft.account.addressType || draft.feeRate == null) throw invalidArg('Bitcoin 预览数据不完整')
@@ -349,9 +362,10 @@ export async function submitTransfer(draftId: string): Promise<BroadcastResult> 
         sendMax: draft.input.sendMax,
       }),
     )
-    rawHex = result.hex
-    txid = await broadcastBitcoinTx(result.hex, draft.network.networkScope)
-  } else if (draft.network.walletType === 'web3') {
+    return { txid: bitcoinTxidFromHex(result.hex), raw: result.hex, rawFormat: 'hex' }
+  }
+
+  if (draft.network.walletType === 'web3') {
     const contract = contractOf(draft.token)
     const nonce = draft.input.nonce ?? (await getEvmNonce(draft.network, draft.account.address))
     const signed = await withAccountPrivateKeyAsync(accountRow, (privateKey) =>
@@ -366,9 +380,10 @@ export async function submitTransfer(draftId: string): Promise<BroadcastResult> 
         fee: draft.evmFee!,
       }),
     )
-    rawHex = signed.hex
-    txid = await broadcastEvmTx(draft.network, signed.hex)
-  } else if (draft.network.walletType === 'solana') {
+    return { txid: signed.hash, raw: signed.hex, rawFormat: 'hex' }
+  }
+
+  if (draft.network.walletType === 'solana') {
     const mint = contractOf(draft.token)
     const signed = await withAccountPrivateKeyAsync(accountRow, (privateKey) =>
       buildAndSignSolanaTx({
@@ -380,70 +395,73 @@ export async function submitTransfer(draftId: string): Promise<BroadcastResult> 
         amount: draft.amountMinor,
       }),
     )
-    rawHex = signed.wireBase64
-    txid = await broadcastSolanaTx(draft.network, signed.wireBase64)
-  } else {
-    const contract = contractOf(draft.token)
-    const unsigned = contract
-      ? await createTrc20Tx({
-          from: draft.account.address,
-          to: draft.to,
-          contract,
-          amount: draft.amountMinor,
-          feeLimitSun: draft.feeLimitSun ?? 40_000_000n,
-          networkScope: draft.network.networkScope,
-        })
-      : await createTronNativeTx({
-          from: draft.account.address,
-          to: draft.to,
-          amountSun: draft.amountMinor,
-          networkScope: draft.network.networkScope,
-        })
-    const signed = withAccountPrivateKey(accountRow, (privateKey) => signTronTx(unsigned, privateKey))
-    txid = await broadcastTronTx(signed, draft.network.networkScope)
-    rawHex = JSON.stringify(signed)
+    return { txid: signed.signature, raw: signed.wireBase64, rawFormat: 'base64' }
   }
 
-  const explorerUrl =
-    draft.network.walletType === 'bitcoin'
-      ? explorerUrlForBitcoin(txid, draft.network.networkScope, draft.network.browser)
-      : draft.network.walletType === 'web3'
-        ? explorerUrlForEvm(txid, draft.network.browser, draft.network.chainId)
-        : draft.network.walletType === 'solana'
-          ? explorerUrlForSolana(txid, draft.network)
-          : explorerUrlForTron(txid, draft.network.networkScope, draft.network.browser)
+  const contract = contractOf(draft.token)
+  const unsigned = contract
+    ? await createTrc20Tx({
+        from: draft.account.address,
+        to: draft.to,
+        contract,
+        amount: draft.amountMinor,
+        feeLimitSun: draft.feeLimitSun ?? 40_000_000n,
+        networkScope: draft.network.networkScope,
+      })
+    : await createTronNativeTx({
+        from: draft.account.address,
+        to: draft.to,
+        amountSun: draft.amountMinor,
+        networkScope: draft.network.networkScope,
+      })
+  const signed = withAccountPrivateKey(accountRow, (privateKey) => signTronTx(unsigned, privateKey))
+  return { txid: signed.txID, raw: JSON.stringify(signed), rawFormat: 'json' }
+}
 
-  const transaction = upsertTransaction({
-    id: newId(),
+export async function signTransferDraft(draftId: string): Promise<TxLabSigned> {
+  pruneDrafts()
+  const draft = drafts.get(draftId)
+  if (!draft) throw invalidArg('转账预览已过期，请重新预览')
+  drafts.delete(draftId)
+  const signed = await signStoredDraft(draft)
+  const decoded = decodeRawTransaction(draft.network.walletType, signed.raw)
+  return {
+    walletType: draft.network.walletType,
     networkPk: draft.network.id,
     accountId: draft.account.id,
-    txid,
-    direction: 'send',
-    fromAddress: draft.account.address,
-    toAddress: draft.to,
+    from: draft.account.address,
+    to: draft.to,
+    amount: draft.preview.amount,
+    symbol: draft.preview.symbol,
+    feeText: draft.preview.feeText,
+    raw: signed.raw,
+    rawFormat: signed.rawFormat,
+    txid: signed.txid || decoded.txid || '',
+    signed: true,
+    decoded: decoded.fields,
+  }
+}
+
+export async function submitTransfer(draftId: string): Promise<BroadcastResult> {
+  pruneDrafts()
+  const draft = drafts.get(draftId)
+  if (!draft) throw invalidArg('转账预览已过期，请重新预览')
+  drafts.delete(draftId)
+
+  const signed = await signStoredDraft(draft)
+  const txid = await broadcastRawOnNetwork(draft.network, signed.raw)
+  return persistBroadcastedTx({
+    network: draft.network,
+    accountId: draft.account.id,
+    from: draft.account.address,
+    to: draft.to,
     tokenPk: draft.token.id,
     symbol: draft.token.symbol,
     amount: formatMinor(draft.amountMinor, draft.token.decimals),
-    fee: formatMinor(
-      draft.feeMinor,
-      draft.network.walletType === 'bitcoin'
-        ? 8
-        : draft.network.walletType === 'tron'
-          ? 6
-          : draft.network.walletType === 'solana'
-            ? 9
-            : 18,
-    ),
-    status: 'pending',
-    blockHeight: null,
-    rawHex,
-    createdAt: Date.now(),
-    explorerUrl,
+    fee: formatMinor(draft.feeMinor, feeDecimalsOf(draft.network.walletType)),
+    txid,
+    raw: signed.raw,
   })
-  watchTransaction(transaction)
-  broadcast(IPC_EVENT.transactionUpdated, { record: transaction })
-
-  return { txid, explorerUrl, reportedToBackend: false, transaction }
 }
 
 async function withAccountPrivateKeyAsync<T>(

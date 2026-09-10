@@ -40,6 +40,7 @@ import { registerProxyIpc } from './proxy'
 import { registerFaucetIpc } from './faucet'
 import { registerTokenIpc } from './token'
 import { registerHdAirdropIpc } from './hdAirdrop'
+import { registerTxLabIpc } from './txLab'
 import { refreshAppMenu } from '../appMenu'
 import { startTransactionWatch, stopTransactionWatch } from '../history/watch'
 import { recoverInterruptedHdAirdrops, stopAllHdAirdrops } from '../hdAirdrop/service'
@@ -187,6 +188,7 @@ export function registerAllIpc(): void {
   registerFaucetIpc()
   registerTokenIpc()
   registerHdAirdropIpc()
+  registerTxLabIpc()
   registerPlaceholders()
   initWalletAuth()
   recoverInterruptedHdAirdrops()
