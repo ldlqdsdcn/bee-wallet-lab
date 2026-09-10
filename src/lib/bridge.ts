@@ -62,6 +62,10 @@ import type {
   AbiDecodeResultOutput,
   AbiEncodeResult,
   AbiParsed,
+  ContractReadResult,
+  ContractSigned,
+  ContractWriteInput,
+  ContractWritePreview,
   VaultStatus,
   VerifyMessageInput,
   VerifyMessageResult,
@@ -237,6 +241,19 @@ export const abiApi = {
     call<AbiDecodeResultOutput>(IPC.abiDecodeResult, { abiJson, signature, data }),
   decodeEvent: (abiJson: string, data: string, topics: string) =>
     call<AbiDecodeEventResult>(IPC.abiDecodeEvent, { abiJson, data, topics }),
+}
+
+export const contractApi = {
+  read: (input: {
+    networkPk: string
+    accountId?: string
+    contractAddress: string
+    abiJson: string
+    signature: string
+    args: string[]
+  }) => call<ContractReadResult>(IPC.contractRead, input),
+  preview: (input: ContractWriteInput) => call<ContractWritePreview>(IPC.contractPreview, input),
+  sign: (draftId: string) => call<ContractSigned>(IPC.contractSign, { draftId }),
 }
 
 export const signApi = {

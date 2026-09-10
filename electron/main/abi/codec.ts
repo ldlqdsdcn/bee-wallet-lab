@@ -101,6 +101,17 @@ export function parseAbiDocument(raw: string, nameHint?: string, contractAddress
   }
 }
 
+export function isReadFunction(mutability: string): boolean {
+  return mutability === 'view' || mutability === 'pure'
+}
+
+/** TRON trigger* 的 parameter 是去掉 4 字节 selector 后的 ABI 编码。 */
+export function abiCalldataToTronParameter(calldata: string): string {
+  const hex = requireHex(calldata, 'calldata')
+  if (hex.length < 10) throw new Error('calldata 太短')
+  return hex.slice(10)
+}
+
 export function encodeAbiCall(abiJson: string, signature: string, args: string[]): AbiEncodeResult {
   const { abi } = extractAbi(abiJson)
   const fn = requireFunction(abi, signature)

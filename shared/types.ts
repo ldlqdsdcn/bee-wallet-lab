@@ -723,6 +723,67 @@ export interface AbiDecodeEventResult {
   args: AbiDecodedValue[]
 }
 
+/* -------------------------------- 合约交互 -------------------------------- */
+
+export interface ContractReadInput {
+  networkPk: string
+  accountId?: string
+  contractAddress: string
+  abiJson: string
+  signature: string
+  args: string[]
+}
+
+export interface ContractReadResult {
+  signature: string
+  raw: string
+  values: AbiDecodedValue[]
+}
+
+export interface ContractWriteInput {
+  networkPk: string
+  accountId: string
+  contractAddress: string
+  abiJson: string
+  signature: string
+  args: string[]
+  /** 原生币金额，payable 时使用 */
+  value?: string
+  feeLevel?: FeeLevel
+  customFeeRate?: string
+  customPriorityFee?: string
+  gasLimit?: string
+  nonce?: number
+  feeLimit?: string
+}
+
+export interface ContractWritePreview {
+  draftId: string
+  from: string
+  contractAddress: string
+  signature: string
+  calldata: string
+  value: string
+  feeText: string
+  detail: Record<string, string>
+  warnings: string[]
+}
+
+export interface ContractSigned {
+  walletType: WalletType
+  networkPk: string
+  accountId: string
+  from: string
+  contractAddress: string
+  signature: string
+  calldata: string
+  value: string
+  feeText: string
+  raw: string
+  rawFormat: TxLabRawFormat
+  txid: string
+}
+
 export interface TransactionRecord {
   id: string
   networkPk: string

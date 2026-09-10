@@ -173,6 +173,26 @@ export async function getEvmNonce(network: NetworkRecord, address: string): Prom
   return Number(parseQuantity(await evmRpc<string>(network, 'eth_getTransactionCount', [address, 'pending'])))
 }
 
+export async function callEvmContract(input: {
+  network: NetworkRecord
+  from?: string
+  to: string
+  data: Hex
+  value?: bigint
+}): Promise<Hex> {
+  const result = await evmRpc<string>(input.network, 'eth_call', [
+    {
+      ...(input.from ? { from: input.from } : {}),
+      to: input.to,
+      data: input.data,
+      ...(input.value != null && input.value > 0n ? { value: toHexQuantity(input.value) } : {}),
+    },
+    'latest',
+  ])
+  if (result == null || result === '') throw new Error('eth_call 未返回数据')
+  return result as Hex
+}
+
 export function encodeErc20Transfer(to: string, amount: bigint): Hex {
   return encodeFunctionData({
     abi: erc20Abi,
