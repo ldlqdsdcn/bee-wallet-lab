@@ -147,6 +147,11 @@ export const IPC = {
   contractRead: 'contract:read',
   contractPreview: 'contract:preview',
   contractSign: 'contract:sign',
+
+  /* 开发工具：JSON / Hex / Hash */
+  devToolsJson: 'devTools:json',
+  devToolsConvert: 'devTools:convert',
+  devToolsHash: 'devTools:hash',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

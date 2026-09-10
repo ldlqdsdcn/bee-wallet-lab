@@ -43,6 +43,7 @@ import { registerHdAirdropIpc } from './hdAirdrop'
 import { registerTxLabIpc } from './txLab'
 import { registerAbiIpc } from './abi'
 import { registerContractIpc } from './contract'
+import { registerDevToolsIpc } from './devTools'
 import { refreshAppMenu } from '../appMenu'
 import { startTransactionWatch, stopTransactionWatch } from '../history/watch'
 import { recoverInterruptedHdAirdrops, stopAllHdAirdrops } from '../hdAirdrop/service'
@@ -193,6 +194,7 @@ export function registerAllIpc(): void {
   registerTxLabIpc()
   registerAbiIpc()
   registerContractIpc()
+  registerDevToolsIpc()
   registerPlaceholders()
   initWalletAuth()
   recoverInterruptedHdAirdrops()

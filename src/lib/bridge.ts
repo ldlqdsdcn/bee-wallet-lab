@@ -66,6 +66,11 @@ import type {
   ContractSigned,
   ContractWriteInput,
   ContractWritePreview,
+  DevConvertInput,
+  DevConvertResult,
+  DevHashInput,
+  DevHashResult,
+  DevJsonResult,
   VaultStatus,
   VerifyMessageInput,
   VerifyMessageResult,
@@ -241,6 +246,12 @@ export const abiApi = {
     call<AbiDecodeResultOutput>(IPC.abiDecodeResult, { abiJson, signature, data }),
   decodeEvent: (abiJson: string, data: string, topics: string) =>
     call<AbiDecodeEventResult>(IPC.abiDecodeEvent, { abiJson, data, topics }),
+}
+
+export const devToolsApi = {
+  json: (value: string) => call<DevJsonResult>(IPC.devToolsJson, { value }),
+  convert: (input: DevConvertInput) => call<DevConvertResult>(IPC.devToolsConvert, input),
+  hash: (input: DevHashInput) => call<DevHashResult>(IPC.devToolsHash, input),
 }
 
 export const contractApi = {

@@ -974,3 +974,47 @@ export interface RpcPingResult {
   latencyMs: number | null
   error: string | null
 }
+
+/* -------------------------------- 开发工具 -------------------------------- */
+
+export type DevJsonKind = 'object' | 'array' | 'string' | 'number' | 'boolean' | 'null'
+
+export interface DevJsonResult {
+  pretty: string
+  minified: string
+  kind: DevJsonKind
+  parsed: unknown
+}
+
+export type DevConvertMode = 'hex-to-utf8' | 'utf8-to-hex' | 'hex-to-base64' | 'base64-to-hex'
+
+export interface DevConvertInput {
+  mode: DevConvertMode
+  value: string
+}
+
+export interface DevConvertResult {
+  mode: DevConvertMode
+  output: string
+  bytes: number
+}
+
+export type DevHashAlgo = 'sha256' | 'keccak256' | 'sha512' | 'sha3-256' | 'ripemd160' | 'blake2b'
+
+export type DevBytesEncoding = 'utf8' | 'hex'
+
+export interface DevHashInput {
+  value: string
+  encoding: DevBytesEncoding
+}
+
+export interface DevHashItem {
+  algo: DevHashAlgo
+  label: string
+  hex: string
+}
+
+export interface DevHashResult {
+  bytes: number
+  hashes: DevHashItem[]
+}
