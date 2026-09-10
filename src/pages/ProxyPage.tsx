@@ -3,6 +3,7 @@ import type { ProxyListState, ProxyRecord } from '@shared/types'
 import { IPC_EVENT } from '@shared/ipc'
 import { on, proxyApi } from '../lib/bridge'
 import { Alert, Button, Card, Field } from '../components/ui'
+import { useT } from '../i18n'
 
 function latencyClass(ms: number | null, error: string | null): string {
   if (error) return 'text-red-300'
@@ -12,8 +13,8 @@ function latencyClass(ms: number | null, error: string | null): string {
   return 'text-red-300'
 }
 
-function formatLatency(item: ProxyRecord): string {
-  if (item.lastError) return '失败'
+function formatLatency(item: ProxyRecord, t: ReturnType<typeof useT>): string {
+  if (item.lastError) return t('common.failed')
   if (item.lastLatencyMs == null) return '—'
   return `${item.lastLatencyMs} ms`
 }
@@ -34,6 +35,7 @@ function displayUrl(url: string): string {
 }
 
 export default function ProxyPage() {
+  const t = useT()
   const [state, setState] = useState<ProxyListState>({ enabled: false, proxies: [] })
   const [url, setUrl] = useState('')
   const [label, setLabel] = useState('')
@@ -145,16 +147,16 @@ export default function ProxyPage() {
     })
 
   const statusText = !state.enabled
-    ? '已关闭，第三方接口直连'
+    ? t('proxy.off')
     : selected
-      ? `已启用 · 当前 ${selected.label || displayUrl(selected.url)}`
-      : '已启用，但还没有选择代理'
+      ? t('proxy.onCurrent', { name: selected.label || displayUrl(selected.url) })
+      : t('proxy.onNoSelect')
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-lg font-semibold text-ink-200">代理</h1>
+          <h1 className="text-lg font-semibold text-ink-200">{t('proxy.title')}</h1>
           <p className="mt-1 text-xs text-ink-500">{statusText}</p>
         </div>
         <div className="flex shrink-0 gap-2">
@@ -163,17 +165,17 @@ export default function ProxyPage() {
             disabled={busy || state.enabled}
             onClick={() => void run(() => proxyApi.setEnabled(true))}
           >
-            启用
+            {t('common.enable')}
           </Button>
           <Button
             variant={!state.enabled ? 'primary' : 'ghost'}
             disabled={busy || !state.enabled}
             onClick={() => void run(() => proxyApi.setEnabled(false))}
           >
-            关闭
+            {t('common.disable')}
           </Button>
           <Button variant="ghost" disabled={busy || state.proxies.length === 0} onClick={() => void pingAll()}>
-            {pinging === 'all' ? '测速中…' : '全部测速'}
+            {pinging === 'all' ? t('common.pinging') : t('common.pingAll')}
           </Button>
         </div>
       </div>
@@ -181,13 +183,13 @@ export default function ProxyPage() {
       <Alert>{error}</Alert>
       {message ? <p className="text-xs text-honey-400">{message}</p> : null}
 
-      <Card title={editingId ? '编辑代理' : '添加代理'}>
+      <Card title={editingId ? t('proxy.edit') : t('proxy.add')}>
         <div className="space-y-3">
           <Field
-            label="代理地址"
+            label={t('proxy.url')}
             value={url}
             placeholder="http://127.0.0.1:7890"
-            hint="支持 http / https / socks5。Clash 常见为 7890 端口。"
+            hint={t('proxy.urlHint')}
             autoComplete="off"
             spellCheck={false}
             onChange={(e) => setUrl(e.target.value)}
@@ -195,33 +197,33 @@ export default function ProxyPage() {
           <div className="flex items-end gap-3">
             <div className="min-w-0 flex-1">
               <Field
-                label="备注（可选）"
+                label={t('common.optionalMemo')}
                 value={label}
-                placeholder="例如：Clash"
+                placeholder={t('proxy.labelPh')}
                 onChange={(e) => setLabel(e.target.value)}
               />
             </div>
             {editingId ? (
               <>
                 <Button disabled={busy || !url.trim()} onClick={() => void saveEdit()}>
-                  保存
+                  {t('common.save')}
                 </Button>
                 <Button variant="ghost" disabled={busy} onClick={cancelEdit}>
-                  取消
+                  {t('common.cancel')}
                 </Button>
               </>
             ) : (
               <Button disabled={busy || !url.trim()} onClick={() => void add()}>
-                添加
+                {t('common.add')}
               </Button>
             )}
           </div>
         </div>
       </Card>
 
-      <Card title={`代理列表 · ${state.proxies.length}`}>
+      <Card title={t('proxy.list', { count: state.proxies.length })}>
         {state.proxies.length === 0 ? (
-          <p className="text-sm text-ink-400">还没有代理。添加后点顶部「启用」，行情和节点请求才会走代理。</p>
+          <p className="text-sm text-ink-400">{t('proxy.empty')}</p>
         ) : (
           <ul className="divide-y divide-ink-700">
             {state.proxies.map((item) => (
@@ -230,15 +232,15 @@ export default function ProxyPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="truncate text-sm font-medium text-ink-200">{item.label || displayUrl(item.url)}</span>
                     {item.isSelected ? (
-                      <span className="rounded bg-honey-600/20 px-1.5 py-0.5 text-[10px] text-honey-400">当前</span>
+                      <span className="rounded bg-honey-600/20 px-1.5 py-0.5 text-[10px] text-honey-400">{t('common.current')}</span>
                     ) : null}
                     {state.enabled && item.isSelected ? (
-                      <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-400">使用中</span>
+                      <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-400">{t('common.inUse')}</span>
                     ) : null}
                   </div>
                   <p className="mt-0.5 truncate font-mono text-xs text-ink-500">{displayUrl(item.url)}</p>
                   <p className={`mt-1 text-xs ${latencyClass(item.lastLatencyMs, item.lastError)}`}>
-                    延迟 {formatLatency(item)}
+                    {t('common.latency', { value: formatLatency(item, t) })}
                     {formatChecked(item.lastCheckedAt) ? ` · ${formatChecked(item.lastCheckedAt)}` : ''}
                     {item.lastError ? ` · ${item.lastError}` : ''}
                   </p>
@@ -250,7 +252,7 @@ export default function ProxyPage() {
                     disabled={pinging !== null}
                     onClick={() => void pingOne(item.id)}
                   >
-                    {pinging === item.id ? '测速中…' : '测速'}
+                    {pinging === item.id ? t('common.pinging') : t('common.ping')}
                   </Button>
                   <Button
                     variant={item.isSelected ? 'primary' : 'ghost'}
@@ -258,7 +260,7 @@ export default function ProxyPage() {
                     disabled={busy || item.isSelected}
                     onClick={() => void run(() => proxyApi.select(item.id))}
                   >
-                    {item.isSelected ? '已选用' : '使用'}
+                    {item.isSelected ? t('common.selected') : t('common.use')}
                   </Button>
                   <Button
                     variant="ghost"
@@ -266,7 +268,7 @@ export default function ProxyPage() {
                     disabled={busy}
                     onClick={() => startEdit(item)}
                   >
-                    编辑
+                    {t('common.edit')}
                   </Button>
                   <Button
                     variant="ghost"
@@ -280,7 +282,7 @@ export default function ProxyPage() {
                       })
                     }
                   >
-                    删除
+                    {t('common.delete')}
                   </Button>
                 </div>
               </li>

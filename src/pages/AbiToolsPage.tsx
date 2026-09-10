@@ -11,17 +11,19 @@ import type {
 } from '@shared/types'
 import { abiApi } from '../lib/bridge'
 import { Alert, Button, Card, Field, Select, TextArea } from '../components/ui'
+import { useT, type MessageKey } from '../i18n'
 
 type ToolTab = 'encode' | 'decodeCall' | 'decodeResult' | 'decodeEvent'
 
-const TABS: { id: ToolTab; label: string }[] = [
-  { id: 'encode', label: '编码' },
-  { id: 'decodeCall', label: '解码 calldata' },
-  { id: 'decodeResult', label: '解码返回值' },
-  { id: 'decodeEvent', label: '解码 Event' },
+const TABS: { id: ToolTab; labelKey: MessageKey }[] = [
+  { id: 'encode', labelKey: 'abi.encode' },
+  { id: 'decodeCall', labelKey: 'abi.decodeCall' },
+  { id: 'decodeResult', labelKey: 'abi.decodeResult' },
+  { id: 'decodeEvent', labelKey: 'abi.decodeEvent' },
 ]
 
 export default function AbiToolsPage() {
+  const t = useT()
   const fileRef = useRef<HTMLInputElement>(null)
   const [abiText, setAbiText] = useState('')
   const [name, setName] = useState('')
@@ -97,19 +99,17 @@ export default function AbiToolsPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <div>
-        <h1 className="text-lg font-semibold text-ink-200">ABI 工具</h1>
-        <p className="mt-1 text-xs text-ink-500">
-          导入 EVM / TRON ABI，列出函数与事件，编码 calldata，解码调用、返回值和 Event Log
-        </p>
+        <h1 className="text-lg font-semibold text-ink-200">{t('abi.title')}</h1>
+        <p className="mt-1 text-xs text-ink-500">{t('abi.subtitle')}</p>
       </div>
 
       <Alert>{error}</Alert>
 
-      <Card title="ABI 导入">
+      <Card title={t('abi.import')}>
         <div className="space-y-3">
           {saved.length > 0 ? (
             <Select
-              label="已保存"
+              label={t('abi.saved')}
               value={savedId}
               onChange={(e) => {
                 const id = e.target.value
@@ -122,28 +122,28 @@ export default function AbiToolsPage() {
                 })
               }}
             >
-              <option value="">选择已导入的 ABI</option>
+              <option value="">{t('abi.pickSaved')}</option>
               {saved.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.name} · {item.functionCount} 函数 / {item.eventCount} 事件
+                  {t('abi.savedMeta', { name: item.name, fns: item.functionCount, evs: item.eventCount })}
                 </option>
               ))}
             </Select>
           ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="名称" value={name} placeholder="例如 ERC-20" onChange={(e) => setName(e.target.value)} />
+            <Field label={t('common.name')} value={name} placeholder={t('abi.namePlaceholder')} onChange={(e) => setName(e.target.value)} />
             <Field
-              label="合约地址（可选）"
+              label={t('abi.contractOptional')}
               className="sensitive"
               value={contractAddress}
-              placeholder="0x… 或 T…"
+              placeholder={t('abi.addressPh')}
               onChange={(e) => setContractAddress(e.target.value)}
             />
           </div>
           <TextArea
             label="ABI JSON"
             className="sensitive min-h-36 font-mono text-xs"
-            hint="粘贴 ABI 数组，或 Hardhat / Truffle 编译产物"
+            hint={t('abi.pasteHint')}
             value={abiText}
             onChange={(e) => setAbiText(e.target.value)}
           />
@@ -172,10 +172,10 @@ export default function AbiToolsPage() {
                 })
               }
             >
-              解析
+              {t('abi.parse')}
             </Button>
             <Button variant="ghost" disabled={busy} onClick={() => fileRef.current?.click()}>
-              导入 JSON
+              {t('abi.importJson')}
             </Button>
             <Button
               variant="ghost"
@@ -189,7 +189,7 @@ export default function AbiToolsPage() {
                 })
               }
             >
-              载入 ERC-20
+              {t('abi.loadErc20')}
             </Button>
             <Button
               variant="ghost"
@@ -209,7 +209,7 @@ export default function AbiToolsPage() {
                 })
               }
             >
-              保存到库
+              {t('abi.save')}
             </Button>
             {savedId ? (
               <Button
@@ -223,7 +223,7 @@ export default function AbiToolsPage() {
                   })
                 }
               >
-                从库删除
+                {t('abi.remove')}
               </Button>
             ) : null}
           </div>
@@ -232,16 +232,16 @@ export default function AbiToolsPage() {
 
       {parsed ? (
         <>
-          <Card title="函数与事件">
+          <Card title={t('abi.functionsEvents')}>
             <div className="grid gap-4 md:grid-cols-2">
               <ItemList
-                title={`函数 ${functionOptions.length}`}
-                empty="没有函数"
+                title={t('abi.fns', { count: functionOptions.length })}
+                empty={t('abi.noFn')}
                 items={functionOptions.map((item) => ({
                   key: item.signature,
                   active: item.signature === fnSig,
                   title: item.signature,
-                  meta: `${mutabilityLabel(item.stateMutability)} · ${item.selector}`,
+                  meta: `${mutabilityLabel(item.stateMutability, t)} · ${item.selector}`,
                   onClick: () => {
                     setFnSig(item.signature)
                     setTab((current) => (current === 'decodeEvent' ? 'encode' : current))
@@ -249,8 +249,8 @@ export default function AbiToolsPage() {
                 }))}
               />
               <ItemList
-                title={`事件 ${eventOptions.length}`}
-                empty="没有事件"
+                title={t('abi.evs', { count: eventOptions.length })}
+                empty={t('abi.noEv')}
                 items={eventOptions.map((item) => ({
                   key: item.signature,
                   active: item.signature === eventSig,
@@ -273,7 +273,7 @@ export default function AbiToolsPage() {
           <div className="flex flex-wrap gap-2">
             {TABS.map((item) => (
               <Button key={item.id} variant={tab === item.id ? 'primary' : 'ghost'} onClick={() => setTab(item.id)}>
-                {item.label}
+                {t(item.labelKey)}
               </Button>
             ))}
           </div>
@@ -299,12 +299,12 @@ export default function AbiToolsPage() {
           ) : null}
 
           {tab === 'decodeCall' ? (
-            <Card title="解码 calldata">
+            <Card title={t('abi.decodeCall')}>
               <div className="space-y-3">
                 <TextArea
                   label="Calldata"
                   className="sensitive min-h-24 font-mono text-xs"
-                  hint="含 4 字节 selector 的十六进制"
+                  hint={t('abi.calldataHint')}
                   value={calldata}
                   onChange={(e) => setCalldata(e.target.value)}
                 />
@@ -319,7 +319,7 @@ export default function AbiToolsPage() {
                     })
                   }
                 >
-                  解码
+                  {t('abi.decode')}
                 </Button>
                 {decodedCall ? (
                   <DecodedBlock
@@ -335,15 +335,15 @@ export default function AbiToolsPage() {
           ) : null}
 
           {tab === 'decodeResult' ? (
-            <Card title="解码返回值">
+            <Card title={t('abi.decodeResult')}>
               <div className="space-y-3">
                 <p className="text-xs text-ink-500">
-                  {selectedFn ? `当前函数 ${selectedFn.signature}` : '请先在函数列表里选一个有返回值的函数'}
+                  {selectedFn ? t('abi.currentFn', { sig: selectedFn.signature }) : t('abi.pickFn')}
                 </p>
                 <TextArea
-                  label="返回值 Hex"
+                  label={t('abi.resultHex')}
                   className="sensitive min-h-24 font-mono text-xs"
-                  hint="eth_call / 交易 output 的十六进制"
+                  hint={t('abi.resultHint')}
                   value={resultHex}
                   onChange={(e) => setResultHex(e.target.value)}
                 />
@@ -356,7 +356,7 @@ export default function AbiToolsPage() {
                     })
                   }
                 >
-                  解码
+                  {t('abi.decode')}
                 </Button>
                 {decodedResult ? (
                   <DecodedBlock
@@ -372,24 +372,24 @@ export default function AbiToolsPage() {
           ) : null}
 
           {tab === 'decodeEvent' ? (
-            <Card title="解码 Event Log">
+            <Card title={t('abi.decodeEventLog')}>
               <div className="space-y-3">
                 <p className="text-xs text-ink-500">
                   {selectedEvent
                     ? `${selectedEvent.signature}${selectedEvent.topic0 ? ` · ${selectedEvent.topic0}` : ' · anonymous'}`
-                    : '从事件列表选择，或直接粘贴 topics / data 自动匹配'}
+                    : t('abi.eventPick')}
                 </p>
                 <TextArea
                   label="Topics"
                   className="sensitive min-h-24 font-mono text-xs"
-                  hint="JSON 数组，或一行一个 topic"
+                  hint={t('abi.topicsHint')}
                   value={eventTopics}
                   onChange={(e) => setEventTopics(e.target.value)}
                 />
                 <TextArea
                   label="Data"
                   className="sensitive min-h-24 font-mono text-xs"
-                  hint="非 indexed 参数的十六进制，没有可留空"
+                  hint={t('abi.dataHint')}
                   value={eventData}
                   onChange={(e) => setEventData(e.target.value)}
                 />
@@ -404,7 +404,7 @@ export default function AbiToolsPage() {
                     })
                   }
                 >
-                  解码
+                  {t('abi.decode')}
                 </Button>
                 {decodedEvent ? (
                   <DecodedBlock
@@ -443,6 +443,7 @@ function EncodeCard({
   onEncode: () => void
   onCopy: (label: string, value: string) => void
 }) {
+  const t = useT()
   return (
     <Card title="ABI Encode">
       <div className="space-y-3">
@@ -452,25 +453,25 @@ function EncodeCard({
               {fn.signature} · {fn.selector}
             </p>
             {fn.inputs.length === 0 ? (
-              <p className="text-xs text-ink-500">该函数没有参数</p>
+              <p className="text-xs text-ink-500">{t('abi.noArgs')}</p>
             ) : (
               fn.inputs.map((input, index) => (
                 <Field
                   key={`${fn.signature}-${index}`}
                   label={paramLabel(input, index)}
                   className="sensitive font-mono"
-                  hint={paramHint(input)}
+                  hint={paramHint(input, t)}
                   value={args[index] ?? ''}
                   onChange={(e) => onArg(index, e.target.value)}
                 />
               ))
             )}
             <Button disabled={busy} onClick={onEncode}>
-              编码
+              {t('abi.encode')}
             </Button>
           </>
         ) : (
-          <p className="text-sm text-ink-400">先解析 ABI 并选择函数</p>
+          <p className="text-sm text-ink-400">{t('abi.pickFirst')}</p>
         )}
         {encoded ? (
           <div className="space-y-2">
@@ -478,7 +479,7 @@ function EncodeCard({
               {encoded.calldata}
             </pre>
             <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => void onCopy('calldata', encoded.calldata)}>
-              {copied === 'calldata' ? '已复制' : '复制 calldata'}
+              {copied === 'calldata' ? t('common.copied') : t('abi.copyCalldata')}
             </Button>
           </div>
         ) : null}
@@ -535,11 +536,12 @@ function DecodedBlock({
   onCopy: (label: string, value: string) => void
   copyValue: string
 }) {
+  const t = useT()
   return (
     <div className="space-y-2 rounded-lg bg-ink-900 px-3 py-2">
       <p className="break-all font-mono text-[11px] text-ink-400">{title}</p>
       {values.length === 0 ? (
-        <p className="text-xs text-ink-500">没有参数</p>
+        <p className="text-xs text-ink-500">{t('abi.noParams')}</p>
       ) : (
         values.map((item) => (
           <p key={`${item.name}-${item.type}`} className="break-all font-mono text-[11px] text-ink-300">
@@ -549,7 +551,7 @@ function DecodedBlock({
         ))
       )}
       <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => void onCopy('decoded', copyValue)}>
-        {copied === 'decoded' ? '已复制' : '复制 JSON'}
+        {copied === 'decoded' ? t('common.copied') : t('abi.copyJson')}
       </Button>
     </div>
   )
@@ -559,16 +561,16 @@ function paramLabel(input: AbiParamInfo, index: number): string {
   return `${input.name || `arg${index}`} (${input.type}${input.indexed ? ', indexed' : ''})`
 }
 
-function paramHint(input: AbiParamInfo): string | undefined {
-  if (input.type === 'address') return '0x 地址，TRON 也可用 T 开头地址'
-  if (input.type.endsWith('[]') || input.type.startsWith('tuple')) return '请填 JSON'
+function paramHint(input: AbiParamInfo, t: (key: MessageKey) => string): string | undefined {
+  if (input.type === 'address') return t('abi.hintAddress')
+  if (input.type.endsWith('[]') || input.type.startsWith('tuple')) return t('abi.hintJson')
   return undefined
 }
 
-function mutabilityLabel(value: string): string {
-  if (value === 'view' || value === 'pure') return '读'
+function mutabilityLabel(value: string, t: (key: MessageKey) => string): string {
+  if (value === 'view' || value === 'pure') return t('abi.read')
   if (value === 'payable') return 'payable'
-  return '写'
+  return t('abi.write')
 }
 
 function prettyJson(raw: string): string {

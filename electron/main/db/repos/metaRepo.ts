@@ -2,6 +2,7 @@
  * app_meta 与 settings 两张 key-value 表的仓储。
  */
 import type { AppSettings } from '../../../../shared/types'
+import { normalizeLocale } from '../../../../shared/locale'
 import type { KdfDescriptor } from '../../security/crypto'
 import { catalogEnvUrl } from '../../rpc/env'
 import { getDatabase } from '../sqlite'
@@ -62,7 +63,7 @@ export function loadSettings(): AppSettings {
   try {
     const parsed = JSON.parse(row.value) as Partial<AppSettings> & { proxyUrl?: string }
     const { proxyUrl: _legacy, ...rest } = parsed
-    return { ...DEFAULT_SETTINGS, ...rest }
+    return { ...DEFAULT_SETTINGS, ...rest, language: normalizeLocale(rest.language) }
   } catch {
     return { ...DEFAULT_SETTINGS }
   }
@@ -84,6 +85,7 @@ export function peekLegacyProxyUrl(): string {
 
 export function saveSettings(patch: Partial<AppSettings>): AppSettings {
   const next = { ...loadSettings(), ...patch }
+  if (patch.language !== undefined) next.language = normalizeLocale(patch.language)
   getDatabase()
     .prepare(
       `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)

@@ -876,11 +876,13 @@ export interface AddressBookQuery {
 
 /* ---------------------------------- 设置 ---------------------------------- */
 
+export type AppLocale = 'zh-CN' | 'en'
+
 export interface AppSettings {
   baseUrl: string
   autoLockMinutes: number
   currencyCode: string
-  language: string
+  language: AppLocale
   theme: 'dark' | 'light'
   defaultWalletId: string | null
   defaultNetworkPk: string | null

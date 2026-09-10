@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react'
 import { useBrowserStore } from '../store/browserStore'
+import { useT } from '../i18n'
 
 const WEBVIEW_PREFS = 'contextIsolation=yes, nodeIntegration=no, sandbox=yes, javascript=yes'
 
 export function BrowserChrome({ children }: { children: ReactNode }) {
+  const t = useT()
   const tabs = useBrowserStore((s) => s.tabs)
   const activeId = useBrowserStore((s) => s.activeId)
   const activate = useBrowserStore((s) => s.activate)
@@ -22,7 +24,7 @@ export function BrowserChrome({ children }: { children: ReactNode }) {
             }`}
             onClick={() => activate(null)}
           >
-            钱包
+            {t('common.wallet')}
           </button>
           {tabs.map((tab) => {
             const active = tab.id === activeId
@@ -44,7 +46,7 @@ export function BrowserChrome({ children }: { children: ReactNode }) {
                 <button
                   type="button"
                   className="px-2 py-1 text-xs text-ink-500 hover:text-ink-200"
-                  aria-label={`关闭 ${tab.title}`}
+                  aria-label={t('browser.closeTab', { title: tab.title })}
                   onClick={() => close(tab.id)}
                 >
                   ×
@@ -56,7 +58,7 @@ export function BrowserChrome({ children }: { children: ReactNode }) {
       ) : null}
 
       <div className="relative min-h-0 flex-1">
-        <div className={walletActive ? 'h-full overflow-hidden' : 'hidden'}>{children}</div>
+        <div className={walletActive ? 'h-full min-h-0 overflow-hidden' : 'hidden'}>{children}</div>
         {tabs.map((tab) => {
           const active = tab.id === activeId
           return (

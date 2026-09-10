@@ -97,6 +97,9 @@ function registerSettingsIpc(): void {
     if (next.currencyCode !== before.currencyCode) {
       resetPriceBackoff()
     }
+    if (next.language !== before.language) {
+      refreshAppMenu()
+    }
     return next
   })
 }

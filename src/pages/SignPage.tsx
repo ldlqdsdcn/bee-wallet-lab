@@ -4,8 +4,10 @@ import { accountApi, signApi } from '../lib/bridge'
 import { Alert, Button, Card, Field, Select, TextArea } from '../components/ui'
 import { shorten, walletTypeLabel } from '../lib/format'
 import { useWalletStore } from '../store/walletStore'
+import { useT } from '../i18n'
 
 export default function SignPage() {
+  const t = useT()
   const currentWalletId = useWalletStore((s) => s.currentId)
   const [accounts, setAccounts] = useState<AccountRecord[]>([])
   const [accountId, setAccountId] = useState('')
@@ -47,12 +49,12 @@ export default function SignPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
-      <h1 className="text-lg font-semibold text-ink-200">消息签名</h1>
+      <h1 className="text-lg font-semibold text-ink-200">{t('sign.title')}</h1>
       <Alert>{error}</Alert>
 
-      <Card title="签名">
+      <Card title={t('sign.card')}>
         <div className="space-y-3">
-          <Select label="账户" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+          <Select label={t('common.account')} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
             {accounts.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.label || walletTypeLabel(item.walletType)} · {shorten(item.address, 8, 6)}
@@ -60,14 +62,14 @@ export default function SignPage() {
             ))}
           </Select>
           <TextArea
-            label="消息"
+            label={t('sign.message')}
             value={message}
             hint={
               account?.walletType === 'bitcoin'
-                ? 'Bitcoin 使用 BIP-137 signmessage'
+                ? t('sign.hintBtc')
                 : account?.walletType === 'solana'
-                  ? 'Solana 对消息原文做 Ed25519 签名'
-                  : 'EVM / TRON 使用 EIP-191 personal_sign'
+                  ? t('sign.hintSol')
+                  : t('sign.hintEvm')
             }
             onChange={(e) => setMessage(e.target.value)}
           />
@@ -84,22 +86,22 @@ export default function SignPage() {
               })
             }
           >
-            签名
+            {t('sign.action')}
           </Button>
           {result ? (
             <div className="space-y-1 rounded-lg bg-ink-900 px-3 py-2 text-xs text-ink-400">
-              <p>方案 {result.scheme}</p>
-              <p className="sensitive break-all">摘要 {result.digest}</p>
+              <p>{t('sign.scheme', { scheme: result.scheme })}</p>
+              <p className="sensitive break-all">{t('sign.digest', { digest: result.digest })}</p>
               <p className="sensitive break-all text-honey-400">{result.signature}</p>
             </div>
           ) : null}
         </div>
       </Card>
 
-      <Card title="验签">
+      <Card title={t('sign.verify')}>
         <div className="space-y-3">
           <Select
-            label="链"
+            label={t('sign.chain')}
             value={verifyType}
             onChange={(e) => setVerifyType(e.target.value as WalletType)}
           >
@@ -109,14 +111,14 @@ export default function SignPage() {
             <option value="solana">Solana</option>
           </Select>
           <Field
-            label="地址"
+            label={t('common.address')}
             className="sensitive"
             value={verifyAddress}
             onChange={(e) => setVerifyAddress(e.target.value)}
           />
-          <TextArea label="消息" value={verifyMessage} onChange={(e) => setVerifyMessage(e.target.value)} />
+          <TextArea label={t('sign.message')} value={verifyMessage} onChange={(e) => setVerifyMessage(e.target.value)} />
           <TextArea
-            label="签名"
+            label={t('sign.signature')}
             className="sensitive"
             value={verifySignature}
             onChange={(e) => setVerifySignature(e.target.value)}
@@ -133,13 +135,17 @@ export default function SignPage() {
                 })
                 setVerifyResult(
                   verified.valid
-                    ? `通过${verified.recoveredAddress ? ` · 恢复地址 ${verified.recoveredAddress}` : ''}`
-                    : `未通过${verified.recoveredAddress ? ` · 恢复地址 ${verified.recoveredAddress}` : ''}`,
+                    ? verified.recoveredAddress
+                      ? t('sign.passRecovered', { address: verified.recoveredAddress })
+                      : t('sign.pass')
+                    : verified.recoveredAddress
+                      ? t('sign.failRecovered', { address: verified.recoveredAddress })
+                      : t('sign.fail'),
                 )
               })
             }
           >
-            验签
+            {t('sign.verify')}
           </Button>
           {verifyResult ? <p className="text-sm text-honey-400">{verifyResult}</p> : null}
         </div>

@@ -18,6 +18,7 @@ import { TokenSelect } from '../components/TokenSelect'
 import { AccountAddress } from '../components/AccountAddress'
 import { explorerTabTitle, txExplorerUrl } from '../lib/explorer'
 import { formatAmount, shorten } from '../lib/format'
+import { useT, type MessageKey } from '../i18n'
 import { useBrowserStore } from '../store/browserStore'
 import { useWalletStore } from '../store/walletStore'
 import { currentNetworkOf, useNetworkStore } from '../store/networkStore'
@@ -30,11 +31,11 @@ function isErc20(token: TokenRecord): boolean {
   return Boolean(value && value !== '0' && !/^0x0+$/i.test(value))
 }
 
-function jobLabel(status: HdAirdropJob['status']): string {
-  if (status === 'running') return '进行中'
-  if (status === 'done') return '已完成'
-  if (status === 'stopped') return '已停止'
-  return '失败'
+function jobLabel(status: HdAirdropJob['status'], t: (key: MessageKey) => string): string {
+  if (status === 'running') return t('airdrop.stRunning')
+  if (status === 'done') return t('airdrop.stDone')
+  if (status === 'stopped') return t('airdrop.stStopped')
+  return t('airdrop.stFailed')
 }
 
 function jobClass(status: HdAirdropJob['status']): string {
@@ -44,12 +45,12 @@ function jobClass(status: HdAirdropJob['status']): string {
   return 'text-red-300'
 }
 
-function itemLabel(status: HdAirdropItemStatus): string {
-  if (status === 'confirmed') return '已确认'
-  if (status === 'pending') return '待确认'
-  if (status === 'failed') return '失败'
-  if (status === 'queued') return '未发送'
-  return '已跳过'
+function itemLabel(status: HdAirdropItemStatus, t: (key: MessageKey) => string): string {
+  if (status === 'confirmed') return t('airdrop.itConfirmed')
+  if (status === 'pending') return t('airdrop.itPending')
+  if (status === 'failed') return t('airdrop.itFailed')
+  if (status === 'queued') return t('airdrop.itQueued')
+  return t('airdrop.itSkipped')
 }
 
 function itemClass(status: HdAirdropItemStatus): string {
@@ -60,14 +61,14 @@ function itemClass(status: HdAirdropItemStatus): string {
   return 'text-ink-500'
 }
 
-function formatEta(ms: number): string {
+function formatEta(ms: number, t: (key: MessageKey, vars?: Record<string, string | number>) => string): string {
   const seconds = Math.max(0, Math.round(ms / 1000))
-  if (seconds < 60) return `约 ${seconds} 秒`
+  if (seconds < 60) return t('airdrop.sec', { n: seconds })
   const minutes = Math.round(seconds / 60)
-  if (minutes < 60) return `约 ${minutes} 分钟`
+  if (minutes < 60) return t('airdrop.min', { n: minutes })
   const hours = Math.floor(minutes / 60)
   const rem = minutes % 60
-  return rem > 0 ? `约 ${hours} 小时 ${rem} 分钟` : `约 ${hours} 小时`
+  return rem > 0 ? t('airdrop.hourMin', { h: hours, m: rem }) : t('airdrop.hour', { n: hours })
 }
 
 function formatTime(at: number | null): string {
@@ -76,6 +77,7 @@ function formatTime(at: number | null): string {
 }
 
 export default function HdAirdropPage() {
+  const t = useT()
   const currentWalletId = useWalletStore((s) => s.currentId)
   const currentWallet = useWalletStore((s) => s.current)
   const networks = useNetworkStore((s) => s.networks)
@@ -246,35 +248,36 @@ export default function HdAirdropPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-5">
       <div>
-        <h1 className="text-lg font-semibold text-ink-200">批量转账</h1>
+        <h1 className="text-lg font-semibold text-ink-200">{t('airdrop.title')}</h1>
         <p className="mt-1 text-xs text-ink-500">
-          {currentWallet ? `当前钱包：${currentWallet.name}` : '请先选择钱包'}
+          {currentWallet ? t('hd.currentWallet', { name: currentWallet.name }) : t('airdrop.pickWallet')}
           {' · '}
-          {network ? network.networkName : '请先选择网络'}
-          {' · 进行中不会因空闲自动锁定。电脑请保持不休眠。每笔单独记账，失败可重试'}
+          {network ? network.networkName : t('hd.pickNetwork')}
+          {' · '}
+          {t('airdrop.hint')}
         </p>
       </div>
 
       <Alert>{error}</Alert>
 
       {!evm ? (
-        <Card title="当前网络不支持">
-          <p className="text-sm text-ink-400">批量转账只支持 EVM 网络上的 ERC-20。</p>
+        <Card title={t('airdrop.unsupported')}>
+          <p className="text-sm text-ink-400">{t('airdrop.unsupportedBody')}</p>
           <Button className="mt-3" variant="ghost" onClick={openPicker}>
-            切换网络
+            {t('network.switch')}
           </Button>
         </Card>
       ) : (
-        <Card title="转账参数">
+        <Card title={t('airdrop.params')}>
           <div className="space-y-3">
             <Select
-              label="付款账户"
-              hint="从这个地址把代币打出去，Gas 也由它付"
+              label={t('airdrop.fromAccount')}
+              hint={t('airdrop.fromHint')}
               value={accountId}
               onChange={(e) => setAccountId(e.target.value)}
             >
               {filteredAccounts.length === 0 ? (
-                <option value="">当前钱包没有 EVM 账户</option>
+                <option value="">{t('airdrop.noEvm')}</option>
               ) : (
                 filteredAccounts.map((item) => (
                   <option key={item.id} value={item.id}>
@@ -284,31 +287,31 @@ export default function HdAirdropPage() {
               )}
             </Select>
 
-            <TokenSelect label="ERC-20 代币" tokens={erc20s} value={tokenPk} onChange={setTokenPk} />
+            <TokenSelect label={t('airdrop.token')} tokens={erc20s} value={tokenPk} onChange={setTokenPk} />
 
             <div className="grid gap-3 sm:grid-cols-3">
               <Field
-                label="从序号"
+                label={t('hd.fromIndex')}
                 type="number"
                 min={0}
                 value={fromIndex}
-                hint="对应分层钱包里的 address index"
+                hint={t('airdrop.fromIndexHint')}
                 onChange={(e) => setFromIndex(e.target.value)}
               />
               <Field
-                label="到序号"
+                label={t('hd.toIndex')}
                 type="number"
                 min={0}
                 value={toIndex}
-                hint={`当前钱包已有 ${hdCount} 条分层地址`}
+                hint={t('airdrop.toHint', { count: hdCount })}
                 onChange={(e) => setToIndex(e.target.value)}
               />
               <Field
-                label="账户序号"
+                label={t('airdrop.accountIndex')}
                 type="number"
                 min={0}
                 value={accountIndex}
-                hint="一般是 0，和分层派生页一致"
+                hint={t('airdrop.accountHint')}
                 onChange={(e) => setAccountIndex(e.target.value)}
               />
             </div>
@@ -320,7 +323,7 @@ export default function HdAirdropPage() {
                 className="px-3 py-1 text-xs"
                 onClick={() => setAmountMode('fixed')}
               >
-                固定额度
+                {t('airdrop.fixed')}
               </Button>
               <Button
                 type="button"
@@ -328,29 +331,29 @@ export default function HdAirdropPage() {
                 className="px-3 py-1 text-xs"
                 onClick={() => setAmountMode('range')}
               >
-                随机区间
+                {t('airdrop.random')}
               </Button>
             </div>
 
             {amountMode === 'fixed' ? (
               <Field
-                label="每笔金额"
+                label={t('airdrop.each')}
                 value={amount}
-                hint="每个分层地址收到同一笔数量"
+                hint={t('airdrop.eachHint')}
                 onChange={(e) => setAmount(e.target.value)}
               />
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field
-                  label="随机下限"
+                  label={t('airdrop.minAmount')}
                   value={amountMin}
-                  hint="含下限"
+                  hint={t('airdrop.minHint')}
                   onChange={(e) => setAmountMin(e.target.value)}
                 />
                 <Field
-                  label="随机上限"
+                  label={t('airdrop.max')}
                   value={amountMax}
-                  hint="含上限，例如 1000–2000"
+                  hint={t('airdrop.maxHint')}
                   onChange={(e) => setAmountMax(e.target.value)}
                 />
               </div>
@@ -358,28 +361,32 @@ export default function HdAirdropPage() {
 
             {hdCount === 0 ? (
               <p className="text-xs text-ink-500">
-                当前钱包还没有分层地址，请先到
+                {t('airdrop.needHd')}
                 <Link className="mx-1 text-honey-400 hover:underline" to="/hd">
-                  分层钱包
+                  {t('nav.hd')}
                 </Link>
-                生成。
+                {t('airdrop.needHd2')}
               </p>
             ) : null}
 
             {erc20s.length === 0 ? (
-              <p className="text-xs text-ink-500">当前网络没有 ERC-20，可先到「发行代币」部署一枚，或在代币目录里添加。</p>
+              <p className="text-xs text-ink-500">{t('airdrop.noErc20')}</p>
             ) : null}
 
             {preview ? (
               <div className="space-y-1 rounded-lg bg-ink-900 px-3 py-2 text-xs text-ink-400">
                 <p>
-                  从 {shorten(preview.from)} 转给 {preview.recipientCount} 个地址 · {preview.amountText}
+                  {t('airdrop.previewLine', {
+                    from: shorten(preview.from),
+                    count: preview.recipientCount,
+                    amount: preview.amountText,
+                  })}
                 </p>
-                <p>预估总量上限 {preview.estimatedTotal}</p>
-                <p>预估 Gas {preview.feeText}</p>
-                <p className="text-honey-400">预计耗时 {preview.estimatedText}，RPC 慢时可能翻倍。</p>
+                <p>{t('airdrop.estTotal', { total: preview.estimatedTotal })}</p>
+                <p>{t('airdrop.estGas', { fee: preview.feeText })}</p>
+                <p className="text-honey-400">{t('airdrop.estTime', { time: preview.estimatedText })}</p>
                 {preview.missingCount > 0 ? (
-                  <p className="text-honey-400">范围内还有 {preview.missingCount} 个序号没生成，已自动跳过。</p>
+                  <p className="text-honey-400">{t('airdrop.missing', { count: preview.missingCount })}</p>
                 ) : null}
                 {preview.warnings.map((item) => (
                   <p key={item} className="text-honey-400">
@@ -399,7 +406,7 @@ export default function HdAirdropPage() {
                   })
                 }
               >
-                预览
+                {t('common.preview')}
               </Button>
               <Button
                 disabled={busy || running || !preview}
@@ -415,7 +422,7 @@ export default function HdAirdropPage() {
                   })
                 }
               >
-                开始批量转账
+                {t('airdrop.start')}
               </Button>
               <Button
                 variant="danger"
@@ -427,7 +434,7 @@ export default function HdAirdropPage() {
                   })
                 }
               >
-                停止
+                {t('airdrop.stop')}
               </Button>
             </div>
           </div>
@@ -435,7 +442,7 @@ export default function HdAirdropPage() {
       )}
 
       {jobs.length > 0 ? (
-        <Card title={`历史批次 · ${jobs.length}`}>
+        <Card title={t('airdrop.history', { count: jobs.length })}>
           <ul className="divide-y divide-ink-700">
             {jobs.map((item) => (
               <li key={item.id}>
@@ -454,11 +461,17 @@ export default function HdAirdropPage() {
                       {item.symbol} · {item.fromIndex}–{item.toIndex} · {item.amountText}
                     </span>
                     <span className="mt-0.5 block text-[11px] text-ink-500">
-                      成功 {item.confirmed} · 待确认 {item.pending} · 失败 {item.failed} · 未发送 {item.queued} / {item.total}
+                      {t('airdrop.jobMeta', {
+                        ok: item.confirmed,
+                        pending: item.pending,
+                        failed: item.failed,
+                        queued: item.queued,
+                        total: item.total,
+                      })}
                       {item.startedAt ? ` · ${formatTime(item.startedAt)}` : ''}
                     </span>
                   </span>
-                  <span className={`shrink-0 text-[11px] ${jobClass(item.status)}`}>{jobLabel(item.status)}</span>
+                  <span className={`shrink-0 text-[11px] ${jobClass(item.status)}`}>{jobLabel(item.status, t)}</span>
                 </button>
               </li>
             ))}
@@ -468,14 +481,14 @@ export default function HdAirdropPage() {
 
       {job ? (
         <Card
-          title="执行进度与明细"
-          action={<span className={`text-xs ${jobClass(job.status)}`}>{jobLabel(job.status)}</span>}
+          title={t('airdrop.progress')}
+          action={<span className={`text-xs ${jobClass(job.status)}`}>{jobLabel(job.status, t)}</span>}
         >
           <div className="space-y-3">
             <div className="flex items-center justify-between text-sm text-ink-200">
               <span>
-                已处理 {doneCount} / {job.total} 笔
-                {job.currentIndex != null ? ` · 正在转第 ${job.currentIndex} 号` : ''}
+                {t('airdrop.done', { done: doneCount, total: job.total })}
+                {job.currentIndex != null ? ` · ${t('airdrop.current', { index: job.currentIndex })}` : ''}
               </span>
               <span className="tabular-nums text-honey-400">{progress}%</span>
             </div>
@@ -483,12 +496,18 @@ export default function HdAirdropPage() {
               <div className="h-full bg-honey-500 transition-all" style={{ width: `${progress}%` }} />
             </div>
             <p className="text-xs text-ink-400">
-              成功、失败、待确认、跳过都计入进度 · 已确认 {job.confirmed} · 待确认 {job.pending} · 失败 {job.failed} · 未发送 {job.queued} · 跳过 {job.skipped}
+              {t('airdrop.progressHint', {
+                ok: job.confirmed,
+                pending: job.pending,
+                failed: job.failed,
+                queued: job.queued,
+                skipped: job.skipped,
+              })}
             </p>
             <p className="text-xs text-ink-500">
               {job.status === 'running'
-                ? `剩余 ${job.queued} 笔，大约还要 ${formatEta(remainMs)}`
-                : `本批按 ${job.total} 笔估时 ${formatEta(job.estimatedMs)}`}
+                ? t('airdrop.remain', { queued: job.queued, eta: formatEta(remainMs, t) })
+                : t('airdrop.eta', { total: job.total, eta: formatEta(job.estimatedMs, t) })}
             </p>
             {job.lastTxid ? (
               <p className="sensitive break-all font-mono text-[11px] text-ink-400">{job.lastTxid}</p>
@@ -509,7 +528,7 @@ export default function HdAirdropPage() {
                   })
                 }
               >
-                一键重试失败（{job.failed}）
+                {t('airdrop.retryFailed', { count: job.failed })}
               </Button>
               <Button
                 variant="ghost"
@@ -524,7 +543,7 @@ export default function HdAirdropPage() {
                   })
                 }
               >
-                继续未发送（{job.queued}）
+                {t('airdrop.continue', { count: job.queued })}
               </Button>
               {txUrl ? (
                 <Button
@@ -532,26 +551,26 @@ export default function HdAirdropPage() {
                   className="px-2 py-1 text-xs"
                   onClick={() => openExplorer(txUrl, explorerTabTitle(txUrl))}
                 >
-                  最近一笔
+                  {t('airdrop.lastTx')}
                 </Button>
               ) : null}
               <Link
                 to="/activity"
                 className="inline-flex items-center rounded-lg border border-ink-600 px-2 py-1 text-xs text-ink-200 hover:border-honey-500 hover:text-honey-400"
               >
-                交易记录
+                {t('nav.activity')}
               </Link>
             </div>
 
             <div className="flex flex-wrap gap-2 text-xs">
               {(
                 [
-                  ['all', '全部', job.total],
-                  ['failed', '失败', job.failed],
-                  ['queued', '未发送', job.queued],
-                  ['pending', '待确认', job.pending],
-                  ['confirmed', '已确认', job.confirmed],
-                  ['skipped', '跳过', job.skipped],
+                  ['all', t('airdrop.filterAll'), job.total],
+                  ['failed', t('airdrop.itFailed'), job.failed],
+                  ['queued', t('airdrop.itQueued'), job.queued],
+                  ['pending', t('airdrop.itPending'), job.pending],
+                  ['confirmed', t('airdrop.itConfirmed'), job.confirmed],
+                  ['skipped', t('airdrop.skip'), job.skipped],
                 ] as const
               ).map(([key, label, count]) => (
                 <button
@@ -587,7 +606,7 @@ export default function HdAirdropPage() {
                 <Pager page={page} pageCount={pageCount} total={itemPage.total} onPage={setPage} />
               </>
             ) : (
-              <p className="text-sm text-ink-400">这一页没有记录。</p>
+              <p className="text-sm text-ink-400">{t('airdrop.noRows')}</p>
             )}
           </div>
         </Card>
@@ -609,17 +628,18 @@ function ItemTable({
   running: boolean
   onRetry: (item: HdAirdropItem) => void
 }) {
+  const t = useT()
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-xs">
         <thead className="text-ink-500">
           <tr>
-            <th className="py-2 pr-3 font-medium">序号</th>
-            <th className="py-2 pr-3 font-medium">地址</th>
-            <th className="py-2 pr-3 font-medium">金额</th>
-            <th className="py-2 pr-3 font-medium">状态</th>
-            <th className="py-2 pr-3 font-medium">交易</th>
-            <th className="py-2 font-medium">操作</th>
+            <th className="py-2 pr-3 font-medium">{t('hd.colIndex')}</th>
+            <th className="py-2 pr-3 font-medium">{t('hd.colAddress')}</th>
+            <th className="py-2 pr-3 font-medium">{t('airdrop.colAmount')}</th>
+            <th className="py-2 pr-3 font-medium">{t('airdrop.colStatus')}</th>
+            <th className="py-2 pr-3 font-medium">{t('airdrop.colTx')}</th>
+            <th className="py-2 font-medium">{t('hd.colAction')}</th>
           </tr>
         </thead>
         <tbody>
@@ -636,8 +656,8 @@ function ItemTable({
                   {formatAmount(item.amount)} {symbol}
                 </td>
                 <td className={`py-2 pr-3 ${itemClass(item.status)}`}>
-                  {itemLabel(item.status)}
-                  {item.attemptCount > 1 ? ` · ${item.attemptCount} 次` : ''}
+                  {itemLabel(item.status, t)}
+                  {item.attemptCount > 1 ? ` · ${t('airdrop.attempts', { count: item.attemptCount })}` : ''}
                   {item.error ? <span className="mt-0.5 block max-w-xs text-[10px] text-red-300">{item.error}</span> : null}
                 </td>
                 <td className="py-2 pr-3">
@@ -646,7 +666,7 @@ function ItemTable({
                 <td className="py-2">
                   {retryable ? (
                     <Button variant="ghost" className="px-2 py-1 text-xs" disabled={running} onClick={() => onRetry(item)}>
-                      重试
+                      {t('airdrop.retry')}
                     </Button>
                   ) : null}
                 </td>
@@ -670,6 +690,7 @@ function Pager({
   total: number
   onPage: (page: number) => void
 }) {
+  const t = useT()
   const [jump, setJump] = useState(String(page))
   useEffect(() => {
     setJump(String(page))
@@ -682,11 +703,15 @@ function Pager({
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-400">
       <span>
-        第 {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} 条，共 {total} 条
+        {t('hd.pageRange', {
+          from: (page - 1) * PAGE_SIZE + 1,
+          to: Math.min(page * PAGE_SIZE, total),
+          total,
+        })}
       </span>
       <div className="flex items-center gap-2">
         <button type="button" className="rounded px-2 py-1 hover:bg-ink-800 disabled:opacity-40" disabled={page <= 1} onClick={() => go(page - 1)}>
-          上一页
+          {t('common.prev')}
         </button>
         <span>
           {page} / {pageCount}
@@ -697,7 +722,7 @@ function Pager({
           disabled={page >= pageCount}
           onClick={() => go(page + 1)}
         >
-          下一页
+          {t('common.next')}
         </button>
         <input
           className="w-16 rounded border border-ink-600 bg-ink-900 px-2 py-1 text-center text-ink-200 outline-none focus:border-honey-500"
@@ -708,7 +733,7 @@ function Pager({
           }}
         />
         <button type="button" className="rounded px-2 py-1 hover:bg-ink-800" onClick={() => go(Number(jump))}>
-          跳转
+          {t('common.jump')}
         </button>
       </div>
     </div>

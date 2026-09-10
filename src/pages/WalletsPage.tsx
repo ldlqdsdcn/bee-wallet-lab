@@ -11,6 +11,7 @@ import type {
 import { accountApi, walletApi } from '../lib/bridge'
 import { Alert, Button, Card, Field, Modal, Select, TextArea } from '../components/ui'
 import { shorten, walletTypeLabel } from '../lib/format'
+import { useT } from '../i18n'
 import { useWalletStore } from '../store/walletStore'
 
 type Wizard = 'idle' | 'create' | 'confirm' | 'import' | 'importKey'
@@ -25,6 +26,7 @@ const ADDRESS_TYPES: { value: BitcoinAddressType; label: string }[] = [
 ]
 
 export default function WalletsPage() {
+  const t = useT()
   const location = useLocation()
   const reloadCurrent = useWalletStore((s) => s.load)
   const selectWallet = useWalletStore((s) => s.select)
@@ -122,26 +124,26 @@ export default function WalletsPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-ink-200">钱包与账户</h1>
+        <h1 className="text-lg font-semibold text-ink-200">{t('wallets.title')}</h1>
         <div className="flex gap-2">
           <Button variant="ghost" onClick={() => setWizard('import')}>
-            导入助记词
+            {t('wallets.importMnemonic')}
           </Button>
           <Button variant="ghost" onClick={() => setWizard('importKey')}>
-            导入私钥
+            {t('wallets.importKey')}
           </Button>
-          <Button onClick={() => setWizard('create')}>创建钱包</Button>
+          <Button onClick={() => setWizard('create')}>{t('wallets.create')}</Button>
         </div>
       </div>
 
       <Alert>{error}</Alert>
 
       {wizard === 'create' || wizard === 'confirm' ? (
-        <Card title={wizard === 'create' ? '创建钱包' : '确认助记词'}>
+        <Card title={wizard === 'create' ? t('wallets.create') : t('wallets.confirmMnemonic')}>
           {wizard === 'create' ? (
             <div className="space-y-3">
               <Field
-                label="钱包名称"
+                label={t('wallets.walletName')}
                 maxLength={WALLET_NAME_MAX_LENGTH}
                 value={createForm.name}
                 onChange={(e) =>
@@ -149,19 +151,19 @@ export default function WalletsPage() {
                 }
               />
               <Select
-                label="助记词长度"
+                label={t('wallets.mnemonicLen')}
                 value={createForm.mnemonicLength}
                 onChange={(e) =>
                   setCreateForm({ ...createForm, mnemonicLength: Number(e.target.value) as 12 | 24 })
                 }
               >
-                <option value={12}>12 词</option>
-                <option value={24}>24 词</option>
+                <option value={12}>{t('wallets.words', { count: 12 })}</option>
+                <option value={24}>{t('wallets.words', { count: 24 })}</option>
               </Select>
               <Field
-                label="Passphrase（可选）"
+                label={t('wallets.passphrase')}
                 value={createForm.passphrase ?? ''}
-                hint="BIP-39 第 25 词，会改变整棵派生树。忘记则无法恢复。"
+                hint={t('wallets.passphraseHint')}
                 onChange={(e) => setCreateForm({ ...createForm, passphrase: e.target.value })}
               />
               <div className="flex gap-2">
@@ -178,16 +180,16 @@ export default function WalletsPage() {
                     })
                   }
                 >
-                  生成助记词
+                  {t('wallets.generate')}
                 </Button>
                 <Button variant="ghost" onClick={() => setWizard('idle')}>
-                  取消
+                  {t('common.cancel')}
                 </Button>
               </div>
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-xs text-ink-400">请离线抄写，确认后本页不再展示完整助记词。</p>
+              <p className="text-xs text-ink-400">{t('wallets.copyHint')}</p>
               <ol className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                 {words.map((word, index) => (
                   <li key={index} className="sensitive rounded-lg bg-ink-900 px-2 py-1 text-xs text-ink-200">
@@ -200,7 +202,7 @@ export default function WalletsPage() {
                 {challenge.map((index) => (
                   <Field
                     key={index}
-                    label={`第 ${index} 个单词`}
+                    label={t('wallets.wordN', { index })}
                     value={answers[String(index)] ?? ''}
                     onChange={(e) => setAnswers({ ...answers, [String(index)]: e.target.value })}
                   />
@@ -219,10 +221,10 @@ export default function WalletsPage() {
                     })
                   }
                 >
-                  确认并保存
+                  {t('wallets.confirmSave')}
                 </Button>
                 <Button variant="ghost" onClick={() => setWizard('idle')}>
-                  放弃
+                  {t('wallets.discard')}
                 </Button>
               </div>
             </div>
@@ -231,23 +233,23 @@ export default function WalletsPage() {
       ) : null}
 
       {wizard === 'import' ? (
-        <Card title="导入助记词">
+        <Card title={t('wallets.importMnemonic')}>
           <div className="space-y-3">
             <Field
-              label="钱包名称"
+              label={t('wallets.walletName')}
               maxLength={WALLET_NAME_MAX_LENGTH}
               value={importName}
               onChange={(e) => setImportName(e.target.value.slice(0, WALLET_NAME_MAX_LENGTH))}
             />
             <TextArea
-              label="助记词"
+              label={t('wallets.mnemonic')}
               className="sensitive"
               value={importMnemonic}
-              placeholder="用空格分隔"
+              placeholder={t('wallets.mnemonicPh')}
               onChange={(e) => setImportMnemonic(e.target.value)}
             />
             <Field
-              label="Passphrase（如有）"
+              label={t('wallets.passphraseIf')}
               value={importPassphrase}
               onChange={(e) => setImportPassphrase(e.target.value)}
             />
@@ -268,10 +270,10 @@ export default function WalletsPage() {
                   })
                 }
               >
-                导入
+                {t('wallets.import')}
               </Button>
               <Button variant="ghost" onClick={() => setWizard('idle')}>
-                取消
+                {t('common.cancel')}
               </Button>
             </div>
           </div>
@@ -279,10 +281,10 @@ export default function WalletsPage() {
       ) : null}
 
       {wizard === 'importKey' ? (
-        <Card title="导入私钥">
+        <Card title={t('wallets.importKey')}>
           <div className="grid grid-cols-2 gap-3">
             <Select
-              label="链"
+              label={t('wallets.chain')}
               value={keyForm.walletType}
               onChange={(e) => setKeyForm({ ...keyForm, walletType: e.target.value as WalletType })}
             >
@@ -292,18 +294,18 @@ export default function WalletsPage() {
               <option value="solana">Solana</option>
             </Select>
             <Select
-              label="网络"
+              label={t('common.network')}
               value={keyForm.networkScope}
               onChange={(e) =>
                 setKeyForm({ ...keyForm, networkScope: e.target.value as 'mainnet' | 'testnet' })
               }
             >
-              <option value="mainnet">主网</option>
-              <option value="testnet">测试网</option>
+              <option value="mainnet">{t('common.mainnet')}</option>
+              <option value="testnet">{t('common.testnet')}</option>
             </Select>
             {keyForm.walletType === 'bitcoin' ? (
               <Select
-                label="地址格式"
+                label={t('wallets.addressType')}
                 value={keyForm.addressType ?? 'p2wpkh'}
                 onChange={(e) =>
                   setKeyForm({ ...keyForm, addressType: e.target.value as BitcoinAddressType })
@@ -316,13 +318,13 @@ export default function WalletsPage() {
                 ))}
               </Select>
             ) : null}
-            <Field label="备注" value={keyForm.label ?? ''} onChange={(e) => setKeyForm({ ...keyForm, label: e.target.value })} />
+            <Field label={t('wallets.note')} value={keyForm.label ?? ''} onChange={(e) => setKeyForm({ ...keyForm, label: e.target.value })} />
             <div className="col-span-2">
               <TextArea
-                label="私钥"
+                label={t('wallets.privateKey')}
                 className="sensitive"
                 value={keyForm.privateKey}
-                hint="EVM / TRON 为 64 位 hex，Bitcoin 可用 WIF，Solana 为 32 字节 hex 或 Base58 secret key"
+                hint={t('wallets.keyHint')}
                 onChange={(e) => setKeyForm({ ...keyForm, privateKey: e.target.value })}
               />
             </div>
@@ -339,19 +341,19 @@ export default function WalletsPage() {
                 })
               }
             >
-              导入账户
+              {t('wallets.importAccount')}
             </Button>
             <Button variant="ghost" onClick={() => setWizard('idle')}>
-              取消
+              {t('common.cancel')}
             </Button>
           </div>
         </Card>
       ) : null}
 
       <div className="grid gap-5 md:grid-cols-[240px_1fr]">
-        <Card title="钱包">
+        <Card title={t('wallets.list')}>
           {wallets.length === 0 ? (
-            <p className="text-sm text-ink-400">还没有钱包。先创建或导入一个。</p>
+            <p className="text-sm text-ink-400">{t('wallets.empty')}</p>
           ) : (
             <ul className="space-y-1">
               {wallets.map((wallet) => (
@@ -368,9 +370,9 @@ export default function WalletsPage() {
                   >
                     <span className="block truncate">{wallet.name}</span>
                     <span className="text-[11px] text-ink-500">
-                      {wallet.mnemonicLength} 词 · {wallet.accountCount} 个账户
-                      {wallet.isDefault ? ' · 当前' : ''}
-                      {wallet.isAuthWallet ? ' · 鉴权' : ''}
+                      {t('wallets.meta', { words: wallet.mnemonicLength, accounts: wallet.accountCount })}
+                      {wallet.isDefault ? ` · ${t('common.current')}` : ''}
+                      {wallet.isAuthWallet ? ` · ${t('wallets.auth')}` : ''}
                     </span>
                   </button>
                 </li>
@@ -380,7 +382,7 @@ export default function WalletsPage() {
         </Card>
 
         <Card
-          title={selected ? selected.name : '账户'}
+          title={selected ? selected.name : t('wallets.accounts')}
           action={
             selected ? (
               <div className="flex flex-wrap justify-end gap-2">
@@ -392,17 +394,17 @@ export default function WalletsPage() {
                     setRenameName(selected.name)
                   }}
                 >
-                  重命名
+                  {t('wallets.rename')}
                 </Button>
                 <Button
                   variant="ghost"
                   className="px-2 py-1 text-xs"
                   onClick={() => void selectWallet(selected.id).then(() => load(selected.id))}
                 >
-                  设为当前
+                  {t('wallets.setCurrent')}
                 </Button>
                 <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => void walletApi.setAuthWallet(selected.id).then(() => load(selected.id))}>
-                  用于鉴权
+                  {t('wallets.useAuth')}
                 </Button>
                 <Button
                   variant="ghost"
@@ -413,7 +415,7 @@ export default function WalletsPage() {
                     setRevealError(null)
                   }}
                 >
-                  导出助记词
+                  {t('wallets.exportMnemonic')}
                 </Button>
                 <Button
                   variant="danger"
@@ -424,7 +426,7 @@ export default function WalletsPage() {
                     setError(null)
                   }}
                 >
-                  删除
+                  {t('common.delete')}
                 </Button>
               </div>
             ) : null
@@ -434,7 +436,7 @@ export default function WalletsPage() {
             <div className="mb-4 flex items-end gap-2">
               <div className="min-w-0 flex-1">
                 <Field
-                  label="钱包名称"
+                  label={t('wallets.walletName')}
                   maxLength={WALLET_NAME_MAX_LENGTH}
                   value={renameName}
                   autoFocus
@@ -463,23 +465,23 @@ export default function WalletsPage() {
                   })
                 }
               >
-                保存
+                {t('common.save')}
               </Button>
               <Button variant="ghost" className="px-3 py-2 text-xs" onClick={() => setRenaming(false)}>
-                取消
+                {t('common.cancel')}
               </Button>
             </div>
           ) : null}
 
           {accounts.length === 0 ? (
-            <p className="text-sm text-ink-400">该钱包还没有账户。</p>
+            <p className="text-sm text-ink-400">{t('wallets.noAccounts')}</p>
           ) : (
             <ul className="divide-y divide-ink-700">
               {accounts.map((account) => (
                 <li key={account.id} className="flex items-center gap-3 py-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-ink-200">{account.label || '未命名'}</span>
+                      <span className="text-sm text-ink-200">{account.label || t('wallets.unnamed')}</span>
                       <span className="rounded bg-ink-700 px-1.5 py-0.5 text-[10px] text-ink-400">
                         {walletTypeLabel(account.walletType)}
                       </span>
@@ -503,7 +505,7 @@ export default function WalletsPage() {
                       setRevealError(null)
                     }}
                   >
-                    私钥
+                    {t('wallets.privateKey')}
                   </Button>
                 </li>
               ))}
@@ -617,16 +619,17 @@ function PasswordPromptDialog({
   onCancel: () => void
   onConfirm: () => void
 }) {
+  const t = useT()
   return (
-    <Modal title={kind === 'mnemonic' ? '导出助记词' : '查看私钥'} onClose={onCancel}>
+    <Modal title={kind === 'mnemonic' ? t('wallets.exportTitle') : t('wallets.revealKey')} onClose={onCancel}>
       <p className="mt-2 text-sm text-ink-400">
         {kind === 'mnemonic'
-          ? `输入主密码后，将单独打开窗口显示「${label}」的助记词。`
-          : `输入主密码后，将单独打开窗口显示「${label}」的私钥。`}
+          ? t('wallets.exportBody', { label })
+          : t('wallets.revealBody', { label })}
       </p>
       <div className="mt-4">
         <Field
-          label="主密码"
+          label={t('common.password')}
           type="password"
           autoFocus
           value={password}
@@ -639,10 +642,10 @@ function PasswordPromptDialog({
       {error ? <p className="mt-3 text-xs text-red-300">{error}</p> : null}
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="ghost" onClick={onCancel}>
-          取消
+          {t('common.cancel')}
         </Button>
         <Button disabled={busy || !password} onClick={onConfirm}>
-          {busy ? '校验中…' : '确认'}
+          {busy ? t('wallets.checking') : t('common.confirm')}
         </Button>
       </div>
     </Modal>
@@ -656,6 +659,7 @@ function SecretRevealDialog({
   secret: { kind: 'mnemonic' | 'key'; value: string; passphrase: string | null; label: string }
   onClose: () => void
 }) {
+  const t = useT()
   const [copied, setCopied] = useState(false)
   const words = secret.kind === 'mnemonic' ? secret.value.trim().split(/\s+/) : []
 
@@ -666,9 +670,9 @@ function SecretRevealDialog({
   }
 
   return (
-    <Modal title={secret.kind === 'mnemonic' ? '助记词' : '私钥'} onClose={onClose} wide={secret.kind === 'mnemonic'}>
+    <Modal title={secret.kind === 'mnemonic' ? t('wallets.mnemonic') : t('wallets.privateKey')} onClose={onClose} wide={secret.kind === 'mnemonic'}>
       <p className="mt-2 text-xs text-ink-500">
-        {secret.label} · 请勿截图、勿发给任何人。关闭窗口后不再显示。
+        {t('wallets.secretWarn', { label: secret.label })}
       </p>
       {secret.kind === 'mnemonic' ? (
         <ol className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -686,14 +690,14 @@ function SecretRevealDialog({
       )}
       {secret.passphrase ? (
         <p className="mt-3 text-xs text-ink-400">
-          Passphrase：<span className="sensitive text-ink-200">{secret.passphrase}</span>
+          {t('wallets.passphraseIf')}: <span className="sensitive text-ink-200">{secret.passphrase}</span>
         </p>
       ) : null}
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="ghost" onClick={() => void copy()}>
-          {copied ? '已复制' : '复制'}
+          {copied ? t('common.copied') : t('common.copy')}
         </Button>
-        <Button onClick={onClose}>关闭</Button>
+        <Button onClick={onClose}>{t('common.close')}</Button>
       </div>
     </Modal>
   )
@@ -716,14 +720,15 @@ function DeleteWalletDialog({
   onCancel: () => void
   onConfirm: () => void
 }) {
+  const t = useT()
   return (
-    <Modal title="删除钱包" onClose={onCancel}>
+    <Modal title={t('wallets.deleteTitle')} onClose={onCancel}>
       <p className="mt-2 text-sm text-ink-400">
-        确定删除「{wallet.name}」？助记词和账户将从本机清除，无法恢复。
+        {t('wallets.deleteBody', { name: wallet.name })}
       </p>
       <div className="mt-4">
         <Field
-          label="主密码"
+          label={t('common.password')}
           type="password"
           autoFocus
           value={password}
@@ -736,10 +741,10 @@ function DeleteWalletDialog({
       {error ? <p className="mt-3 text-xs text-red-300">{error}</p> : null}
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="ghost" onClick={onCancel}>
-          取消
+          {t('common.cancel')}
         </Button>
         <Button variant="danger" disabled={busy || !password} onClick={onConfirm}>
-          {busy ? '删除中…' : '确认删除'}
+          {busy ? t('wallets.deleting') : t('wallets.confirmDelete')}
         </Button>
       </div>
     </Modal>
@@ -757,29 +762,30 @@ function DeriveBar({
   onDerived: () => void
   onError: (message: string) => void
 }) {
+  const t = useT()
   const [walletType, setWalletType] = useState<WalletType>('web3')
   const [networkScope, setNetworkScope] = useState<'mainnet' | 'testnet'>('mainnet')
   const [addressType, setAddressType] = useState<BitcoinAddressType>('p2wpkh')
 
   return (
     <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-ink-700 pt-4">
-      <Select label="派生链" value={walletType} onChange={(e) => setWalletType(e.target.value as WalletType)}>
+      <Select label={t('wallets.deriveChain')} value={walletType} onChange={(e) => setWalletType(e.target.value as WalletType)}>
         <option value="web3">EVM</option>
         <option value="bitcoin">Bitcoin</option>
         <option value="tron">TRON</option>
         <option value="solana">Solana</option>
       </Select>
       <Select
-        label="网络"
+        label={t('common.network')}
         value={networkScope}
         onChange={(e) => setNetworkScope(e.target.value as 'mainnet' | 'testnet')}
       >
-        <option value="mainnet">主网</option>
-        <option value="testnet">测试网</option>
+        <option value="mainnet">{t('common.mainnet')}</option>
+        <option value="testnet">{t('common.testnet')}</option>
       </Select>
       {walletType === 'bitcoin' ? (
         <Select
-          label="格式"
+          label={t('wallets.format')}
           value={addressType}
           onChange={(e) => setAddressType(e.target.value as BitcoinAddressType)}
         >
@@ -804,7 +810,7 @@ function DeriveBar({
             .catch((err) => onError(err instanceof Error ? err.message : String(err)))
         }}
       >
-        派生下一个账户
+        {t('wallets.deriveNext')}
       </Button>
     </div>
   )

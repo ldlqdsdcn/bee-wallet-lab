@@ -2,15 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import type { TokenRecord } from '@shared/types'
 import { NetworkIcon } from './NetworkSelect'
 import { shorten } from '../lib/format'
-
-function tokenCaption(token: TokenRecord): string {
-  if (!token.isToken) return '原生币'
-  if (token.contractAddress) return shorten(token.contractAddress, 6, 4)
-  return token.tokenStandard || '代币'
-}
+import { useT } from '../i18n'
 
 export function TokenSelect({
-  label = '代币',
+  label,
   tokens,
   value,
   onChange,
@@ -22,9 +17,15 @@ export function TokenSelect({
   onChange: (id: string) => void
   className?: string
 }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const selected = tokens.find((item) => item.id === value) ?? null
+  const caption = (token: TokenRecord) => {
+    if (!token.isToken) return t('common.nativeToken')
+    if (token.contractAddress) return shorten(token.contractAddress, 6, 4)
+    return token.tokenStandard || t('common.token')
+  }
 
   useEffect(() => {
     const onDoc = (event: MouseEvent) => {
@@ -36,7 +37,7 @@ export function TokenSelect({
 
   return (
     <div ref={rootRef} className={`relative min-w-0 ${className}`}>
-      <span className="mb-1 block text-xs font-medium text-ink-400">{label}</span>
+      <span className="mb-1 block text-xs font-medium text-ink-400">{label ?? t('token.label')}</span>
       <button
         type="button"
         className="flex w-full items-center gap-2 rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-left text-sm text-ink-200 outline-none hover:border-honey-500 focus:border-honey-500"
@@ -44,7 +45,7 @@ export function TokenSelect({
       >
         <NetworkIcon src={selected?.tokenIcon} name={selected?.symbol} />
         <span className="min-w-0 flex-1 truncate">
-          {selected ? `${selected.symbol} · ${selected.name}` : tokens.length ? '选择代币' : '当前网络没有代币'}
+          {selected ? `${selected.symbol} · ${selected.name}` : tokens.length ? t('token.select') : t('token.none')}
         </span>
         <span className="shrink-0 text-[10px] text-ink-500">{open ? '▴' : '▾'}</span>
       </button>
@@ -69,7 +70,7 @@ export function TokenSelect({
                     <span className="block truncate">{item.symbol}</span>
                     <span className="block truncate text-[11px] text-ink-500">{item.name}</span>
                   </span>
-                  <span className="shrink-0 text-[10px] text-ink-600">{tokenCaption(item)}</span>
+                  <span className="shrink-0 text-[10px] text-ink-600">{caption(item)}</span>
                 </button>
               </li>
             )

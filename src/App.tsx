@@ -28,12 +28,16 @@ import { subscribeNetworkEvents } from './store/networkStore'
 import { subscribeAddressBookEvents } from './store/addressBookStore'
 import { useBrowserStore } from './store/browserStore'
 import { BrowserChrome } from './components/BrowserChrome'
+import { useT } from './i18n'
+import { normalizeLocale } from '@shared/locale'
 
 export default function App() {
   const status = useVaultStore((s) => s.status)
   const loading = useVaultStore((s) => s.loading)
   const error = useVaultStore((s) => s.error)
   const bootstrap = useVaultStore((s) => s.bootstrap)
+  const language = useVaultStore((s) => s.settings?.language)
+  const t = useT()
 
   useEffect(() => {
     void bootstrap()
@@ -53,14 +57,18 @@ export default function App() {
     if (!status?.unlocked) useBrowserStore.getState().closeAll()
   }, [status?.unlocked])
 
+  useEffect(() => {
+    document.documentElement.lang = normalizeLocale(language)
+  }, [language])
+
   if (loading) {
-    return <div className="flex h-full items-center justify-center text-sm text-ink-400">加载中…</div>
+    return <div className="flex h-full items-center justify-center text-sm text-ink-400">{t('common.loading')}</div>
   }
 
   if (!status) {
     return (
       <div className="flex h-full items-center justify-center px-6 text-center text-sm text-red-300">
-        {error ?? '无法连接主进程'}
+        {error ?? t('common.noBridge')}
       </div>
     )
   }

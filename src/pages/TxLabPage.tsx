@@ -19,6 +19,7 @@ import { formatAmount, shorten, walletTypeLabel } from '../lib/format'
 import { useBrowserStore } from '../store/browserStore'
 import { useWalletStore } from '../store/walletStore'
 import { currentNetworkOf, useNetworkStore } from '../store/networkStore'
+import { useT } from '../i18n'
 
 const RAW_LABEL: Record<TxLabRawFormat, string> = {
   hex: 'Hex',
@@ -27,6 +28,7 @@ const RAW_LABEL: Record<TxLabRawFormat, string> = {
 }
 
 export default function TxLabPage() {
+  const t = useT()
   const currentWalletId = useWalletStore((s) => s.currentId)
   const networks = useNetworkStore((s) => s.networks)
   const networkPk = useNetworkStore((s) => s.currentPk)
@@ -154,27 +156,28 @@ export default function TxLabPage() {
 
   const decodeHint =
     network?.walletType === 'solana'
-      ? '粘贴 Base64 / Hex / Base58 原始交易'
+      ? t('txLab.hintSol')
       : network?.walletType === 'tron'
-        ? '粘贴 TronGrid JSON（含 raw_data，可带 signature）'
-        : '粘贴十六进制 Raw Transaction'
+        ? t('txLab.hintTron')
+        : t('txLab.hintHex')
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-ink-200">交易实验室</h1>
+          <h1 className="text-lg font-semibold text-ink-200">{t('txLab.title')}</h1>
           <p className="mt-1 text-xs text-ink-500">
-            {network ? `${network.networkName} · ${walletTypeLabel(network.walletType)}` : '请先在侧栏选择网络'}
-            {' · 构造、解码、只签名、单独广播'}
+            {network ? `${network.networkName} · ${walletTypeLabel(network.walletType)}` : t('transfer.needNetwork')}
+            {' · '}
+            {t('txLab.subtitle')}
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant={tab === 'build' ? 'primary' : 'ghost'} onClick={() => setTab('build')}>
-            构造
+            {t('txLab.build')}
           </Button>
           <Button variant={tab === 'decode' ? 'primary' : 'ghost'} onClick={() => setTab('decode')}>
-            解码
+            {t('txLab.decode')}
           </Button>
         </div>
       </div>
@@ -184,9 +187,9 @@ export default function TxLabPage() {
       {tab === 'build' ? (
         <Card title="Transaction Builder">
           <div className="space-y-3">
-            <Select label="付款账户" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+            <Select label={t('txLab.from')} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
               {filteredAccounts.length === 0 ? (
-                <option value="">当前网络没有可用账户</option>
+                <option value="">{t('transfer.noAccount')}</option>
               ) : (
                 filteredAccounts.map((item) => (
                   <option key={item.id} value={item.id}>
@@ -198,7 +201,7 @@ export default function TxLabPage() {
             <TokenSelect tokens={tokens} value={tokenPk} onChange={setTokenPk} />
             <div>
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-xs font-medium text-ink-400">收款地址</span>
+                <span className="text-xs font-medium text-ink-400">{t('transfer.to')}</span>
                 {network ? (
                   <AddressBookPicker
                     walletType={network.walletType}
@@ -211,32 +214,32 @@ export default function TxLabPage() {
               <input
                 className="sensitive w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-ink-200 outline-none focus:border-honey-500"
                 value={to}
-                placeholder="粘贴或从地址簿选择"
+                placeholder={t('transfer.toPlaceholder')}
                 onChange={(e) => setTo(e.target.value)}
               />
             </div>
             <Field
-              label={`金额${token ? ` (${token.symbol})` : ''}`}
+              label={`${t('common.amount')}${token ? ` (${token.symbol})` : ''}`}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
-            <Select label="费率" value={feeLevel} onChange={(e) => setFeeLevel(e.target.value as FeeLevel)}>
-              <option value="low">慢</option>
-              <option value="medium">标准</option>
-              <option value="high">快</option>
-              <option value="custom">自定义</option>
+            <Select label={t('common.fee')} value={feeLevel} onChange={(e) => setFeeLevel(e.target.value as FeeLevel)}>
+              <option value="low">{t('common.slow')}</option>
+              <option value="medium">{t('common.standard')}</option>
+              <option value="high">{t('common.fast')}</option>
+              <option value="custom">{t('common.custom')}</option>
             </Select>
             {feeLevel === 'custom' ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field
                   label={
                     network?.walletType === 'bitcoin'
-                      ? 'sat/vB'
+                      ? t('transfer.customBtc')
                       : network?.walletType === 'solana'
-                        ? '优先费（仅展示）'
+                        ? t('txLab.priorityShow')
                         : network?.walletType === 'tron'
-                          ? '自定义费率（TRX 网络请用 feeLimit）'
-                          : 'maxFeePerGas (gwei)'
+                          ? t('txLab.customTron')
+                          : t('transfer.customEvm')
                   }
                   value={customFeeRate}
                   onChange={(e) => setCustomFeeRate(e.target.value)}
@@ -255,13 +258,13 @@ export default function TxLabPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 {network.walletType === 'web3' ? (
                   <>
-                    <Field label="Nonce（可空，自动取链上）" value={nonce} onChange={(e) => setNonce(e.target.value)} />
-                    <Field label="Gas Limit（可空，自动估算）" value={gasLimit} onChange={(e) => setGasLimit(e.target.value)} />
+                    <Field label={t('txLab.nonce')} value={nonce} onChange={(e) => setNonce(e.target.value)} />
+                    <Field label={t('txLab.gas')} value={gasLimit} onChange={(e) => setGasLimit(e.target.value)} />
                   </>
                 ) : (
                   <Field
                     label="feeLimit (TRX)"
-                    hint="TRC-20 上限，默认 40"
+                    hint={t('txLab.feeLimitHint')}
                     value={feeLimit}
                     onChange={(e) => setFeeLimit(e.target.value)}
                   />
@@ -272,9 +275,13 @@ export default function TxLabPage() {
             {preview ? (
               <div className="space-y-1 rounded-lg bg-ink-900 px-3 py-2 text-xs text-ink-400">
                 <p>
-                  支付 {formatAmount(preview.amount)} {preview.symbol} → {shorten(preview.to)}
+                  {t('transfer.pay', {
+                    amount: formatAmount(preview.amount),
+                    symbol: preview.symbol,
+                    to: shorten(preview.to),
+                  })}
                 </p>
-                <p>手续费 {preview.feeText}</p>
+                <p>{t('transfer.feeText', { fee: preview.feeText })}</p>
                 {Object.entries(preview.detail).map(([key, value]) =>
                   value ? (
                     <p key={key} className="break-all">
@@ -316,7 +323,7 @@ export default function TxLabPage() {
                   })
                 }
               >
-                预览
+                {t('common.preview')}
               </Button>
               <Button
                 disabled={busy || !preview}
@@ -329,7 +336,7 @@ export default function TxLabPage() {
                   })
                 }
               >
-                签名（不广播）
+                {t('txLab.signOnly')}
               </Button>
             </div>
           </div>
@@ -338,7 +345,7 @@ export default function TxLabPage() {
         <Card title="Transaction Decoder">
           <div className="space-y-3">
             <TextArea
-              label="原始交易"
+              label={t('txLab.raw')}
               className="sensitive min-h-36 font-mono text-xs"
               hint={decodeHint}
               value={paste}
@@ -353,7 +360,7 @@ export default function TxLabPage() {
                 })
               }
             >
-              解析
+              {t('txLab.parse')}
             </Button>
           </div>
         </Card>
@@ -361,7 +368,7 @@ export default function TxLabPage() {
 
       {tab === 'build' && signed ? (
         <RawCard
-          title="已签名，尚未广播"
+          title={t('txLab.signed')}
           raw={signed.raw}
           format={signed.rawFormat}
           txid={signed.txid}
@@ -374,7 +381,7 @@ export default function TxLabPage() {
 
       {tab === 'decode' && decoded ? (
         <RawCard
-          title={decoded.signed ? '解析结果（已签名）' : '解析结果（未签名）'}
+          title={decoded.signed ? t('txLab.decodedSigned') : t('txLab.decodedUnsigned')}
           raw={decoded.raw}
           format={decoded.rawFormat}
           txid={decoded.txid}
@@ -389,7 +396,7 @@ export default function TxLabPage() {
       {(tab === 'build' && signed) || (tab === 'decode' && decoded?.signed) ? (
         <Card title="Broadcast">
           <div className="space-y-3">
-            <p className="text-xs text-ink-500">使用当前侧栏网络的 RPC 广播已签名原始交易，不会再次签名。</p>
+            <p className="text-xs text-ink-500">{t('txLab.broadcastHint')}</p>
             <Button
               disabled={busy || !networkPk || Boolean(receipt)}
               onClick={() =>
@@ -425,26 +432,26 @@ export default function TxLabPage() {
                 })
               }
             >
-              广播
+              {t('common.broadcast')}
             </Button>
           </div>
         </Card>
       ) : null}
 
       {receipt ? (
-        <Card title="广播结果">
+        <Card title={t('txLab.result')}>
           <div className="space-y-2">
             <p className="text-xs text-honey-400">
               {receipt.transaction.status === 'confirmed'
-                ? '交易已确认'
+                ? t('transfer.confirmed')
                 : receipt.transaction.status === 'failed'
-                  ? '交易失败'
-                  : '已广播，正在确认…'}
+                  ? t('transfer.failed')
+                  : t('transfer.pending')}
             </p>
             <p className="sensitive break-all font-mono text-[11px] text-ink-300">{receipt.txid}</p>
             <div className="flex flex-wrap gap-2">
               <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => void copy('txid', receipt.txid)}>
-                {copied === 'txid' ? '已复制' : '复制 Tx Hash'}
+                {copied === 'txid' ? t('common.copied') : t('txLab.copyHash')}
               </Button>
               {receipt.explorerUrl ? (
                 <Button
@@ -452,7 +459,7 @@ export default function TxLabPage() {
                   className="px-2 py-1 text-xs"
                   onClick={() => openExplorer(receipt.explorerUrl!, explorerTabTitle(receipt.explorerUrl!))}
                 >
-                  在浏览器中查看
+                  {t('transfer.openExplorer')}
                 </Button>
               ) : null}
             </div>
@@ -484,6 +491,7 @@ function RawCard({
   copied: string | null
   onCopy: (label: string, value: string) => void
 }) {
+  const t = useT()
   return (
     <Card title={title} action={<span className="text-[11px] text-ink-500">{RAW_LABEL[format]}</span>}>
       <div className="space-y-3">
@@ -492,11 +500,11 @@ function RawCard({
             <p className="mb-1 text-xs font-medium text-ink-400">Tx Hash</p>
             <p className="sensitive break-all font-mono text-[11px] text-ink-300">{txid}</p>
             <Button variant="ghost" className="mt-2 px-2 py-1 text-xs" onClick={() => void onCopy('hash', txid)}>
-              {copied === 'hash' ? '已复制' : '复制 Tx Hash'}
+              {copied === 'hash' ? t('common.copied') : t('txLab.copyHash')}
             </Button>
           </div>
         ) : (
-          <p className="text-xs text-ink-500">{signed ? '已签名' : '未签名，尚无 Tx Hash'}</p>
+          <p className="text-xs text-ink-500">{signed ? t('txLab.hasSig') : t('txLab.noHash')}</p>
         )}
         <div>
           <p className="mb-1 text-xs font-medium text-ink-400">Raw Transaction</p>
@@ -504,7 +512,7 @@ function RawCard({
             {raw}
           </pre>
           <Button variant="ghost" className="mt-2 px-2 py-1 text-xs" onClick={() => void onCopy('raw', raw)}>
-            {copied === 'raw' ? '已复制' : '复制 Raw'}
+            {copied === 'raw' ? t('common.copied') : t('txLab.copyRaw')}
           </Button>
         </div>
         <div className="space-y-1 rounded-lg bg-ink-900 px-3 py-2 text-xs text-ink-400">

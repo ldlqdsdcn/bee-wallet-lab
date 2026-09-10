@@ -3,6 +3,7 @@ import type { AddressBookEntry, NetworkScope, WalletType } from '@shared/types'
 import { useAddressBookStore } from '../store/addressBookStore'
 import { Alert, Button, Card, Field } from '../components/ui'
 import { walletTypeLabel } from '../lib/format'
+import { useT } from '../i18n'
 
 const WALLET_TYPES: { value: WalletType; label: string }[] = [
   { value: 'bitcoin', label: 'Bitcoin' },
@@ -11,10 +12,7 @@ const WALLET_TYPES: { value: WalletType; label: string }[] = [
   { value: 'solana', label: 'Solana' },
 ]
 
-const SCOPES: { value: NetworkScope; label: string }[] = [
-  { value: 'mainnet', label: '主网' },
-  { value: 'testnet', label: '测试网' },
-]
+const SCOPES: NetworkScope[] = ['mainnet', 'testnet']
 
 interface FormState {
   id?: string
@@ -41,6 +39,7 @@ function shorten(address: string): string {
 }
 
 export default function AddressBookPage() {
+  const t = useT()
   const entries = useAddressBookStore((s) => s.entries)
   const loading = useAddressBookStore((s) => s.loading)
   const error = useAddressBookStore((s) => s.error)
@@ -99,58 +98,58 @@ export default function AddressBookPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-ink-200">地址簿</h1>
-        <span className="text-xs text-ink-600">共 {entries.length} 条 · 仅保存公开地址信息</span>
+        <h1 className="text-lg font-semibold text-ink-200">{t('book.title')}</h1>
+        <span className="text-xs text-ink-600">{t('book.count', { count: entries.length })}</span>
       </div>
 
-      <Card title={form.id ? '编辑地址' : '新增地址'}>
+      <Card title={form.id ? t('book.edit') : t('book.addNew')}>
         <div className="grid grid-cols-2 gap-4">
           <Field
-            label="名称"
+            label={t('common.name')}
             value={form.label}
-            placeholder="例如：冷钱包、交易所充值"
+            placeholder={t('book.namePh')}
             onChange={(e) => setForm({ ...form, label: e.target.value })}
           />
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-ink-400">链</span>
+            <span className="mb-1 block text-xs font-medium text-ink-400">{t('book.chain')}</span>
             <select
               className={selectClass}
               value={form.walletType}
               onChange={(e) => setForm({ ...form, walletType: e.target.value as WalletType })}
             >
-              {WALLET_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
+              {WALLET_TYPES.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
                 </option>
               ))}
             </select>
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-ink-400">网络环境</span>
+            <span className="mb-1 block text-xs font-medium text-ink-400">{t('book.scope')}</span>
             <select
               className={selectClass}
               value={form.networkScope}
               onChange={(e) => setForm({ ...form, networkScope: e.target.value as NetworkScope })}
             >
-              {SCOPES.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
+              {SCOPES.map((scope) => (
+                <option key={scope} value={scope}>
+                  {scope === 'testnet' ? t('common.testnet') : t('common.mainnet')}
                 </option>
               ))}
             </select>
           </label>
           <Field
-            label="备注"
+            label={t('book.memo')}
             value={form.memo}
-            placeholder="可选"
+            placeholder={t('book.memoPh')}
             onChange={(e) => setForm({ ...form, memo: e.target.value })}
           />
           <div className="col-span-2">
             <Field
-              label="地址"
+              label={t('common.address')}
               className="sensitive"
               value={form.address}
-              placeholder="粘贴收款地址"
+              placeholder={t('book.addressPh')}
               onChange={(e) => setForm({ ...form, address: e.target.value })}
             />
           </div>
@@ -160,11 +159,11 @@ export default function AddressBookPage() {
           <Alert>{error}</Alert>
           <div className="flex gap-2">
             <Button disabled={!form.label || !form.address} onClick={() => void submit()}>
-              {form.id ? '保存修改' : '添加到地址簿'}
+              {form.id ? t('book.saveEdit') : t('book.addTo')}
             </Button>
             {form.id ? (
               <Button variant="ghost" onClick={() => setForm(emptyForm)}>
-                取消编辑
+                {t('book.cancelEdit')}
               </Button>
             ) : null}
           </div>
@@ -172,20 +171,20 @@ export default function AddressBookPage() {
       </Card>
 
       <Card
-        title="已保存地址"
+        title={t('book.saved')}
         action={
           <input
             className="w-48 rounded-lg border border-ink-600 bg-ink-900 px-3 py-1.5 text-xs text-ink-200 outline-none focus:border-honey-500"
-            placeholder="搜索名称 / 地址"
+            placeholder={t('picker.search')}
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
           />
         }
       >
         {loading ? (
-          <p className="text-sm text-ink-400">加载中…</p>
+          <p className="text-sm text-ink-400">{t('common.loading')}</p>
         ) : filtered.length === 0 ? (
-          <p className="text-sm text-ink-400">还没有保存任何地址。转账时也可以直接把收款方存入地址簿。</p>
+          <p className="text-sm text-ink-400">{t('book.emptyHint')}</p>
         ) : (
           <ul className="divide-y divide-ink-700">
             {filtered.map((entry) => (
@@ -198,7 +197,7 @@ export default function AddressBookPage() {
                     </span>
                     {entry.networkScope === 'testnet' ? (
                       <span className="rounded bg-honey-600/20 px-1.5 py-0.5 text-[10px] text-honey-400">
-                        测试网
+                        {t('common.testnet')}
                       </span>
                     ) : null}
                   </div>
@@ -207,17 +206,17 @@ export default function AddressBookPage() {
                 </div>
                 <div className="flex shrink-0 gap-2">
                   <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => void copy(entry)}>
-                    {copiedId === entry.id ? '已复制' : '复制'}
+                    {copiedId === entry.id ? t('common.copied') : t('common.copy')}
                   </Button>
                   <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => edit(entry)}>
-                    编辑
+                    {t('common.edit')}
                   </Button>
                   <Button
                     variant="ghost"
                     className="px-2 py-1 text-xs hover:border-red-500 hover:text-red-400"
                     onClick={() => void remove(entry.id)}
                   >
-                    删除
+                    {t('common.delete')}
                   </Button>
                 </div>
               </li>

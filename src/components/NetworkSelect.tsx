@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { NetworkRecord } from '@shared/types'
 import { networkLabel } from '../lib/format'
+import { useT } from '../i18n'
 
 export function NetworkIcon({ src, name, size = 20 }: { src?: string | null; name?: string | null; size?: number }) {
   const [failed, setFailed] = useState(false)
@@ -27,7 +28,7 @@ export function NetworkIcon({ src, name, size = 20 }: { src?: string | null; nam
 }
 
 export function NetworkSelect({
-  label = '网络',
+  label,
   networks,
   value,
   onChange,
@@ -39,6 +40,7 @@ export function NetworkSelect({
   onChange: (id: string) => void
   className?: string
 }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const selected = networks.find((item) => item.id === value) ?? null
@@ -53,14 +55,14 @@ export function NetworkSelect({
 
   return (
     <div ref={rootRef} className={`relative min-w-[260px] ${className}`}>
-      <span className="mb-1 block text-xs font-medium text-ink-400">{label}</span>
+      <span className="mb-1 block text-xs font-medium text-ink-400">{label ?? t('common.network')}</span>
       <button
         type="button"
         className="flex w-full items-center gap-2 rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-left text-sm text-ink-200 outline-none hover:border-honey-500 focus:border-honey-500"
         onClick={() => setOpen((current) => !current)}
       >
         <NetworkIcon src={selected?.icon} name={selected?.networkName} />
-        <span className="min-w-0 flex-1 truncate">{selected ? networkLabel(selected) : '选择网络'}</span>
+        <span className="min-w-0 flex-1 truncate">{selected ? networkLabel(selected) : t('network.select')}</span>
         <span className="text-[10px] text-ink-500">{open ? '▴' : '▾'}</span>
       </button>
       {open ? (

@@ -4,7 +4,7 @@ import { DAPP_CATEGORIES, DAPP_ENTRIES, dappCategoryById, dappsInCategory } from
 describe('三方连接列表', () => {
   it('分类齐全', () => {
     expect(DAPP_CATEGORIES.map((item) => item.id)).toEqual(['hot', 'swap', 'stocks', 'betting', 'games', 'faucet'])
-    expect(dappCategoryById('swap')?.label).toBe('兑换')
+    expect(dappCategoryById('swap')?.id).toBe('swap')
   })
 
   it('站点都是 https，兑换里包含 PancakeSwap 与 Uniswap', () => {

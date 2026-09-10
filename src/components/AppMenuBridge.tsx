@@ -8,27 +8,24 @@ import { on } from '../lib/bridge'
 import { useVaultStore } from '../store/vaultStore'
 import { useNetworkStore } from '../store/networkStore'
 import { Button, Modal } from './ui'
+import { useT } from '../i18n'
+import type { MessageKey } from '../i18n'
 
-function workspaceNote(kind: 'new' | 'import' | 'export'): { title: string; body: string } {
+function workspaceNote(
+  kind: 'new' | 'import' | 'export',
+  t: (key: MessageKey) => string,
+): { title: string; body: string } {
   if (kind === 'new') {
-    return {
-      title: '新建工作区',
-      body: '第一版暂未开放。后续会做成独立工作区文件，避免和新钱包数据混在一起。',
-    }
+    return { title: t('workspace.newTitle'), body: t('workspace.newBody') }
   }
   if (kind === 'import') {
-    return {
-      title: '导入工作区',
-      body: '第一版暂未开放。后续会支持导入已导出的工作区备份。',
-    }
+    return { title: t('workspace.importTitle'), body: t('workspace.importBody') }
   }
-  return {
-    title: '导出工作区',
-    body: '第一版暂未开放。后续会把钱包目录（不含明文助记词）导出成备份包。',
-  }
+  return { title: t('workspace.exportTitle'), body: t('workspace.exportBody') }
 }
 
 export function AppMenuBridge() {
+  const t = useT()
   const navigate = useNavigate()
   const lock = useVaultStore((s) => s.lock)
   const openPicker = useNetworkStore((s) => s.openPicker)
@@ -43,7 +40,7 @@ export function AppMenuBridge() {
         return
       }
       if (command.action === 'workspace') {
-        setWorkspace(workspaceNote(command.kind))
+        setWorkspace(workspaceNote(command.kind, t))
         return
       }
       if (command.action === 'switchNetwork') {
@@ -58,7 +55,7 @@ export function AppMenuBridge() {
         navigate(command.path, { state: command.state })
       }
     })
-  }, [lock, navigate, openPicker, selectNetwork])
+  }, [lock, navigate, openPicker, selectNetwork, t])
 
   if (!workspace) return null
 
@@ -66,7 +63,7 @@ export function AppMenuBridge() {
     <Modal title={workspace.title} onClose={() => setWorkspace(null)}>
       <p className="mt-3 text-sm text-ink-400">{workspace.body}</p>
       <div className="mt-4 flex justify-end">
-        <Button onClick={() => setWorkspace(null)}>知道了</Button>
+        <Button onClick={() => setWorkspace(null)}>{t('common.ok')}</Button>
       </div>
     </Modal>
   )

@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { networkLabel } from '../lib/format'
 import { currentNetworkOf, useNetworkStore } from '../store/networkStore'
 import { NetworkIcon } from './NetworkSelect'
+import { useT } from '../i18n'
 
 export function CurrentNetwork() {
+  const t = useT()
   const navigate = useNavigate()
   const networks = useNetworkStore((s) => s.networks)
   const currentPk = useNetworkStore((s) => s.currentPk)
@@ -24,14 +26,14 @@ export function CurrentNetwork() {
         className="w-full rounded-lg border border-dashed border-ink-600 px-3 py-2 text-left text-xs text-ink-500 hover:border-honey-500 hover:text-honey-400"
         onClick={() => navigate('/networks')}
       >
-        还没有网络，去同步
+        {t('network.syncHint')}
       </button>
     )
   }
 
   return (
     <div>
-      <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-ink-600">当前网络</span>
+      <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-ink-600">{t('network.current')}</span>
       <button
         type="button"
         className="flex w-full items-center gap-2 rounded-lg border border-ink-600 bg-ink-800 px-3 py-2 text-left hover:border-honey-500"
@@ -39,12 +41,12 @@ export function CurrentNetwork() {
       >
         <NetworkIcon src={current?.icon} name={current?.networkName} size={18} />
         <span className="min-w-0 flex-1 truncate text-sm text-ink-200">
-          {current ? networkLabel(current) : loading ? '加载中…' : '选择网络'}
+          {current ? networkLabel(current) : loading ? t('common.loading') : t('network.select')}
         </span>
         {current?.networkScope === 'testnet' ? (
-          <span className="shrink-0 text-[10px] text-ink-600">测试</span>
+          <span className="shrink-0 text-[10px] text-ink-600">{t('common.testShort')}</span>
         ) : null}
-        <span className="shrink-0 text-[10px] text-ink-500">切换</span>
+        <span className="shrink-0 text-[10px] text-ink-500">{t('common.switch')}</span>
       </button>
     </div>
   )

@@ -5,11 +5,13 @@ import { IPC_EVENT } from '@shared/ipc'
 import { on, walletApi } from '../lib/bridge'
 import { useWalletStore } from '../store/walletStore'
 import { Button, Field } from './ui'
+import { useT } from '../i18n'
 
 const PAGE_SIZE = 30
 const SEARCH_DEBOUNCE_MS = 250
 
 export function WalletSelect() {
+  const t = useT()
   const navigate = useNavigate()
   const current = useWalletStore((s) => s.current)
   const currentId = useWalletStore((s) => s.currentId)
@@ -29,23 +31,23 @@ export function WalletSelect() {
         className="w-full rounded-lg border border-dashed border-ink-600 px-3 py-2 text-left text-xs text-ink-500 hover:border-honey-500 hover:text-honey-400"
         onClick={() => navigate('/wallets')}
       >
-        还没有钱包，去创建
+        {t('wallet.createHint')}
       </button>
     )
   }
 
   return (
     <div>
-      <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-ink-600">当前钱包</span>
+      <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-ink-600">{t('wallet.current')}</span>
       <button
         type="button"
         className="flex w-full items-center gap-2 rounded-lg border border-ink-600 bg-ink-800 px-3 py-2 text-left hover:border-honey-500"
         onClick={() => setOpen(true)}
       >
         <span className="min-w-0 flex-1 truncate text-sm text-ink-200">
-          {current?.name ?? (loading ? '加载中…' : '选择钱包')}
+          {current?.name ?? (loading ? t('wallet.loading') : t('wallet.select'))}
         </span>
-        <span className="text-[10px] text-ink-500">选择</span>
+        <span className="text-[10px] text-ink-500">{t('common.select')}</span>
       </button>
       {open ? (
         <WalletPickerDialog
@@ -82,6 +84,7 @@ function WalletPickerDialog({
   const [items, setItems] = useState<WalletPickerItem[]>([])
   const [total, setTotal] = useState(0)
   const [currencyCode, setCurrencyCode] = useState('CNY')
+  const t = useT()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -142,23 +145,23 @@ function WalletPickerDialog({
       >
         <div className="flex items-center justify-between border-b border-ink-800 px-4 py-3">
           <h2 id="wallet-picker-title" className="text-sm font-semibold text-ink-200">
-            选择钱包
+            {t('wallet.select')}
           </h2>
           <button type="button" className="text-xs text-ink-500 hover:text-ink-200" onClick={onClose}>
-            关闭
+            {t('common.close')}
           </button>
         </div>
 
         <div className="px-4 pt-3">
           <Field
-            label="钱包名"
-            placeholder="按名称搜索"
+            label={t('wallet.searchName')}
+            placeholder={t('wallet.searchPlaceholder')}
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
           <p className="mt-1 text-[11px] text-ink-600">
-            共 {total} 个 · 每页 {PAGE_SIZE} 个 · 总余额来自本地缓存
+            {t('wallet.pageSummary', { total, size: PAGE_SIZE })}
           </p>
         </div>
 
@@ -168,15 +171,15 @@ function WalletPickerDialog({
           <table className="w-full text-left text-sm">
             <thead className="sticky top-0 bg-ink-900 text-[11px] uppercase tracking-wide text-ink-500">
               <tr>
-                <th className="pb-2 font-medium">钱包名</th>
-                <th className="pb-2 text-right font-medium">总余额</th>
+                <th className="pb-2 font-medium">{t('wallet.colName')}</th>
+                <th className="pb-2 text-right font-medium">{t('wallet.colBalance')}</th>
               </tr>
             </thead>
             <tbody>
               {items.length === 0 && !busy ? (
                 <tr>
                   <td colSpan={2} className="py-8 text-center text-xs text-ink-500">
-                    没有匹配的钱包
+                    {t('wallet.noMatch')}
                   </td>
                 </tr>
               ) : (
@@ -194,7 +197,7 @@ function WalletPickerDialog({
                         >
                           <span className="min-w-0 flex-1 truncate">
                             {item.name}
-                            {active ? <span className="ml-2 text-[10px] text-ink-500">当前</span> : null}
+                            {active ? <span className="ml-2 text-[10px] text-ink-500">{t('common.current')}</span> : null}
                           </span>
                           <span className={`shrink-0 tabular-nums text-xs ${active ? 'text-honey-400' : 'text-ink-400'}`}>
                             {item.cachedTotal == null ? '--' : `${item.cachedTotal} ${currencyCode}`}
@@ -211,7 +214,7 @@ function WalletPickerDialog({
 
         <div className="flex items-center justify-between gap-2 border-t border-ink-800 px-4 py-3">
           <Button variant="ghost" className="px-3 py-1 text-xs" onClick={onManage}>
-            管理钱包
+            {t('wallet.manage')}
           </Button>
           <div className="flex items-center gap-2 text-xs text-ink-400">
             <button
@@ -220,7 +223,7 @@ function WalletPickerDialog({
               disabled={page <= 1 || busy}
               onClick={() => setPage((n) => Math.max(1, n - 1))}
             >
-              上一页
+              {t('common.prev')}
             </button>
             <span>
               {page} / {pageCount}
@@ -231,7 +234,7 @@ function WalletPickerDialog({
               disabled={page >= pageCount || busy}
               onClick={() => setPage((n) => n + 1)}
             >
-              下一页
+              {t('common.next')}
             </button>
           </div>
         </div>

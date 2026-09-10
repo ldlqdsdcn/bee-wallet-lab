@@ -9,8 +9,10 @@ import { bitcoinAddressLabel, formatAmount } from '../lib/format'
 import { useBrowserStore } from '../store/browserStore'
 import { useWalletStore } from '../store/walletStore'
 import { currentNetworkOf, useNetworkStore } from '../store/networkStore'
+import { useT } from '../i18n'
 
 export default function HomePage() {
+  const t = useT()
   const navigate = useNavigate()
   const currentWalletId = useWalletStore((s) => s.currentId)
   const currentWallet = useWalletStore((s) => s.current)
@@ -82,21 +84,21 @@ export default function HomePage() {
     <div className="mx-auto max-w-4xl space-y-5">
       <div className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="text-lg font-semibold text-ink-200">资产总览</h1>
+          <h1 className="text-lg font-semibold text-ink-200">{t('home.title')}</h1>
           <p className="mt-1 text-xs text-ink-500">
-            {currentWallet ? currentWallet.name : '请先创建钱包'}
+            {currentWallet ? currentWallet.name : t('home.createWallet')}
             {current ? ` · ${current.networkName}` : ''}
           </p>
         </div>
         <Button disabled={busy || !networkPk} onClick={() => void refresh()}>
-          {busy ? '刷新中…' : '刷新'}
+          {busy ? t('home.refreshing') : t('home.refresh')}
         </Button>
       </div>
 
       <Alert>{error}</Alert>
       {snapshot?.offline ? (
         <p className="rounded-lg border border-honey-600/30 bg-honey-600/10 px-3 py-2 text-xs text-honey-400">
-          节点暂时不可达，正在展示本地缓存余额
+          {t('home.offline')}
         </p>
       ) : null}
       {snapshot?.priceError ? (
@@ -107,15 +109,15 @@ export default function HomePage() {
 
       {isTestnet ? (
         <Card
-          title="测试币水龙头"
+          title={t('home.faucet')}
           action={
             <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => navigate('/faucets')}>
-              维护
+              {t('home.maintain')}
             </Button>
           }
         >
           {faucets.length === 0 ? (
-            <p className="text-sm text-ink-400">还没有水龙头。到「水龙头」页添加，或恢复内置列表。</p>
+            <p className="text-sm text-ink-400">{t('home.noFaucet')}</p>
           ) : (
             <ul className="divide-y divide-ink-700">
               {faucets.map((item) => (
@@ -129,7 +131,7 @@ export default function HomePage() {
                     className="shrink-0 px-2 py-1 text-xs"
                     onClick={() => open(item.url, item.label || explorerTabTitle(item.url))}
                   >
-                    打开
+                    {t('common.open')}
                   </Button>
                 </li>
               ))}
@@ -139,13 +141,13 @@ export default function HomePage() {
       ) : null}
 
       <Card>
-        <p className="text-xs text-ink-500">总资产（{snapshot?.currencyCode ?? 'CNY'}）</p>
+        <p className="text-xs text-ink-500">{t('home.totalAssets', { code: snapshot?.currencyCode ?? 'CNY' })}</p>
         <p className="mt-1 text-3xl font-semibold text-ink-100">
           {snapshot?.totalCurrency ?? '--'}
         </p>
         {accountEntries.length > 0 ? (
           <div className="mt-4 space-y-2 border-t border-ink-700 pt-3">
-            <p className="text-xs text-ink-500">账户地址</p>
+            <p className="text-xs text-ink-500">{t('home.accounts')}</p>
             {accountEntries.map((entry) => (
               <AccountAddress
                 key={entry.address}
@@ -156,13 +158,13 @@ export default function HomePage() {
             ))}
           </div>
         ) : snapshot ? (
-          <p className="mt-3 text-xs text-ink-500">未派生对应账户</p>
+          <p className="mt-3 text-xs text-ink-500">{t('home.noDerived')}</p>
         ) : null}
       </Card>
 
-      <Card title="代币">
+      <Card title={t('home.tokens')}>
         {!snapshot || snapshot.entries.length === 0 ? (
-          <p className="text-sm text-ink-400">暂无资产。请先创建钱包并同步网络目录。</p>
+          <p className="text-sm text-ink-400">{t('home.noAssets')}</p>
         ) : (
           <ul className="divide-y divide-ink-700">
             {snapshot.entries.map((entry) => (
@@ -195,10 +197,10 @@ export default function HomePage() {
                           {bitcoinAddressLabel(entry.addressType)}
                         </span>
                       ) : null}
-                      {entry.stale ? <span className="text-[10px] text-honey-400">缓存</span> : null}
+                      {entry.stale ? <span className="text-[10px] text-honey-400">{t('home.cached')}</span> : null}
                     </div>
                     {!entry.address ? (
-                      <p className="truncate text-[11px] text-ink-500">未派生对应账户</p>
+                      <p className="truncate text-[11px] text-ink-500">{t('home.noDerived')}</p>
                     ) : entry.error ? (
                       <p className="truncate text-[11px] text-ink-500">{entry.error}</p>
                     ) : null}
