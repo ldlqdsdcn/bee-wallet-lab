@@ -136,6 +136,16 @@ export function registerWalletIpc(): void {
       ),
   )
 
+  handle<{ walletId: string; keyId: string; password: string }, HdDerivedEvmKey>(
+    IPC.accountHdKeyReveal,
+    (arg) =>
+      wallets.revealHdKey(
+        requireString(arg?.walletId, 'walletId'),
+        requireString(arg?.keyId, 'keyId'),
+        requireString(arg?.password, 'password'),
+      ),
+  )
+
   handle<{ walletId: string; password: string; accountIndex?: number }, number>(
     IPC.accountHdKeyClear,
     (arg) =>

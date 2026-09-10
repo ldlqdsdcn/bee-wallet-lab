@@ -5,7 +5,7 @@
  * 1. 渲染进程只能通过本文件列出的白名单通道调用主进程；
  * 2. 返回值禁止包含助记词、私钥、KEK、JWT 原文，
  *    唯一例外是 `wallet:exportMnemonic` / `account:revealPrivateKey` /
- *    `account:hdDeriveEvm` / `account:hdKeyUnlock`，
+ *    `account:hdDeriveEvm` / `account:hdKeyUnlock` / `account:hdKeyReveal`，
  *    它们必须在主进程内二次校验主密码后才返回。
  * 3. `wallet:remove` 不返回密钥，但仍须校验主密码后才能删除。
  */
@@ -58,6 +58,7 @@ export const IPC = {
   accountHdDeriveEvm: 'account:hdDeriveEvm',
   accountHdKeyList: 'account:hdKeyList',
   accountHdKeyUnlock: 'account:hdKeyUnlock',
+  accountHdKeyReveal: 'account:hdKeyReveal',
   accountHdKeyClear: 'account:hdKeyClear',
 
   /* 后端接入 */
