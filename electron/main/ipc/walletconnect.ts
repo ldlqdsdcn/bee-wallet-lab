@@ -1,12 +1,19 @@
 import { IPC } from '../../../shared/ipc'
-import type { WalletConnectPending, WalletConnectSession, WalletConnectStatus } from '@shared/types'
+import type {
+  WalletConnectPairing,
+  WalletConnectPending,
+  WalletConnectSession,
+  WalletConnectStatus,
+} from '@shared/types'
 import { readWalletConnectClipboard } from '../walletconnect/browser'
 import {
+  cancelWalletConnectPair,
   decideWalletConnect,
   disconnectWalletConnect,
   listWalletConnectPending,
   listWalletConnectSessions,
   pairWalletConnect,
+  walletConnectPairing,
   walletConnectStatus,
 } from '../walletconnect/service'
 import { handle, requireString } from './registry'
@@ -26,4 +33,9 @@ export function registerWalletConnectIpc(): void {
     return true
   })
   handle<void, string>(IPC.walletConnectClipboard, async () => readWalletConnectClipboard())
+  handle<void, WalletConnectPairing>(IPC.walletConnectPairing, () => walletConnectPairing())
+  handle<void, true>(IPC.walletConnectCancelPair, () => {
+    cancelWalletConnectPair()
+    return true
+  })
 }

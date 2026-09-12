@@ -1296,6 +1296,12 @@ export interface WalletConnectStatus {
   error: string | null
 }
 
+export interface WalletConnectPairing {
+  active: boolean
+  error: string | null
+  deadlineAt: number | null
+}
+
 export interface WalletConnectSession {
   topic: string
   name: string

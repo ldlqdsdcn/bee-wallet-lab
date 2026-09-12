@@ -1,13 +1,18 @@
 /**
- * 应用内浏览器：把 EIP-1193 / EIP-6963 打进页面主世界。
- * 不自动配对页面上的 wc:。抢走二维码后，网站会报「连接错误，请授权钱包访问」。
+ * 应用内浏览器：注入 EIP-1193 / EIP-6963。
+ * 只截网站自己打开的 wc: 深链接，不扫页面、不抢剪贴板。
  */
-import { clipboard, type Event, type WebContents } from 'electron'
-import { DAPP_PROVIDER_INJECT } from '../../dapp-inject'
-import { extractWalletConnectUri } from './codec'
+import { clipboard, protocol as defaultProtocol, type Event, type Session, type WebContents } from 'electron'
+import { DAPP_DEEP_LINK_INJECT, DAPP_PROVIDER_INJECT } from '../../dapp-inject'
+import { extractWalletConnectUri, findWalletConnectDeepLink } from './codec'
+import { acceptWalletConnectDeepLink } from './service'
+
+const WC_SCHEMES = ['wc', 'walletconnect', 'bee-wallet'] as const
+
+export { findWalletConnectDeepLink }
 
 export function isWalletConnectUrl(url: string): boolean {
-  return Boolean(extractWalletConnectUri(url))
+  return Boolean(extractWalletConnectUri(url)?.includes('symKey='))
 }
 
 export async function readWalletConnectClipboard(): Promise<string> {
@@ -18,8 +23,25 @@ export async function readWalletConnectClipboard(): Promise<string> {
   }
 }
 
-function denyWalletConnectUrl(raw: string): boolean {
-  return Boolean(extractWalletConnectUri(raw))
+function captureDeepLink(raw: string): boolean {
+  if (!isWalletConnectUrl(raw)) return false
+  void acceptWalletConnectDeepLink(raw)
+  return true
+}
+
+export function installWalletConnectProtocol(ses?: Session): void {
+  const target = ses?.protocol ?? defaultProtocol
+  const handle = (request: Request) => {
+    captureDeepLink(request.url)
+    return new Response('', { status: 204 })
+  }
+  for (const scheme of WC_SCHEMES) {
+    try {
+      target.handle(scheme, handle)
+    } catch {
+      /* 重复注册时跳过 */
+    }
+  }
 }
 
 export function startWalletConnectClipboardWatch(): void {
@@ -42,7 +64,7 @@ export function attachWalletConnectCapture(contents: WebContents): void {
     if (text.includes('[dapp]')) console.log(text)
   })
   contents.setWindowOpenHandler(({ url }) => {
-    if (denyWalletConnectUrl(url)) return { action: 'deny' }
+    if (captureDeepLink(url)) return { action: 'deny' }
     try {
       if (new URL(url).protocol === 'https:') void contents.loadURL(url)
     } catch {
@@ -51,7 +73,7 @@ export function attachWalletConnectCapture(contents: WebContents): void {
     return { action: 'deny' }
   })
   contents.on('will-navigate', (event, url) => {
-    if (denyWalletConnectUrl(url)) {
+    if (captureDeepLink(url)) {
       event.preventDefault()
       return
     }
@@ -62,10 +84,10 @@ export function attachWalletConnectCapture(contents: WebContents): void {
     }
   })
   contents.on('will-redirect', (event, url) => {
-    if (denyWalletConnectUrl(url)) event.preventDefault()
+    if (captureDeepLink(url)) event.preventDefault()
   })
   contents.on('will-frame-navigate', (event: Event & { url?: string }) => {
-    if (event.url && denyWalletConnectUrl(event.url)) event.preventDefault()
+    if (event.url && captureDeepLink(event.url)) event.preventDefault()
   })
   const inject = () => {
     if (contents.isDestroyed()) return
@@ -82,6 +104,7 @@ function injectAllFrames(contents: WebContents): void {
   const visit = (frame: Electron.WebFrameMain | undefined) => {
     if (!frame || frame.isDestroyed()) return
     void frame.executeJavaScript(DAPP_PROVIDER_INJECT).catch(() => undefined)
+    void frame.executeJavaScript(DAPP_DEEP_LINK_INJECT).catch(() => undefined)
     try {
       for (const child of frame.frames) visit(child)
     } catch {
@@ -92,5 +115,6 @@ function injectAllFrames(contents: WebContents): void {
     visit(contents.mainFrame)
   } catch {
     void contents.executeJavaScript(DAPP_PROVIDER_INJECT).catch(() => undefined)
+    void contents.executeJavaScript(DAPP_DEEP_LINK_INJECT).catch(() => undefined)
   }
 }

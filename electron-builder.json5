@@ -56,6 +56,12 @@
     // 卸载不删钱包数据（助记词密文在 userData 目录）
     "deleteAppDataOnUninstall": false
   },
+  "protocols": [
+    {
+      "name": "WalletConnect",
+      "schemes": ["wc", "walletconnect", "bee-wallet"]
+    }
+  ],
   "linux": {
     "icon": "build/icon.png",
     "target": [
@@ -79,7 +85,8 @@
     "desktop": {
       "entry": {
         // 与 electron/main.ts 里 --class=bee-wallet 对齐，GNOME 才能对上图标
-        "StartupWMClass": "bee-wallet"
+        "StartupWMClass": "bee-wallet",
+        "MimeType": "x-scheme-handler/wc;x-scheme-handler/walletconnect;x-scheme-handler/bee-wallet;"
       }
     },
     "artifactName": "${name}-${version}-linux-${arch}.${ext}"

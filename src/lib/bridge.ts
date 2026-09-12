@@ -86,6 +86,7 @@ import type {
   BridgeSubmitInput,
   BridgeSubmitResult,
   DappCatalog,
+  WalletConnectPairing,
   WalletConnectPending,
   WalletConnectSession,
   WalletConnectStatus,
@@ -263,6 +264,8 @@ export const walletConnectApi = {
   pending: () => call<WalletConnectPending[]>(IPC.walletConnectPending),
   decide: (id: string, approve: boolean) => call<true>(IPC.walletConnectDecide, { id, approve }),
   clipboard: () => call<string>(IPC.walletConnectClipboard),
+  pairing: () => call<WalletConnectPairing>(IPC.walletConnectPairing),
+  cancelPair: () => call<true>(IPC.walletConnectCancelPair),
 }
 
 export const energyApi = {

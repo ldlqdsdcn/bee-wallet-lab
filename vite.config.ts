@@ -13,6 +13,7 @@ const sharedAlias = {
 /** 不走 vite-plugin-electron：第三套 watch 会在主进程打完前就 reload，把 esbuild 打成 EPIPE。 */
 function dappPreloadPlugin(): Plugin {
   const entry = path.join(__dirname, 'electron/dapp-preload.ts')
+  const inject = path.join(__dirname, 'electron/dapp-inject.ts')
   const outfile = path.join(__dirname, 'dist-electron/dapp-preload.mjs')
 
   const write = async () => {
@@ -32,12 +33,15 @@ function dappPreloadPlugin(): Plugin {
     name: 'dapp-preload',
     async buildStart() {
       this.addWatchFile(entry)
+      this.addWatchFile(inject)
       await write()
     },
     configureServer(server) {
       server.watcher.add(entry)
+      server.watcher.add(inject)
       server.watcher.on('change', (file) => {
-        if (path.resolve(file) === entry) void write()
+        const resolved = path.resolve(file)
+        if (resolved === entry || resolved === inject) void write()
       })
     },
   }

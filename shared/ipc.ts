@@ -179,6 +179,8 @@ export const IPC = {
   walletConnectPending: 'walletConnect:pending',
   walletConnectDecide: 'walletConnect:decide',
   walletConnectClipboard: 'walletConnect:clipboard',
+  walletConnectPairing: 'walletConnect:pairing',
+  walletConnectCancelPair: 'walletConnect:cancelPair',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]
@@ -203,6 +205,7 @@ export const IPC_EVENT = {
   walletConnectSessions: 'event:walletConnectSessions',
   walletConnectPending: 'event:walletConnectPending',
   walletConnectRequest: 'event:walletConnectRequest',
+  walletConnectPairing: 'event:walletConnectPairing',
 } as const
 
 export type IpcEventName = (typeof IPC_EVENT)[keyof typeof IPC_EVENT]

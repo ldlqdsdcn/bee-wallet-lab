@@ -1,5 +1,5 @@
 import { installWalletConnectWebSocket } from './main/walletconnect/installWs'
-import { app, BrowserWindow, session, shell } from 'electron'
+import { app, BrowserWindow, protocol, session, shell } from 'electron'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -7,7 +7,19 @@ import { bootstrap, shutdown } from './main/bootstrap'
 import { installAppMenu } from './main/appMenu'
 import { isQuitConfirmed, requestQuit } from './main/quit'
 import { ensureLinuxDevDesktopEntry, loadAppIcon, resolveAppIconPath } from './main/icon'
-import { attachWalletConnectCapture } from './main/walletconnect/browser'
+import {
+  attachWalletConnectCapture,
+  findWalletConnectDeepLink,
+  installWalletConnectProtocol,
+} from './main/walletconnect/browser'
+import { acceptWalletConnectDeepLink } from './main/walletconnect/service'
+
+protocol.registerSchemesAsPrivileged(
+  ['wc', 'walletconnect', 'bee-wallet'].map((scheme) => ({
+    scheme,
+    privileges: { secure: true, supportFetchAPI: true, corsEnabled: true },
+  })),
+)
 
 installWalletConnectWebSocket()
 
@@ -66,6 +78,7 @@ function hardenWebviewGuests(): void {
   explorer.setPermissionRequestHandler((_contents, permission, callback) => {
     callback(CLIPBOARD_PERMISSIONS.has(permission))
   })
+  installWalletConnectProtocol(explorer)
   app.on('web-contents-created', (_event, contents) => {
     if (contents.getType() !== 'webview') return
     attachWalletConnectCapture(contents)
@@ -111,6 +124,10 @@ function createWindow() {
 
   // 钱包窗口本身不许跳出去；https 外链交给系统浏览器
   win.webContents.setWindowOpenHandler(({ url }) => {
+    if (findWalletConnectDeepLink([url])) {
+      void acceptWalletConnectDeepLink(url)
+      return { action: 'deny' }
+    }
     if (isHttpsUrl(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
@@ -129,6 +146,11 @@ function createWindow() {
 
   // 禁止导航到非本地页面，防止 XSS 后跳转钓鱼页
   win.webContents.on('will-navigate', (event, url) => {
+    if (findWalletConnectDeepLink([url])) {
+      event.preventDefault()
+      void acceptWalletConnectDeepLink(url)
+      return
+    }
     const allowed = VITE_DEV_SERVER_URL ? url.startsWith(VITE_DEV_SERVER_URL) : url.startsWith('file://')
     if (!allowed) event.preventDefault()
   })
@@ -144,7 +166,9 @@ function createWindow() {
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv) => {
+    const link = findWalletConnectDeepLink(argv)
+    if (link) void acceptWalletConnectDeepLink(link)
     if (win && !win.isDestroyed()) {
       if (win.isMinimized()) win.restore()
       win.focus()
@@ -154,6 +178,11 @@ if (!app.requestSingleInstanceLock()) {
     }
   })
 }
+
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  void acceptWalletConnectDeepLink(url)
+})
 
 // Windows / Linux 关掉窗口即退出；macOS 保持驻留，等 Cmd + Q
 app.on('window-all-closed', () => {
@@ -195,10 +224,16 @@ app.on('before-quit', () => {
 })
 
 app.whenReady().then(async () => {
+  app.setAsDefaultProtocolClient('wc')
+  app.setAsDefaultProtocolClient('walletconnect')
+  app.setAsDefaultProtocolClient('bee-wallet')
+  installWalletConnectProtocol()
   await bootstrap()
   applyContentSecurityPolicy()
   hardenWebviewGuests()
   ensureLinuxDevDesktopEntry()
   installAppMenu()
   createWindow()
+  const launched = findWalletConnectDeepLink(process.argv)
+  if (launched) void acceptWalletConnectDeepLink(launched)
 })

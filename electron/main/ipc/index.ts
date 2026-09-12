@@ -55,7 +55,12 @@ import {
   startWalletConnectClipboardWatch,
   stopWalletConnectClipboardWatch,
 } from '../walletconnect/browser'
-import { notifyWalletConnectNetwork, rejectWalletConnectPending, startWalletConnect } from '../walletconnect/service'
+import {
+  flushQueuedWalletConnectDeepLink,
+  notifyWalletConnectNetwork,
+  rejectWalletConnectPending,
+  startWalletConnect,
+} from '../walletconnect/service'
 import { refreshAppMenu } from '../appMenu'
 import { startTransactionWatch, stopTransactionWatch } from '../history/watch'
 import { recoverInterruptedHdAirdrops, stopAllHdAirdrops } from '../hdAirdrop/service'
@@ -237,9 +242,11 @@ export function registerAllIpc(): void {
       void loadDappCatalog()
         .then(() => refreshAppMenu())
         .catch(() => undefined)
-      void startWalletConnect().catch((err) => {
-        console.warn('[walletconnect] 启动失败', err instanceof Error ? err.message : err)
-      })
+      void startWalletConnect()
+        .then(() => flushQueuedWalletConnectDeepLink())
+        .catch((err) => {
+          console.warn('[walletconnect] 启动失败', err instanceof Error ? err.message : err)
+        })
       startWalletConnectClipboardWatch()
       startTransactionWatch()
     }
@@ -257,8 +264,10 @@ export function registerAllIpc(): void {
   if (vault.getStatus().unlocked) {
     startTransactionWatch()
     startWalletConnectClipboardWatch()
-    void startWalletConnect().catch((err) => {
-      console.warn('[walletconnect] 启动失败', err instanceof Error ? err.message : err)
-    })
+    void startWalletConnect()
+      .then(() => flushQueuedWalletConnectDeepLink())
+      .catch((err) => {
+        console.warn('[walletconnect] 启动失败', err instanceof Error ? err.message : err)
+      })
   }
 }

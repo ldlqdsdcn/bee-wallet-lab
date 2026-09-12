@@ -1,9 +1,20 @@
 import { ipcMain, session, type IpcMainInvokeEvent } from 'electron'
-import { handleDappProviderRequest } from '../walletconnect/service'
+import { acceptWalletConnectDeepLink, handleDappProviderRequest } from '../walletconnect/service'
+
+function fromExplorer(event: IpcMainInvokeEvent): boolean {
+  return event.sender.session === session.fromPartition('persist:explorer')
+}
 
 export function registerDappProviderIpc(): void {
+  ipcMain.handle('dapp:pairDeepLink', async (event: IpcMainInvokeEvent, payload: { uri?: string }) => {
+    if (!fromExplorer(event)) return { ok: false, message: 'forbidden' }
+    const uri = String(payload?.uri || '')
+    console.log('[dapp] 深链接', uri.slice(0, 32))
+    await acceptWalletConnectDeepLink(uri)
+    return { ok: true }
+  })
   ipcMain.handle('dapp:providerRequest', async (event: IpcMainInvokeEvent, payload: { method?: string; params?: unknown[] }) => {
-    if (event.sender.session !== session.fromPartition('persist:explorer')) {
+    if (!fromExplorer(event)) {
       return { ok: false, code: 4100, message: 'forbidden' }
     }
     const method = payload?.method
