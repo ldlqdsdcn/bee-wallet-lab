@@ -31,8 +31,11 @@ describe('能量租赁 codec', () => {
   })
 
   it('按缺口计算租赁数量', () => {
-    expect(requiredEnergy(64285, 65000)).toBe(65000)
+    expect(requiredEnergy(64285, 65000)).toBe(64285)
     expect(requiredEnergy(0, null)).toBe(65000)
+    expect(requiredEnergy(0, 65000)).toBe(65000)
+    expect(requiredEnergy(0, 1000000)).toBe(65000)
+    expect(requiredEnergy(131000, 1000000)).toBe(131000)
     expect(rentQuantity(65000, 65000)).toBe(0)
     expect(rentQuantity(65000, 10000)).toBe(55000)
     expect(rentQuantity(65000, 64000)).toBe(32000)

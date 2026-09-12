@@ -9,6 +9,8 @@ import { formatMinor } from '../util/amount'
 
 export const ENERGY_DURATIONS = ['1h', '1d'] as const
 export const DEFAULT_ENERGY_QUANTITY = 65_000
+/** 目录 gasLimit 超过此值视为 EVM gas，不能当波场能量用（USDT 常写成 1000000）。 */
+export const TRON_ENERGY_CATALOG_MAX = 300_000
 export const ENERGY_QUANTITY_MIN = 32_000
 export const ENERGY_QUANTITY_MAX = 2_000_000
 export const ENERGY_CATALOG_HINT = 'https://beeqd.com'
@@ -22,9 +24,12 @@ export function sunToTrx(sun: bigint | number | string): string {
 }
 
 export function requiredEnergy(estimated: number, tokenGasLimit: number | null): number {
-  const fallback = tokenGasLimit && tokenGasLimit > 0 ? tokenGasLimit : DEFAULT_ENERGY_QUANTITY
   const used = Number.isFinite(estimated) && estimated > 0 ? Math.ceil(estimated) : 0
-  return Math.max(used, fallback)
+  if (used > 0) return used
+  if (tokenGasLimit && tokenGasLimit > 0 && tokenGasLimit <= TRON_ENERGY_CATALOG_MAX) {
+    return tokenGasLimit
+  }
+  return DEFAULT_ENERGY_QUANTITY
 }
 
 /** 能量缺口对应的租赁数量；够用返回 0，不足时至少租 ENERGY_QUANTITY_MIN。 */
