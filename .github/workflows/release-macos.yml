@@ -1,0 +1,65 @@
+name: Release macOS
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: '挂到已有 Release 的 tag（例如 v0.1.0）。留空则挂到最新 Release'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: 打包 Intel 和 Apple Silicon DMG
+        env:
+          # 没有 Apple 开发者证书，禁止自动找本机签名身份
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run build:mac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-packages
+          path: |
+            release/**/*-mac-*.dmg
+
+      - name: 确定 Release tag
+        id: target
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${{ inputs.release_tag }}" ]; then
+            echo "tag=${{ inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            TAG="$(gh release list --limit 1 --json tagName --jq '.[0].tagName')"
+            echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 发布到 GitHub Release
+        if: steps.target.outputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.target.outputs.tag }}
+          generate_release_notes: false
+          files: |
+            release/**/*-mac-*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
