@@ -72,6 +72,17 @@ import type {
   DevHashInput,
   DevHashResult,
   DevJsonResult,
+  SwapHistoryItem,
+  SwapQuote,
+  SwapQuoteInput,
+  SwapSubmitInput,
+  SwapSubmitResult,
+  BridgeHistoryItem,
+  BridgeQuote,
+  BridgeQuoteInput,
+  BridgeStatus,
+  BridgeSubmitInput,
+  BridgeSubmitResult,
   VaultStatus,
   VerifyMessageInput,
   VerifyMessageResult,
@@ -216,6 +227,20 @@ export const hdAirdropApi = {
     call<HdAirdropJob[]>(IPC.hdAirdropJobs, { walletId, networkPk }),
   items: (query: HdAirdropItemQuery) => call<HdAirdropItemPage>(IPC.hdAirdropItems, query),
   retry: (input: HdAirdropRetryInput) => call<HdAirdropJob>(IPC.hdAirdropRetry, input),
+}
+
+export const swapApi = {
+  quote: (input: SwapQuoteInput) => call<SwapQuote>(IPC.swapQuote, input),
+  submit: (input: SwapSubmitInput) => call<SwapSubmitResult>(IPC.swapSubmit, input),
+  list: (accountId: string, networkPk: string) => call<SwapHistoryItem[]>(IPC.swapList, { accountId, networkPk }),
+}
+
+export const bridgeApi = {
+  quote: (input: BridgeQuoteInput) => call<BridgeQuote>(IPC.bridgeQuote, input),
+  submit: (input: BridgeSubmitInput) => call<BridgeSubmitResult>(IPC.bridgeSubmit, input),
+  status: (quoteId: string) => call<BridgeStatus>(IPC.bridgeStatus, { quoteId }),
+  list: (accountId: string, networkPk: string) =>
+    call<BridgeHistoryItem[]>(IPC.bridgeList, { accountId, networkPk }),
 }
 
 export const transferApi = {

@@ -8,6 +8,8 @@ import HomePage from './pages/HomePage'
 import WalletsPage from './pages/WalletsPage'
 import HdDerivePage from './pages/HdDerivePage'
 import TransferPage from './pages/TransferPage'
+import SwapPage from './pages/SwapPage'
+import BridgePage from './pages/BridgePage'
 import TxLabPage from './pages/TxLabPage'
 import AbiToolsPage from './pages/AbiToolsPage'
 import ContractPage from './pages/ContractPage'
@@ -84,6 +86,8 @@ export default function App() {
             <Route path="wallets" element={<WalletsPage />} />
             <Route path="hd" element={<HdDerivePage />} />
             <Route path="transfer" element={<TransferPage />} />
+            <Route path="swap" element={<SwapPage />} />
+            <Route path="bridge" element={<BridgePage />} />
             <Route path="tx-lab" element={<TxLabPage />} />
             <Route path="abi" element={<AbiToolsPage />} />
             <Route path="contract" element={<ContractPage />} />

@@ -89,6 +89,8 @@ function unlockedTemplate(): MenuItemConstructorOptions[] {
       label: t('menu.tools'),
       submenu: [
         { label: t('nav.transfer'), click: () => navigate('/transfer') },
+        { label: t('nav.swap'), click: () => navigate('/swap') },
+        { label: t('nav.bridge'), click: () => navigate('/bridge') },
         { label: t('nav.txLab'), click: () => navigate('/tx-lab') },
         { label: t('nav.abi'), click: () => navigate('/abi') },
         { label: t('nav.contract'), click: () => navigate('/contract') },

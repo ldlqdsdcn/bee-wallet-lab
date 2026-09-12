@@ -1109,3 +1109,147 @@ export interface EnergyOrderStatus {
   status: number
   description: string
 }
+
+/* -------------------------------- 同网络兑换 -------------------------------- */
+
+export type SwapKind = 'evm' | 'tron'
+
+export interface SwapQuoteInput {
+  accountId: string
+  networkPk: string
+  sellTokenPk: string
+  buyTokenPk: string
+  sellAmount: string
+  slippageBps?: number
+}
+
+export interface SwapEnergyInfo {
+  needed: boolean
+  quantity: number
+  duration: EnergyDuration
+  burnTrx: string
+  rentTrx: string | null
+  saveTrx: string
+  cheaper: TronEnergyFeeMode | 'same' | null
+}
+
+export interface SwapQuote {
+  kind: SwapKind
+  chainId: number
+  sellSymbol: string
+  buySymbol: string
+  sellAmount: string
+  buyAmount: string
+  minBuyAmount: string
+  sellAmountMinor: string
+  buyAmountMinor: string
+  feeText: string
+  allowanceNeeded: boolean
+  allowanceTarget: string | null
+  energy: SwapEnergyInfo | null
+  warnings: string[]
+}
+
+export interface SwapSubmitInput extends SwapQuoteInput {
+  energyFeeMode?: TronEnergyFeeMode
+}
+
+export interface SwapSubmitResult {
+  quoteId: string
+  txid: string
+  approveTxid: string | null
+  explorerUrl: string | null
+}
+
+export interface SwapHistoryItem {
+  id: string
+  chainId: number
+  status: string
+  sellToken: string
+  buyToken: string
+  sellAmount: string
+  buyAmount: string
+  txHash: string | null
+  created: string
+}
+
+/* -------------------------------- 跨链桥 -------------------------------- */
+
+export type BridgeSortBy = 'price' | 'speed'
+
+export interface BridgeQuoteInput {
+  originAccountId: string
+  originNetworkPk: string
+  destNetworkPk: string
+  destAccountId?: string
+  destAddress?: string
+  sellTokenPk: string
+  buyTokenPk: string
+  sellAmount: string
+  slippageBps?: number
+  sortQuotesBy?: BridgeSortBy
+}
+
+export interface BridgeQuoteOption {
+  index: number
+  sellAmount: string
+  buyAmount: string
+  minBuyAmount: string
+  estimatedTimeSeconds: number | null
+  feeText: string
+  allowanceNeeded: boolean
+  allowanceTarget: string | null
+}
+
+export interface BridgeQuote {
+  originChainId: number
+  destinationChainId: number
+  originAddress: string
+  destinationAddress: string
+  sellSymbol: string
+  buySymbol: string
+  sellAmount: string
+  options: BridgeQuoteOption[]
+  energy: SwapEnergyInfo | null
+  warnings: string[]
+  provider: string | null
+  liquidityAvailable: boolean
+}
+
+export interface BridgeSubmitInput extends BridgeQuoteInput {
+  quoteIndex: number
+  energyFeeMode?: TronEnergyFeeMode
+}
+
+export interface BridgeSubmitResult {
+  quoteId: string
+  txid: string
+  approveTxid: string | null
+  explorerUrl: string | null
+  destTxHash: string | null
+  status: string
+}
+
+export interface BridgeStatus {
+  quoteId: string
+  status: string
+  txHash: string | null
+  destTxHash: string | null
+  bridgeStatus: string | null
+  estimatedTimeSeconds: number | null
+  provider: string | null
+}
+
+export interface BridgeHistoryItem {
+  id: string
+  originChainId: number
+  destinationChainId: number
+  status: string
+  sellToken: string
+  buyToken: string
+  sellAmount: string
+  buyAmount: string
+  txHash: string | null
+  destTxHash: string | null
+  created: string
+}

@@ -44,6 +44,8 @@ import { registerTxLabIpc } from './txLab'
 import { registerAbiIpc } from './abi'
 import { registerContractIpc } from './contract'
 import { registerDevToolsIpc } from './devTools'
+import { registerSwapIpc } from './swap'
+import { registerBridgeIpc } from './bridge'
 import { refreshAppMenu } from '../appMenu'
 import { startTransactionWatch, stopTransactionWatch } from '../history/watch'
 import { recoverInterruptedHdAirdrops, stopAllHdAirdrops } from '../hdAirdrop/service'
@@ -198,6 +200,8 @@ export function registerAllIpc(): void {
   registerAbiIpc()
   registerContractIpc()
   registerDevToolsIpc()
+  registerSwapIpc()
+  registerBridgeIpc()
   registerPlaceholders()
   initWalletAuth()
   recoverInterruptedHdAirdrops()

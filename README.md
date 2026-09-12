@@ -20,9 +20,9 @@ Electron 桌面端。密钥只存在于主进程，渲染进程通过白名单 I
 
 | 链 | 能做什么 |
 | --- | --- |
-| **Bitcoin** | HD 派生；Legacy / Nested SegWit / Native SegWit / Taproot；转账；BIP-137 消息签名 |
-| **EVM** | 常见主网与 L2；ERC-20 转账；固定总量发币；合约读写；交易实验室；批量转账 |
-| **TRON** | HD 派生；TRX / TRC-20；能量不足时可租能量或烧 TRX；合约读写 |
+| **Bitcoin** | HD 派生；Legacy / Nested SegWit / Native SegWit / Taproot；转账；跨链桥；BIP-137 消息签名 |
+| **EVM** | 常见主网与 L2；ERC-20 转账；ETH / BSC / Arbitrum 同网络兑换；跨链桥；固定总量发币；合约读写；交易实验室；批量转账 |
+| **TRON** | HD 派生；TRX / TRC-20；主网兑换；跨链桥；能量不足时可租能量或烧 TRX；合约读写 |
 | **Solana** | HD 派生；SOL / SPL；固定总量 SPL；消息签名 |
 
 内置包括 Ethereum、BSC、Base、Optimism、Polygon、Arbitrum、Linea、Scroll、zkSync Era、Blast、Mantle、Avalanche、Xone 以及对应测试网。也可自己加网络。Sui 等未接入链目前不能用。
@@ -37,6 +37,8 @@ Electron 桌面端。密钥只存在于主进程，渲染进程通过白名单 I
 | 分层钱包 | 批量生成最多 2 万条地址；私钥加密；可导出 CSV |
 | 资产总览 | 直连 RPC 取余额；法币计价；节点不可达时用本地缓存 |
 | 收款转账 | 地址 / 二维码收款；本机签名后广播；费率分档；TRC-20 能量不足时可租能量或烧 TRX |
+| 兑换 | 同网络换币：ETH / BSC / Arbitrum（0x）、波场主网（SunSwap）；必要时授权或租能量 |
+| 跨链桥 | 比特币、ETH / BSC / Arbitrum 与波场互跨；含 BTC 走 SwapKit，其余走 0x；源链本机签名 |
 | 交易记录 | 按当前钱包 + 当前网络同步转入转出 |
 | 交易实验室 | 构造、解码、只签名、再单独广播 |
 | ABI 工具 | 导入 ABI；编码 calldata；解码调用、返回值、Event |
@@ -109,9 +111,9 @@ The marketing feature brief is [docs/Bee_Wallet_Lab_门户功能清单.md](docs/
 
 | Chain | What you can do |
 | --- | --- |
-| **Bitcoin** | HD derive; Legacy / Nested SegWit / Native SegWit / Taproot; transfer; BIP-137 signmessage |
-| **EVM** | Common L1/L2s; ERC-20 transfers; fixed-supply issue; contract read/write; Transaction Lab; batch transfer |
-| **TRON** | HD derive; TRX / TRC-20; rent energy or burn TRX when the fee is short; contract read/write |
+| **Bitcoin** | HD derive; Legacy / Nested SegWit / Native SegWit / Taproot; transfer; cross-chain bridge; BIP-137 signmessage |
+| **EVM** | Common L1/L2s; ERC-20 transfers; same-network swap on ETH / BSC / Arbitrum; cross-chain bridge; fixed-supply issue; contract read/write; Transaction Lab; batch transfer |
+| **TRON** | HD derive; TRX / TRC-20; mainnet swap; cross-chain bridge; rent energy or burn TRX when the fee is short; contract read/write |
 | **Solana** | HD derive; SOL / SPL; fixed-supply SPL; message signing |
 
 Built-in networks include Ethereum, BSC, Base, Optimism, Polygon, Arbitrum, Linea, Scroll, zkSync Era, Blast, Mantle, Avalanche, Xone, and matching testnets. You can add custom networks. Chains that are not wired (for example Sui) are not supported yet.
@@ -126,6 +128,8 @@ Built-in networks include Ethereum, BSC, Base, Optimism, Polygon, Arbitrum, Line
 | HD wallet | Batch-generate up to 20,000 addresses; keys encrypted; CSV export |
 | Portfolio | Balances from RPC; fiat quote; cached totals when nodes are down |
 | Receive & send | Address / QR; sign locally then broadcast; fee presets; TRC-20 can rent energy or burn TRX |
+| Swap | Same-network swap on ETH / BSC / Arbitrum (0x) and TRON mainnet (SunSwap) |
+| Bridge | Cross-chain among Bitcoin, ETH / BSC / Arbitrum, and TRON; SwapKit for BTC pairs, 0x otherwise |
 | Activity | Sync ins/outs for the current wallet on the current network |
 | Transaction Lab | Build, decode, sign only, then broadcast separately |
 | ABI tools | Import ABI; encode calldata; decode calls, return values, and events |
@@ -139,7 +143,7 @@ Built-in networks include Ethereum, BSC, Base, Optimism, Polygon, Arbitrum, Line
 | Networks / RPC / tokens / faucets / proxy | Catalog, latency checks, testnet faucets, http/socks5 proxy |
 | Language | Instant Simplified Chinese / English, including the native menu |
 
-Not shipped — do not advertise as available: Swap, cross-chain bridge, workspace import/export, in-app auto-update.
+Not shipped — do not advertise as available: workspace import/export, in-app auto-update.
 
 ### Development
 

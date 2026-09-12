@@ -2,7 +2,7 @@
  * Bitcoin 链上适配：UTXO、费率、签名、广播。直连 Esplora（Blockstream / mempool）。
  */
 import * as btc from '@scure/btc-signer'
-import { hexToBytes } from '@noble/hashes/utils'
+import { hexToBytes, utf8ToBytes } from '@noble/hashes/utils'
 import type { BitcoinAddressType, NetworkScope } from '@shared/types'
 import { extractList } from '../backend/list'
 import { isBitcoinAddress } from '../derive/bitcoin'
@@ -207,6 +207,29 @@ function selectUtxos(
   throw new Error('余额不足以完成本次转账（含矿工费）')
 }
 
+export function decodeBitcoinPsbt(value: string): Uint8Array {
+  const trimmed = value.trim()
+  if (!trimmed) throw new Error('PSBT 为空')
+  if (/^[0-9a-fA-F]+$/.test(trimmed) && trimmed.length % 2 === 0) return hexToBytes(trimmed)
+  return Uint8Array.from(Buffer.from(trimmed, 'base64'))
+}
+
+/** 用本机私钥签 SwapKit / 桥给出的 PSBT，返回可广播 raw hex。 */
+export function signBitcoinPsbt(psbt: string, privateKey: Uint8Array): string {
+  const tx = btc.Transaction.fromPSBT(decodeBitcoinPsbt(psbt), {
+    allowUnknownOutputs: true,
+    allowUnknownInputs: true,
+    allowLegacyWitnessUtxo: true,
+  })
+  tx.sign(privateKey)
+  try {
+    tx.finalize()
+  } catch {
+    /* 部分 PSBT 已经是终态，finalize 会抛错 */
+  }
+  return tx.hex
+}
+
 export async function buildAndSignBitcoinTx(input: {
   networkScope: NetworkScope
   addressType: BitcoinAddressType
@@ -217,6 +240,7 @@ export async function buildAndSignBitcoinTx(input: {
   amountSats: bigint
   feeRate: number
   sendMax?: boolean
+  memo?: string
 }): Promise<BitcoinBuildResult> {
   if (!isBitcoinAddress(input.toAddress, input.networkScope)) {
     throw new Error('收款地址不是有效的 Bitcoin 地址')
@@ -237,6 +261,7 @@ export async function buildAndSignBitcoinTx(input: {
   const payment = bitcoinPayment(publicKey, input.addressType, input.networkScope)
   const tx = new btc.Transaction({
     allowLegacyWitnessUtxo: input.addressType === 'p2pkh',
+    allowUnknownOutputs: Boolean(input.memo?.trim()),
   })
 
   for (const utxo of selection.selected) {
@@ -260,6 +285,13 @@ export async function buildAndSignBitcoinTx(input: {
   }
 
   tx.addOutputAddress(input.toAddress, sendAmount, networkOf(input.networkScope))
+  const memo = input.memo?.trim()
+  if (memo) {
+    tx.addOutput({
+      script: btc.Script.encode(['RETURN', utf8ToBytes(memo)]),
+      amount: 0n,
+    })
+  }
   if (selection.changeSats > 0n) {
     tx.addOutputAddress(input.fromAddress, selection.changeSats, networkOf(input.networkScope))
   }

@@ -152,6 +152,17 @@ export const IPC = {
   devToolsJson: 'devTools:json',
   devToolsConvert: 'devTools:convert',
   devToolsHash: 'devTools:hash',
+
+  /* 同网络兑换 */
+  swapQuote: 'swap:quote',
+  swapSubmit: 'swap:submit',
+  swapList: 'swap:list',
+
+  /* 跨链桥 */
+  bridgeQuote: 'bridge:quote',
+  bridgeSubmit: 'bridge:submit',
+  bridgeStatus: 'bridge:status',
+  bridgeList: 'bridge:list',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]
