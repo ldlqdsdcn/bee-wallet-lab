@@ -5,6 +5,7 @@ import type {
   TransferDraftInput,
   TransferPreview,
   TransactionRecord,
+  TronEnergyFeeMode,
 } from '../../../shared/types'
 import { handle, requireObject, requireString } from './registry'
 import { previewTransfer, receiveInfo, submitTransfer } from '../transfer/service'
@@ -15,8 +16,8 @@ export function registerTransferIpc(): void {
     previewTransfer(requireObject<TransferDraftInput>(arg)),
   )
 
-  handle<{ draftId: string }, BroadcastResult>(IPC.transferSubmit, (arg) =>
-    submitTransfer(requireString(arg?.draftId, 'draftId')),
+  handle<{ draftId: string; energyFeeMode?: TronEnergyFeeMode }, BroadcastResult>(IPC.transferSubmit, (arg) =>
+    submitTransfer(requireString(arg?.draftId, 'draftId'), arg?.energyFeeMode),
   )
 
   handle<{ accountId: string }, AccountRecord>(IPC.transferReceiveInfo, (arg) =>

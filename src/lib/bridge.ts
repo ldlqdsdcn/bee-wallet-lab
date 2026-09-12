@@ -51,6 +51,7 @@ import type {
   TransactionRecord,
   TransferDraftInput,
   TransferPreview,
+  TronEnergyFeeMode,
   TxLabBroadcastInput,
   TxLabDecoded,
   TxLabDecodeInput,
@@ -219,7 +220,8 @@ export const hdAirdropApi = {
 
 export const transferApi = {
   preview: (input: TransferDraftInput) => call<TransferPreview>(IPC.transferPreview, input),
-  submit: (draftId: string) => call<BroadcastResult>(IPC.transferSubmit, { draftId }),
+  submit: (draftId: string, energyFeeMode?: TronEnergyFeeMode) =>
+    call<BroadcastResult>(IPC.transferSubmit, { draftId, energyFeeMode }),
   receiveInfo: (accountId: string) => call<AccountRecord>(IPC.transferReceiveInfo, { accountId }),
   transactions: (query?: { networkPk?: string; accountId?: string }) =>
     call<TransactionRecord[]>(IPC.transactionList, query ?? {}),

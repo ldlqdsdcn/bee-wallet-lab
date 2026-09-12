@@ -8,7 +8,9 @@ import type {
   NetworkRecord,
   TokenRecord,
   TransferDraftInput,
+  TransferEnergyInfo,
   TransferPreview,
+  TronEnergyFeeMode,
   TxLabSigned,
 } from '@shared/types'
 import { newId } from '../security/crypto'
@@ -35,10 +37,16 @@ import {
 import {
   createTrc20Tx,
   createTronNativeTx,
+  estimateTrc20Energy,
   estimateTronNativeFeeSun,
   getTronAccount,
+  getTronEnergyFeeSun,
   signTronTx,
 } from '../chain/tron'
+import { getBaseUrl } from '../backend/config'
+import { estimateEnergyOrder } from '../energy/api'
+import { loadEnergyResources, rentEnergyAndWait } from '../energy/service'
+import { burnSunForEnergy, compareEnergyFees, rentQuantity, requiredEnergy, sunToTrx } from '../energy/codec'
 import { buildAndSignSolanaTx, quoteSolanaFee } from '../chain/solana'
 import { decodeRawTransaction } from '../txLab/decode'
 import { broadcastRawOnNetwork, feeDecimalsOf, persistBroadcastedTx } from '../txLab/service'
@@ -63,6 +71,8 @@ interface StoredDraft {
   data?: `0x${string}`
   to: string
   feeLimitSun?: bigint
+  energyFeeMode?: TronEnergyFeeMode
+  energyQuantity?: number
   createdAt: number
 }
 
@@ -257,21 +267,39 @@ export async function previewTransfer(input: TransferDraftInput): Promise<Transf
   const recipient = await getTronAccount(to, network.networkScope)
   const feeLimitSun = input.feeLimit ? parseDecimalToMinor(input.feeLimit, 6) : 40_000_000n
   const feeMinor = contract ? feeLimitSun : estimateTronNativeFeeSun(recipient.active)
+  const warnings = recipient.active ? [] : ['收款地址尚未激活，转账将额外消耗约 1.1 TRX']
+  const energy = contract
+    ? await resolveTrc20Energy({
+        accountId: account.id,
+        network,
+        from: account.address,
+        to,
+        contract,
+        amount: amountMinor,
+        tokenGasLimit: token.gasLimit,
+        preferredMode: input.energyFeeMode,
+      })
+    : undefined
   const preview = buildPreview({
     account,
     to,
     token,
     amountMinor,
-    feeMinor,
-    feeText: contract
-      ? `feeLimit ${formatMinor(feeLimitSun, 6)} TRX`
+    feeMinor: energyFeeMinor(energy, feeMinor),
+    feeText: energy
+      ? energy.short
+        ? energyFeeText(energy)
+        : `能量足够（剩余 ${energy.left}）`
       : `${formatMinor(feeMinor, 6)} TRX`,
     detail: {
       recipientActive: String(recipient.active),
       contract: contract ?? '',
       feeLimitSun: feeLimitSun.toString(),
+      energyRequired: energy ? String(energy.required) : '',
+      energyLeft: energy ? String(energy.left) : '',
     },
-    warnings: recipient.active ? [] : ['收款地址尚未激活，转账将额外消耗约 1.1 TRX'],
+    warnings,
+    energy,
   })
   drafts.set(preview.draftId, {
     input,
@@ -280,12 +308,103 @@ export async function previewTransfer(input: TransferDraftInput): Promise<Transf
     token,
     account,
     amountMinor,
-    feeMinor,
+    feeMinor: energyFeeMinor(energy, feeMinor),
     feeLimitSun,
+    energyFeeMode: energy?.selected,
+    energyQuantity: energy?.short ? (energy.quote?.quantity ?? 0) : 0,
     to,
     createdAt: Date.now(),
   })
   return preview
+}
+
+async function resolveTrc20Energy(input: {
+  accountId: string
+  network: NetworkRecord
+  from: string
+  to: string
+  contract: string
+  amount: bigint
+  tokenGasLimit: number | null
+  preferredMode?: TronEnergyFeeMode
+}): Promise<TransferEnergyInfo> {
+  const [resources, estimated, energyFeeSun] = await Promise.all([
+    loadEnergyResources(input.accountId, input.network.id).catch(() => null),
+    estimateTrc20Energy({
+      from: input.from,
+      to: input.to,
+      contract: input.contract,
+      amount: input.amount,
+      networkScope: input.network.networkScope,
+    }),
+    getTronEnergyFeeSun(input.network.networkScope),
+  ])
+  const required = requiredEnergy(estimated, input.tokenGasLimit)
+  const left = resources?.energyLeft ?? 0
+  const short = left < required
+  const quantity = rentQuantity(required, left)
+  const burnSun = burnSunForEnergy(required, left, energyFeeSun)
+  const burnTrx = sunToTrx(burnSun)
+  let canRent = false
+  let rentReason = ''
+  let quote: TransferEnergyInfo['quote'] = null
+  if (short && input.network.networkScope !== 'mainnet') {
+    rentReason = '能量租赁仅波场主网可用，测试网请燃烧 TRX'
+  } else if (short && !getBaseUrl()) {
+    rentReason = '未配置目录站，无法租赁能量，请燃烧 TRX 或到设置填写 https://beeqd.com'
+  } else if (short && quantity > 0) {
+    try {
+      const estimatedQuote = await estimateEnergyOrder(quantity, '1h')
+      quote = { priceTrx: sunToTrx(estimatedQuote.priceSun), quantity: estimatedQuote.quantity }
+      canRent = true
+    } catch (err) {
+      rentReason = `暂时无法租赁能量：${err instanceof Error ? err.message : String(err)}`
+    }
+  }
+  const selected: TronEnergyFeeMode =
+    input.preferredMode === 'rent' && canRent ? 'rent' : input.preferredMode === 'burn' ? 'burn' : canRent ? 'rent' : 'burn'
+  let cheaper: TransferEnergyInfo['cheaper'] = null
+  let saveTrx = ''
+  if (quote && burnSun > 0n) {
+    const rentSun = parseTrxToSun(quote.priceTrx)
+    if (rentSun > 0n) {
+      cheaper = compareEnergyFees(rentSun, burnSun)
+      if (cheaper !== 'same') {
+        saveTrx = sunToTrx(rentSun > burnSun ? rentSun - burnSun : burnSun - rentSun)
+      }
+    }
+  }
+  return { required, left, short, canRent, rentReason, selected, quote, burnTrx, saveTrx, cheaper }
+}
+
+function parseTrxToSun(trx: string): bigint {
+  try {
+    return parseDecimalToMinor(trx, 6)
+  } catch {
+    return 0n
+  }
+}
+
+function energyFeeMinor(energy: TransferEnergyInfo | undefined, fallback: bigint): bigint {
+  if (!energy?.short) return fallback
+  try {
+    if (energy.selected === 'rent' && energy.quote) return parseDecimalToMinor(energy.quote.priceTrx, 6)
+    if (energy.burnTrx) return parseDecimalToMinor(energy.burnTrx, 6)
+  } catch {
+    return fallback
+  }
+  return fallback
+}
+
+function energyFeeText(energy: TransferEnergyInfo): string {
+  const rent = energy.quote ? `${energy.quote.priceTrx} TRX / 约 15 秒–2 分钟` : '—'
+  const burn = `${energy.burnTrx} TRX / 约 3 秒`
+  if (energy.selected === 'rent' && energy.quote) {
+    return energy.saveTrx
+      ? `租赁 ${rent}（燃烧约 ${burn}，少付 ${energy.saveTrx} TRX）`
+      : `租赁 ${rent}（燃烧约 ${burn}）`
+  }
+  return energy.quote ? `燃烧约 ${burn}（租赁 ${rent}）` : `燃烧约 ${burn}`
 }
 
 function buildPreview(input: {
@@ -297,6 +416,7 @@ function buildPreview(input: {
   feeText: string
   detail: Record<string, string>
   warnings: string[]
+  energy?: TransferEnergyInfo
 }): TransferPreview {
   return {
     draftId: newId(),
@@ -311,6 +431,7 @@ function buildPreview(input: {
     totalMinor: (input.amountMinor + (input.token.isToken ? 0n : input.feeMinor)).toString(),
     detail: input.detail,
     warnings: input.warnings,
+    energy: input.energy,
   }
 }
 
@@ -442,11 +563,23 @@ export async function signTransferDraft(draftId: string): Promise<TxLabSigned> {
   }
 }
 
-export async function submitTransfer(draftId: string): Promise<BroadcastResult> {
+export async function submitTransfer(draftId: string, energyFeeMode?: TronEnergyFeeMode): Promise<BroadcastResult> {
   pruneDrafts()
   const draft = drafts.get(draftId)
   if (!draft) throw invalidArg('转账预览已过期，请重新预览')
   drafts.delete(draftId)
+
+  const mode = energyFeeMode ?? draft.energyFeeMode
+  if (mode === 'rent' && contractOf(draft.token)) {
+    const quantity = draft.energyQuantity ?? 0
+    if (quantity <= 0) throw invalidArg('当前能量已足够，无需租赁')
+    await rentEnergyAndWait({
+      accountId: draft.account.id,
+      networkPk: draft.network.id,
+      quantity,
+      duration: '1h',
+    })
+  }
 
   const signed = await signStoredDraft(draft)
   const txid = await broadcastRawOnNetwork(draft.network, signed.raw)
