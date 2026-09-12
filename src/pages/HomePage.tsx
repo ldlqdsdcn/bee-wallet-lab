@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { AssetEntry, FaucetRecord, PortfolioSnapshot } from '@shared/types'
-import { faucetApi, portfolioApi } from '../lib/bridge'
+import { IPC_EVENT } from '@shared/ipc'
+import { faucetApi, on, portfolioApi } from '../lib/bridge'
 import { Alert, Button, Card } from '../components/ui'
 import { TronResourcesCard } from '../components/TronResourcesCard'
 import { useTronResources } from '../lib/tronResources'
@@ -43,6 +44,22 @@ export default function HomePage() {
       })
     return () => {
       alive = false
+    }
+  }, [currentWalletId, networkPk])
+
+  useEffect(() => {
+    if (!networkPk) return
+    const reload = () => {
+      void portfolioApi.snapshot(networkPk).then(setSnapshot).catch(() => undefined)
+    }
+    const offTx = on(IPC_EVENT.transactionUpdated, reload)
+    const offBal = on(IPC_EVENT.balanceUpdated, (payload) => {
+      const snap = payload as PortfolioSnapshot
+      if (snap?.networkPk === networkPk) setSnapshot(snap)
+    })
+    return () => {
+      offTx()
+      offBal()
     }
   }, [currentWalletId, networkPk])
 

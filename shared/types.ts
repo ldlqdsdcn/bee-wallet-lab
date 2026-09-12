@@ -1199,6 +1199,7 @@ export interface BridgeQuoteOption {
   minBuyAmount: string
   estimatedTimeSeconds: number | null
   feeText: string
+  networkFeeText: string | null
   allowanceNeeded: boolean
   allowanceTarget: string | null
 }
@@ -1213,6 +1214,7 @@ export interface BridgeQuote {
   sellAmount: string
   options: BridgeQuoteOption[]
   energy: SwapEnergyInfo | null
+  networkFeeText: string | null
   warnings: string[]
   provider: string | null
   liquidityAvailable: boolean
@@ -1230,6 +1232,7 @@ export interface BridgeSubmitResult {
   explorerUrl: string | null
   destTxHash: string | null
   status: string
+  feeText: string | null
 }
 
 export interface BridgeStatus {
@@ -1246,6 +1249,8 @@ export interface BridgeHistoryItem {
   id: string
   originChainId: number
   destinationChainId: number
+  originAddress: string
+  destinationAddress: string
   status: string
   sellToken: string
   buyToken: string

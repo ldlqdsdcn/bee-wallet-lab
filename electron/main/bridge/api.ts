@@ -13,14 +13,20 @@ import {
 
 const QUOTE_TIMEOUT_MS = 45_000
 
-export async function fetchBridgePrice(query: Record<string, string | number>) {
+export async function fetchBridgePrice(
+  query: Record<string, string | number>,
+  native?: { symbol: string; decimals: number },
+) {
   const data = await get<unknown>(`${BRIDGE_API_PREFIX}/price`, query, { timeoutMs: QUOTE_TIMEOUT_MS })
-  return parsePriceResponse(data)
+  return parsePriceResponse(data, native)
 }
 
-export async function fetchBridgeQuote(query: Record<string, string | number>) {
+export async function fetchBridgeQuote(
+  query: Record<string, string | number>,
+  native?: { symbol: string; decimals: number },
+) {
   const data = await get<unknown>(`${BRIDGE_API_PREFIX}/quote`, query, { timeoutMs: QUOTE_TIMEOUT_MS })
-  return parseExecutableQuote(data)
+  return parseExecutableQuote(data, native)
 }
 
 export async function submitBridgeHash(input: { quoteId: string; txHash: string; originAddress: string }) {

@@ -20,6 +20,7 @@ import {
   getEvmNonce,
   quoteEvmFees,
   signAndSerializeEvmTx,
+  fetchEvmReceipt,
   waitForEvmReceipt,
 } from '../chain/evm'
 import {
@@ -274,26 +275,34 @@ export async function listAccountSwaps(accountId: string, networkPk: string): Pr
   const { chainId, kind } = requireSwapChain(network)
   const account = getAccount(accountId)
   const rows = await listSwapOrders(kind, account.address, chainId)
-  if (kind !== 'tron') return rows
-  return Promise.all(rows.map((row) => confirmTronSwapRow(row, network.networkScope)))
+  return Promise.all(rows.map((row) => confirmSwapRow(row, network, kind)))
 }
 
-async function confirmTronSwapRow(
+async function confirmSwapRow(
   row: SwapHistoryItem,
-  networkScope: NetworkRecord['networkScope'],
+  network: NetworkRecord,
+  kind: 'evm' | 'tron',
 ): Promise<SwapHistoryItem> {
   if (!row.txHash) return row
   const current = row.status.trim().toUpperCase()
-  if (current === 'FILLED' || current === 'SUCCESS' || current === 'FAILED') return row
+  if (current === 'FILLED' || current === 'SUCCESS' || current === 'FAILED' || current === 'FA') return row
   try {
-    const info = asRecord(await fetchTronTxInfo(row.txHash, networkScope))
-    if (!info) return row
-    const receipt = asRecord(info.receipt)
-    const result = asString(receipt?.result || info.result || info.contractRet)
-    if (/REVERT|FAILED/i.test(result)) return { ...row, status: 'FAILED' }
-    if (/SUCCESS/i.test(result) || asNumber(info.blockNumber, 0) > 0) return { ...row, status: 'FILLED' }
+    if (kind === 'tron') {
+      const info = asRecord(await fetchTronTxInfo(row.txHash, network.networkScope))
+      if (!info) return row
+      const receipt = asRecord(info.receipt)
+      const result = asString(receipt?.result || info.result || info.contractRet)
+      if (/REVERT|FAILED/i.test(result)) return { ...row, status: 'FAILED' }
+      if (/SUCCESS/i.test(result) || asNumber(info.blockNumber, 0) > 0) return { ...row, status: 'FILLED' }
+      return row
+    }
+    const receipt = asRecord(await fetchEvmReceipt(network, row.txHash))
+    if (!receipt) return row
+    const status = asString(receipt.status)
+    if (status === '0x0' || status === '0') return { ...row, status: 'FAILED' }
+    if (status === '0x1' || status === '1' || receipt.blockNumber) return { ...row, status: 'FILLED' }
   } catch {
-    /* 目录状态保持 SUBMITTED */
+    /* 目录未回写时用链上回执兜底 */
   }
   return row
 }
