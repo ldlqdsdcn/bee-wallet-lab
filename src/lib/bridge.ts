@@ -85,6 +85,7 @@ import type {
   BridgeStatus,
   BridgeSubmitInput,
   BridgeSubmitResult,
+  DappCatalog,
   VaultStatus,
   VerifyMessageInput,
   VerifyMessageResult,
@@ -245,6 +246,10 @@ export const bridgeApi = {
   status: (quoteId: string) => call<BridgeStatus>(IPC.bridgeStatus, { quoteId }),
   list: (accountId: string, networkPk: string) =>
     call<BridgeHistoryItem[]>(IPC.bridgeList, { accountId, networkPk }),
+}
+
+export const dappApi = {
+  catalog: (force = false) => call<DappCatalog>(IPC.dappCatalog, { force }),
 }
 
 export const energyApi = {

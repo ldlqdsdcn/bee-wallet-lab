@@ -112,7 +112,7 @@ export function isAuthExpired(status: number, body: unknown): boolean {
 function messageOf(body: unknown, fallback: string): string {
   const record = asRecord(body)
   if (!record) return typeof body === 'string' && body ? body : fallback
-  for (const key of ['msg', 'message', 'error'] as const) {
+  for (const key of ['msg', 'message', 'error', 'sqlMessage'] as const) {
     const value = record[key]
     if (typeof value === 'string' && value) return value
   }

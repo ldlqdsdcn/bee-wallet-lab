@@ -1260,3 +1260,32 @@ export interface BridgeHistoryItem {
   destTxHash: string | null
   created: string
 }
+
+/** 目录站 /api/dappCategory、/api/dapp 拉下来的三方连接 */
+export const DAPP_HOT_CATEGORY_ID = 'hot'
+
+export interface DappCategoryRecord {
+  id: string
+  name: string
+  icon: string | null
+  sort: number
+  /** 本地拼的「热门」，不是目录分类 id */
+  virtual: boolean
+}
+
+export interface DappRecord {
+  id: string
+  categoryId: string
+  name: string
+  url: string
+  icon: string | null
+  remark: string | null
+  isHot: boolean
+  isTop: boolean
+  sort: number
+}
+
+export interface DappCatalog {
+  categories: DappCategoryRecord[]
+  dapps: DappRecord[]
+}
