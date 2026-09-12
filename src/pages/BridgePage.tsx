@@ -37,6 +37,23 @@ function isBtcNetwork(network?: NetworkRecord | null): boolean {
   return network?.walletType === 'bitcoin' && network.networkScope === 'mainnet'
 }
 
+/** 跨链按链识别，不按目录行。两条以太坊记录算同一条，不能互跨。 */
+function bridgeChainKey(network?: NetworkRecord | null): string | null {
+  if (!network) return null
+  if (network.walletType === 'bitcoin' && network.networkScope === 'mainnet') return '0'
+  if (network.walletType === 'tron' && network.networkScope === 'mainnet') return '195'
+  if (network.walletType !== 'web3') return null
+  const raw = network.chainId.trim()
+  const id = /^0x/i.test(raw) ? Number.parseInt(raw, 16) : Number(raw)
+  return id === 1 || id === 56 || id === 42161 ? String(id) : null
+}
+
+function sameBridgeChain(a?: NetworkRecord | null, b?: NetworkRecord | null): boolean {
+  const left = bridgeChainKey(a)
+  const right = bridgeChainKey(b)
+  return left != null && left === right
+}
+
 function filterBridgeTokens(tokens: TokenRecord[], network: NetworkRecord | null, pairIsBtc: boolean): TokenRecord[] {
   if (!network) return []
   if (isBtcNetwork(network)) return tokens.filter((item) => !item.isToken)
@@ -97,8 +114,12 @@ export default function BridgePage() {
   const catalogReady = Boolean(baseUrl.trim())
   const originNetwork = supportedNetworks.find((item) => item.id === originPk) ?? null
   const destNetwork = supportedNetworks.find((item) => item.id === destPk) ?? null
+  const destChoices = useMemo(
+    () => supportedNetworks.filter((item) => !sameBridgeChain(originNetwork, item)),
+    [supportedNetworks, originNetwork],
+  )
   const pairIsBtc = isBtcNetwork(originNetwork) || isBtcNetwork(destNetwork)
-  const sameChain = Boolean(originPk && destPk && originPk === destPk)
+  const sameChain = sameBridgeChain(originNetwork, destNetwork)
 
   const originAccounts = useMemo(() => {
     if (!originNetwork) return []
@@ -126,10 +147,9 @@ export default function BridgePage() {
   }, [supportedNetworks, originPk, current])
 
   useEffect(() => {
-    if (destPk && destPk !== originPk && supportedNetworks.some((item) => item.id === destPk)) return
-    const next = supportedNetworks.find((item) => item.id !== (originPk || current?.id))
-    setDestPk(next?.id ?? '')
-  }, [supportedNetworks, destPk, originPk, current])
+    if (destPk && destChoices.some((item) => item.id === destPk)) return
+    setDestPk(destChoices[0]?.id ?? '')
+  }, [destChoices, destPk])
 
   useEffect(() => {
     if (!currentWalletId) {
@@ -309,7 +329,7 @@ export default function BridgePage() {
                 ))}
               </Select>
               <Select label={t('bridge.dest')} value={destPk} onChange={(e) => setDestPk(e.target.value)}>
-                {supportedNetworks.map((item) => (
+                {destChoices.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.networkName}
                   </option>
