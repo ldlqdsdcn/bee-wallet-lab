@@ -77,7 +77,10 @@
     "maintainer": "Bee Wallet Lab <ldlqdsdcn@gmail.com>",
     "synopsis": "开源区块链钱包实验室",
     "desktop": {
-      "StartupWMClass": "bee-wallet-lab"
+      "entry": {
+        // 与 electron/main.ts 里 --class=bee-wallet 对齐，GNOME 才能对上图标
+        "StartupWMClass": "bee-wallet"
+      }
     },
     "artifactName": "${name}-${version}-linux-${arch}.${ext}"
   }
