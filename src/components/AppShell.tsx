@@ -18,6 +18,8 @@ const navItems: { to: string; key: MessageKey }[] = [
   { to: '/wallets', key: 'nav.wallets' },
   { to: '/hd', key: 'nav.hd' },
   { to: '/transfer', key: 'nav.transfer' },
+  { to: '/swap', key: 'nav.swap' },
+  { to: '/bridge', key: 'nav.bridge' },
   { to: '/tx-lab', key: 'nav.txLab' },
   { to: '/abi', key: 'nav.abi' },
   { to: '/contract', key: 'nav.contract' },
