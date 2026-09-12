@@ -9,6 +9,8 @@ import {
   involvesBtc,
   originHashForBackend,
   parseBridgeFeeText,
+  parseBridgeNetworkFeeText,
+  formatGasLimitFee,
   parseBridgeHistoryRow,
   parseBridgeStatus,
   parseEstimatedSeconds,
@@ -16,6 +18,7 @@ import {
   parsePriceResponse,
   parseQuoteIndex,
   parseSortQuotesBy,
+  resolveBridgeHistoryStatus,
   tokenAddressForBridge,
 } from '../electron/main/bridge/codec'
 import { EVM_NATIVE_PLACEHOLDER, TRON_NATIVE_PLACEHOLDER } from '../electron/main/swap/codec'
@@ -78,6 +81,28 @@ describe('跨链桥 codec', () => {
     expect(originHashForBackend('tvm', 'EF'.repeat(32))).toBe('ef'.repeat(32))
     expect(parseEstimatedSeconds(618.5)).toBe(619)
     expect(parseBridgeFeeText([{ amount: '1.2', asset: 'USDT' }])).toBe('1.2 USDT')
+    expect(parseBridgeFeeText({ total: '0.3', symbol: 'USDT' })).toBe('0.3 USDT')
+    expect(parseBridgeFeeText({})).toBe('')
+    expect(
+      parseBridgeNetworkFeeText(
+        {
+          gasCosts: [{ amount: '1000000000000000', token: { symbol: 'ETH', decimals: 18 } }],
+        },
+        'ETH',
+        18,
+      ),
+    ).toBe('0.001 ETH')
+    expect(
+      parseBridgeNetworkFeeText({ fees: { gasFee: { amount: '2000000000000000', token: { symbol: 'ETH', decimals: 18 } } } }, 'ETH', 18),
+    ).toBe('0.002 ETH')
+    expect(formatGasLimitFee('250000', '20000000000', 'ETH', 18)).toBe('0.005 ETH')
+    expect(
+      parseBridgeNetworkFeeText(
+        { transaction: { gas: '250000', gasPrice: '20000000000' } },
+        'ETH',
+        18,
+      ),
+    ).toBe('0.005 ETH')
   })
 
   it('解包询价、可执行报价、状态和历史', () => {
@@ -94,6 +119,7 @@ describe('跨链桥 codec', () => {
           minBuyAmount: '29700000',
           estimatedTimeSeconds: 90,
           fees: { total: '0.3', symbol: 'USDT' },
+          gasCosts: [{ amount: '500000000000000', token: { symbol: 'ETH', decimals: 18 } }],
           issues: { allowance: { spender: '0xspender' } },
         },
       ],
@@ -102,6 +128,8 @@ describe('跨链桥 codec', () => {
     expect(priced.options[0]?.allowanceNeeded).toBe(true)
     expect(priced.options[0]?.allowanceTarget).toBe('0xspender')
     expect(priced.options[0]?.buyAmount).toBe('30000000')
+    expect(priced.options[0]?.networkFeeText).toBe('0.0005 ETH')
+    expect(priced.options[0]?.feeText).toBe('0.3 USDT')
 
     const quote = parseExecutableQuote({
       quoteId: '99',
@@ -127,10 +155,19 @@ describe('跨链桥 codec', () => {
       id: '1',
       origin_chain_id: 0,
       destination_chain_id: 1,
+      origin_address: 'bc1qfrom',
+      destination_address: '0xdest',
       status: 'SUBMITTED',
       tx_hash: 'bb'.repeat(32),
+      created: '2026-09-12T07:24:47.000Z',
     })
     expect(row.originChainId).toBe(0)
+    expect(row.originAddress).toBe('bc1qfrom')
+    expect(row.destinationAddress).toBe('0xdest')
     expect(row.txHash).toBe('bb'.repeat(32))
+    expect(row.created).toBe('2026-09-12T07:24:47.000Z')
+    expect(resolveBridgeHistoryStatus('SUBMITTED', 'aa'.repeat(32))).toBe('FILLED')
+    expect(resolveBridgeHistoryStatus('ORIGIN_OK', null)).toBe('ORIGIN_OK')
+    expect(parseBridgeHistoryRow({ ...row, dest_tx_hash: 'cc'.repeat(32), status: 'SUBMITTED' }).status).toBe('FILLED')
   })
 })

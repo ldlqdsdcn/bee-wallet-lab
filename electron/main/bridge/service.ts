@@ -15,7 +15,7 @@ import type {
   TronEnergyFeeMode,
 } from '@shared/types'
 import { getBaseUrl } from '../backend/config'
-import { asRecord, asString } from '../backend/list'
+import { asNumber, asRecord, asString } from '../backend/list'
 import {
   broadcastBitcoinTx,
   buildAndSignBitcoinTx,
@@ -34,13 +34,16 @@ import {
   broadcastTronTx,
   createTronContractTx,
   encodeTrc20TransferParameter,
+  fetchTronAccountInternal,
+  fetchTronAccountTrc20,
   fetchTronTxInfo,
   getTronEnergyFeeSun,
   signTronTx,
   type TronUnsignedTx,
 } from '../chain/tron'
 import { getAccountRow } from '../db/repos/accountRepo'
-import { getNetwork, getToken } from '../db/repos/catalogRepo'
+import { getNetwork, getToken, listNetworks } from '../db/repos/catalogRepo'
+import { parseTronGridInternal, parseTronGridTrc20 } from '../history/parse'
 import { isBitcoinAddress } from '../derive/bitcoin'
 import { isEvmAddress, toChecksumAddress } from '../derive/evm'
 import { isTronAddress } from '../derive/tron'
@@ -58,9 +61,12 @@ import {
   DEFAULT_SLIPPAGE_BPS,
   bridgeChainIdOf,
   bridgeFamilyOf,
+  formatGasLimitFee,
   involvesBtc,
+  isBridgeStatusTerminal,
   originHashForBackend,
   parseQuoteIndex,
+  resolveBridgeHistoryStatus,
   parseSlippageBps,
   parseSortQuotesBy,
   parseWei,
@@ -70,6 +76,107 @@ import {
 
 function requireCatalogUrl(): void {
   if (!getBaseUrl()) throw invalidArg(`请先在设置里填写目录站地址，跨链桥使用 ${ENERGY_CATALOG_HINT}`)
+}
+
+function nativeMeta(network: NetworkRecord, family: BridgeFamily): { symbol: string; decimals: number } {
+  if (family === 'utxo') return { symbol: network.coinEasy || 'BTC', decimals: 8 }
+  if (family === 'tvm') return { symbol: network.coinEasy || 'TRX', decimals: 6 }
+  return { symbol: network.coinEasy || 'ETH', decimals: 18 }
+}
+
+function evmFeeFromReceipt(receipt: unknown, symbol: string): string | null {
+  const record = asRecord(receipt)
+  if (!record) return null
+  try {
+    const gasUsed = parseWei(record.gasUsed)
+    const gasPrice = parseWei(record.effectiveGasPrice ?? record.gasPrice)
+    if (gasUsed <= 0n || gasPrice <= 0n) return null
+    return `${formatMinor(gasUsed * gasPrice, 18)} ${symbol}`
+  } catch {
+    return null
+  }
+}
+
+function tronFeeFromInfo(info: unknown): string | null {
+  const record = asRecord(info)
+  if (!record) return null
+  const receipt = asRecord(record.receipt)
+  const fee = BigInt(Math.max(0, asNumber(record.fee, 0)))
+  const energyFee = BigInt(Math.max(0, asNumber(receipt?.energy_fee, 0)))
+  const netFee = BigInt(Math.max(0, asNumber(receipt?.net_fee, 0)))
+  const total = fee > 0n ? fee : energyFee + netFee
+  if (total <= 0n) return null
+  return `${formatMinor(total, 6)} TRX`
+}
+
+async function estimateOriginNetworkFee(input: {
+  family: BridgeFamily
+  network: NetworkRecord
+  from: string
+  transaction: Record<string, unknown> | null
+  energy: BridgeQuote['energy']
+}): Promise<string | null> {
+  const native = nativeMeta(input.network, input.family)
+  if (input.family === 'tvm') {
+    if (input.energy?.needed) {
+      return input.energy.rentTrx
+        ? `${input.energy.rentTrx} TRX`
+        : input.energy.burnTrx
+          ? `${input.energy.burnTrx} TRX`
+          : null
+    }
+    return null
+  }
+  if (input.family === 'utxo') {
+    try {
+      const rates = await fetchFeeRates('mainnet')
+      const feeSats = BigInt(Math.ceil(141 * rates.medium * 1.2))
+      return `${formatMinor(feeSats, 8)} ${native.symbol}`
+    } catch {
+      return null
+    }
+  }
+  const fromQuote = formatGasLimitFee(
+    input.transaction?.gas,
+    input.transaction?.gasPrice ?? input.transaction?.maxFeePerGas,
+    native.symbol,
+    native.decimals,
+  )
+  if (fromQuote) return fromQuote
+  try {
+    const fees = await quoteEvmFees(input.network)
+    const price = fees.medium.maxFeePerGas || fees.medium.gasPrice || 0n
+    let gas = 180_000n
+    const quotedGas = (() => {
+      try {
+        const value = parseWei(input.transaction?.gas)
+        return value > 0n ? value : 0n
+      } catch {
+        return 0n
+      }
+    })()
+    if (quotedGas > 0n) gas = quotedGas
+    const to = asString(input.transaction?.to)
+    const data = asString(input.transaction?.data)
+    if (to && quotedGas <= 0n) {
+      try {
+        const hex = ((data || '0x').startsWith('0x') ? data || '0x' : `0x${data}`) as Hex
+        gas = await estimateEvmGas({
+          network: input.network,
+          from: input.from,
+          to,
+          value: parseWei(input.transaction?.value),
+          data: hex,
+        })
+      } catch {
+        /* 用 AllowanceHolder 常见消耗兜底 */
+      }
+    }
+    if (price <= 0n) return `${gas.toString()} gas`
+    return `${formatMinor(gas * price, 18)} ${native.symbol}`
+  } catch {
+    return '180000 gas'
+  }
 }
 
 function requireNetwork(id: string): NetworkRecord {
@@ -256,6 +363,7 @@ async function resolveBridgeEnergy(
 
 export async function quoteBridge(input: BridgeQuoteInput): Promise<BridgeQuote> {
   const ctx = await resolveContext(input)
+  const native = nativeMeta(ctx.originNetwork, ctx.origin.family)
   const priced = await fetchBridgePrice(
     buildPriceQuery({
       originChainId: ctx.origin.chainId,
@@ -268,6 +376,7 @@ export async function quoteBridge(input: BridgeQuoteInput): Promise<BridgeQuote>
       slippageBps: ctx.slippageBps,
       sortQuotesBy: ctx.sortQuotesBy,
     }),
+    native,
   )
   const warnings = [...priced.warnings]
   let energy: BridgeQuote['energy'] = null
@@ -275,6 +384,13 @@ export async function quoteBridge(input: BridgeQuoteInput): Promise<BridgeQuote>
     energy = await resolveBridgeEnergy(ctx.account.id, ctx.originNetwork, ctx.sellToken.isToken, ctx.dest.chainId)
     if (energy?.needed && !energy.rentTrx) warnings.push('暂时无法租赁能量，将只能燃烧 TRX')
   }
+  const estimated = await estimateOriginNetworkFee({
+    family: ctx.origin.family,
+    network: ctx.originNetwork,
+    from: ctx.account.address,
+    transaction: priced.options[0]?.transaction ?? null,
+    energy,
+  })
   return {
     originChainId: ctx.origin.chainId,
     destinationChainId: ctx.dest.chainId,
@@ -290,10 +406,12 @@ export async function quoteBridge(input: BridgeQuoteInput): Promise<BridgeQuote>
       minBuyAmount: formatMinor(BigInt(item.minBuyAmount || item.buyAmount || '0'), ctx.buyToken.decimals),
       estimatedTimeSeconds: item.estimatedTimeSeconds,
       feeText: item.feeText,
+      networkFeeText: item.networkFeeText || estimated,
       allowanceNeeded: item.allowanceNeeded,
       allowanceTarget: item.allowanceTarget,
     })),
     energy,
+    networkFeeText: priced.options[0]?.networkFeeText || estimated,
     warnings,
     provider: priced.provider || (involvesBtc(ctx.origin.chainId, ctx.dest.chainId) ? 'swapkit' : null),
     liquidityAvailable: priced.liquidityAvailable,
@@ -329,7 +447,7 @@ export async function submitBridge(input: BridgeSubmitInput): Promise<BridgeSubm
     }
   }
 
-  const quote = await fetchBridgeQuote(query)
+  const quote = await fetchBridgeQuote(query, nativeMeta(ctx.originNetwork, ctx.origin.family))
   const needApprove =
     Boolean(quote.allowanceTarget) &&
     ctx.sellToken.isToken &&
@@ -359,7 +477,7 @@ export async function submitBridge(input: BridgeSubmitInput): Promise<BridgeSubm
     }
   }
 
-  const txid =
+  const sent =
     ctx.origin.family === 'evm'
       ? await sendEvmBridge(ctx.originNetwork, accountRow, ctx.account.address, quote.transaction)
       : ctx.origin.family === 'tvm'
@@ -368,7 +486,7 @@ export async function submitBridge(input: BridgeSubmitInput): Promise<BridgeSubm
 
   const submitted = await submitBridgeHash({
     quoteId: quote.quoteId,
-    txHash: originHashForBackend(ctx.origin.family, txid),
+    txHash: originHashForBackend(ctx.origin.family, sent.txid),
     originAddress: ctx.account.address,
   })
 
@@ -380,18 +498,19 @@ export async function submitBridge(input: BridgeSubmitInput): Promise<BridgeSubm
     tokenPk: ctx.sellToken.id,
     symbol: ctx.sellToken.symbol,
     amount: formatMinor(ctx.sellAmountMinor, ctx.sellToken.decimals),
-    fee: null,
-    txid,
+    fee: sent.feeText,
+    txid: sent.txid,
     raw: '',
   })
 
   return {
     quoteId: quote.quoteId,
-    txid,
+    txid: sent.txid,
     approveTxid,
-    explorerUrl: explorerUrlForNetwork(ctx.originNetwork, txid),
+    explorerUrl: explorerUrlForNetwork(ctx.originNetwork, sent.txid),
     destTxHash: submitted.destTxHash,
     status: submitted.status || 'SUBMITTED',
+    feeText: sent.feeText,
   }
 }
 
@@ -406,7 +525,86 @@ export async function listAccountBridges(accountId: string, networkPk: string): 
   const network = requireNetwork(networkPk)
   const { chainId } = requireBridgeChain(network)
   const account = getAccount(accountId)
-  return listBridgeOrders(account.address, chainId)
+  const rows = await listBridgeOrders(account.address, chainId)
+  let refreshing = 0
+  return Promise.all(
+    rows.map((row) => {
+      const status = row.status.trim().toUpperCase()
+      if (status === 'QUOTE' || isBridgeStatusTerminal(status)) return row
+      refreshing += 1
+      if (refreshing > 5) return confirmDestFilled(row)
+      return refreshBridgeHistoryRow(row)
+    }),
+  )
+}
+
+function networkByBridgeChain(chainId: number): NetworkRecord | null {
+  return listNetworks().find((item) => bridgeChainIdOf(item) === chainId) ?? null
+}
+
+function amountsClose(actual: bigint, expected: string): boolean {
+  if (!expected) return actual > 0n
+  try {
+    const want = BigInt(expected)
+    if (want <= 0n) return actual > 0n
+    const delta = actual > want ? actual - want : want - actual
+    return delta * 100n <= want * 2n
+  } catch {
+    return false
+  }
+}
+
+function sameTokenAddress(left: string, right: string): boolean {
+  return left.trim().toLowerCase() === right.trim().toLowerCase()
+}
+
+async function confirmDestFilled(row: BridgeHistoryItem): Promise<BridgeHistoryItem> {
+  if (!row.destinationAddress || row.destinationChainId !== 195) return row
+  const dest = networkByBridgeChain(195)
+  if (!dest) return row
+  const created = Date.parse(row.created) || 0
+  const native = !row.buyToken || row.buyToken === 'T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb'
+  try {
+    const drafts = native
+      ? parseTronGridInternal(await fetchTronAccountInternal(row.destinationAddress, dest.networkScope), row.destinationAddress)
+      : parseTronGridTrc20(await fetchTronAccountTrc20(row.destinationAddress, dest.networkScope), row.destinationAddress)
+    const hit = drafts.find((item) => {
+      if (item.direction !== 'receive' || !item.txid) return false
+      if (created && item.timestampMs + 60_000 < created) return false
+      if (!native && item.contractAddress && row.buyToken && !sameTokenAddress(item.contractAddress, row.buyToken)) {
+        return false
+      }
+      return amountsClose(item.amountMinor, row.buyAmount)
+    })
+    if (hit) return { ...row, status: 'FILLED', destTxHash: hit.txid }
+  } catch {
+    /* 目标链核对失败时保持目录状态 */
+  }
+  return row
+}
+
+async function refreshBridgeHistoryRow(row: BridgeHistoryItem): Promise<BridgeHistoryItem> {
+  const status = row.status.trim().toUpperCase()
+  if (status === 'QUOTE' || isBridgeStatusTerminal(status)) {
+    return { ...row, status: resolveBridgeHistoryStatus(row.status, row.destTxHash) }
+  }
+  let next = row
+  if (row.id) {
+    try {
+      const live = await fetchBridgeOrderStatus(row.id)
+      next = {
+        ...row,
+        status: live.status || row.status,
+        destTxHash: live.destTxHash || row.destTxHash,
+        txHash: live.txHash || row.txHash,
+      }
+    } catch {
+      /* 目录状态接口失败时再核对目标链 */
+    }
+  }
+  next = { ...next, status: resolveBridgeHistoryStatus(next.status, next.destTxHash) }
+  if (isBridgeStatusTerminal(next.status)) return next
+  return confirmDestFilled(next)
 }
 
 async function approveEvm(
@@ -422,11 +620,11 @@ async function approveEvm(
     functionName: 'approve',
     args: [toChecksumAddress(spender) as Hex, amount],
   })
-  const txid = await sendEvmCall(network, accountRow, from, token, 0n, data)
-  const receipt = await waitForEvmReceipt(network, txid, 60_000)
+  const sent = await sendEvmCall(network, accountRow, from, token, 0n, data)
+  const receipt = await waitForEvmReceipt(network, sent.txid, 60_000)
   const status = asString(asRecord(receipt)?.status)
   if (status && status !== '0x1' && status !== '1') throw invalidArg('代币授权失败，请重试')
-  return txid
+  return sent.txid
 }
 
 async function sendEvmBridge(
@@ -434,14 +632,20 @@ async function sendEvmBridge(
   accountRow: ReturnType<typeof requireAccountRow>,
   from: string,
   transaction: Record<string, unknown> | null,
-): Promise<string> {
+): Promise<{ txid: string; feeText: string | null }> {
   if (!transaction) throw invalidArg('报价缺少待签名交易')
   const to = asString(transaction.to)
   const data = asString(transaction.data)
   if (!to) throw invalidArg('报价交易缺少 to')
   const value = parseWei(transaction.value)
   const hex = ((data || '0x').startsWith('0x') ? data || '0x' : `0x${data}`) as Hex
-  return sendEvmCall(network, accountRow, from, to, value, hex, parseOptionalGas(transaction.gas))
+  const sent = await sendEvmCall(network, accountRow, from, to, value, hex, parseOptionalGas(transaction.gas))
+  const receipt = await waitForEvmReceipt(network, sent.txid, 60_000)
+  const symbol = nativeMeta(network, 'evm').symbol
+  return {
+    txid: sent.txid,
+    feeText: evmFeeFromReceipt(receipt, symbol) || sent.feeText,
+  }
 }
 
 async function sendEvmCall(
@@ -452,7 +656,7 @@ async function sendEvmCall(
   value: bigint,
   data: Hex,
   gasOverride?: bigint,
-): Promise<string> {
+): Promise<{ txid: string; feeText: string | null }> {
   const [nonce, fees] = await Promise.all([getEvmNonce(network, from), quoteEvmFees(network)])
   const gasLimit =
     gasOverride ??
@@ -475,7 +679,12 @@ async function sendEvmCall(
       fee: fees.medium,
     }),
   )
-  return broadcastEvmTx(network, signed.hex)
+  const symbol = nativeMeta(network, 'evm').symbol
+  const feeMinor = (fees.medium.maxFeePerGas || fees.medium.gasPrice || 0n) * gasLimit
+  return {
+    txid: await broadcastEvmTx(network, signed.hex),
+    feeText: feeMinor > 0n ? `${formatMinor(feeMinor, 18)} ${symbol}` : null,
+  }
 }
 
 function parseOptionalGas(value: unknown): bigint | undefined {
@@ -525,21 +734,24 @@ async function sendTronBridge(
   network: NetworkRecord,
   accountRow: ReturnType<typeof requireAccountRow>,
   transaction: Record<string, unknown> | null,
-): Promise<string> {
+): Promise<{ txid: string; feeText: string | null }> {
   if (!transaction) throw invalidArg('报价缺少波场待签名交易')
   const unsigned = unwrapTvmUnsigned(transaction)
   const signed = withAccountPrivateKey(accountRow, (privateKey) => signTronTx(unsigned, privateKey))
-  return broadcastTronTx(signed, network.networkScope)
+  const txid = await broadcastTronTx(signed, network.networkScope)
+  const info = await waitForTronTx(txid, network)
+  return { txid, feeText: tronFeeFromInfo(info) }
 }
 
-async function waitForTronTx(txid: string, network: NetworkRecord, timeoutMs = 45_000): Promise<void> {
+async function waitForTronTx(txid: string, network: NetworkRecord, timeoutMs = 45_000): Promise<unknown | null> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     const info = await fetchTronTxInfo(txid, network.networkScope)
     const record = asRecord(info)
-    if (record && (record.id || record.blockNumber || record.receipt)) return
+    if (record && (record.id || record.blockNumber || record.receipt)) return info
     await sleep(2_000)
   }
+  return null
 }
 
 async function sendBtcBridge(
@@ -547,7 +759,7 @@ async function sendBtcBridge(
   accountRow: ReturnType<typeof requireAccountRow>,
   transaction: Record<string, unknown> | null,
   sellAmountSats: bigint,
-): Promise<string> {
+): Promise<{ txid: string; feeText: string | null }> {
   if (!transaction) throw invalidArg('报价缺少比特币待签名交易')
   const inbound = asString(transaction.to || transaction.inboundAddress)
   const psbt = asString(transaction.psbt)
@@ -563,7 +775,7 @@ async function sendBtcBridge(
   return withAccountPrivateKeyAsync(accountRow, async (privateKey) => {
     if (psbt) {
       const hex = signBitcoinPsbt(psbt, privateKey)
-      return broadcastBitcoinTx(hex, 'mainnet')
+      return { txid: await broadcastBitcoinTx(hex, 'mainnet'), feeText: null }
     }
     if (!inbound) throw invalidArg('比特币跨链缺少 inbound 地址或 PSBT')
     if (!account.addressType) throw invalidArg('比特币账户缺少地址类型')
@@ -579,6 +791,9 @@ async function sendBtcBridge(
       feeRate: fees.medium,
       memo: memo || undefined,
     })
-    return broadcastBitcoinTx(built.hex, 'mainnet')
+    return {
+      txid: await broadcastBitcoinTx(built.hex, 'mainnet'),
+      feeText: `${formatMinor(built.feeSats, 8)} BTC`,
+    }
   })
 }

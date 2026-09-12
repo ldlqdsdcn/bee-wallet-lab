@@ -10,6 +10,7 @@ import {
   parseSlippageBps,
   parseWei,
 } from '../swap/codec'
+import { formatMinor } from '../util/amount'
 
 export const BRIDGE_API_PREFIX = '/api/swapCross'
 export const BRIDGE_CHAIN_IDS = [0, 1, 56, 42161, 195] as const
@@ -85,24 +86,111 @@ export function originHashForBackend(family: BridgeFamily, txid: string): string
   return raw.replace(/^0x/i, '').toLowerCase()
 }
 
-export function parseBridgeFeeText(fees: unknown): string {
-  if (Array.isArray(fees) && fees.length) {
-    const first = asRecord(fees[0])
-    const amount = asString(first?.amount ?? first?.total ?? first?.fee)
-    const asset = asString(first?.asset ?? first?.symbol ?? first?.type)
-    if (amount && asset) return `${amount} ${asset}`
-    if (amount) return amount
-  }
-  const record = asRecord(fees)
-  if (!record) return '桥费见报价'
-  const amount = asString(record.total ?? record.amount ?? record.fee)
-  const asset = asString(record.asset ?? record.symbol)
-  if (amount && asset) return `${amount} ${asset}`
-  if (amount) return amount
-  return '桥费见报价'
+function tokenSymbolOf(value: unknown, fallback = ''): string {
+  const text = asString(value)
+  if (text && !/^0x[0-9a-fA-F]+$/i.test(text)) return text
+  const record = asRecord(value)
+  return asString(record?.symbol ?? record?.ticker ?? record?.asset) || fallback
 }
 
-export function parseQuoteOption(row: unknown, index: number) {
+function tokenDecimalsOf(value: unknown, fallback: number): number {
+  const record = asRecord(value)
+  const n = asNumber(record?.decimals, fallback)
+  return Number.isInteger(n) && n >= 0 && n <= 36 ? n : fallback
+}
+
+function formatBridgeFeeAmount(amount: string, symbol: string, decimals: number | null): string {
+  if (!amount) return ''
+  if (/^\d+$/.test(amount) && decimals != null) {
+    try {
+      const formatted = formatMinor(BigInt(amount), decimals)
+      return symbol ? `${formatted} ${symbol}` : formatted
+    } catch {
+      /* 超大整数以外的写法按原文展示 */
+    }
+  }
+  return symbol ? `${amount} ${symbol}` : amount
+}
+
+function collectFeeParts(value: unknown, nativeSymbol = '', nativeDecimals = 18): string[] {
+  const parts: string[] = []
+  const pushRecord = (record: Record<string, unknown> | null) => {
+    if (!record) return
+    const amount = asString(record.amount ?? record.total ?? record.fee ?? record.cost)
+    if (!amount) return
+    const token = record.token ?? record.asset
+    const symbol = tokenSymbolOf(token, asString(record.symbol ?? record.asset) || nativeSymbol)
+    const decimals = tokenDecimalsOf(token, /^\d+$/.test(amount) ? nativeDecimals : nativeDecimals)
+    const text = formatBridgeFeeAmount(amount, symbol, /^\d+$/.test(amount) ? decimals : null)
+    if (text) parts.push(text)
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) pushRecord(asRecord(item))
+    return parts
+  }
+  const record = asRecord(value)
+  if (!record) return parts
+  if (record.integratorFee || record.zeroExFee || record.bridgeFee) {
+    pushRecord(asRecord(record.integratorFee))
+    pushRecord(asRecord(record.zeroExFee))
+    pushRecord(asRecord(record.bridgeFee))
+    return parts
+  }
+  pushRecord(record)
+  return parts
+}
+
+export function parseBridgeFeeText(fees: unknown): string {
+  return collectFeeParts(fees).join(' + ')
+}
+
+export function formatGasLimitFee(
+  gas: unknown,
+  gasPrice: unknown,
+  symbol: string,
+  decimals: number,
+): string | null {
+  try {
+    const units = parseWei(gas)
+    const price = parseWei(gasPrice)
+    if (units <= 0n || price <= 0n) return null
+    return `${formatMinor(units * price, decimals)} ${symbol}`
+  } catch {
+    return null
+  }
+}
+
+export function parseBridgeNetworkFeeText(
+  row: Record<string, unknown>,
+  nativeSymbol: string,
+  nativeDecimals: number,
+): string | null {
+  const fromGasCosts = collectFeeParts(row.gasCosts, nativeSymbol, nativeDecimals)
+  if (fromGasCosts.length) return fromGasCosts.join(' + ')
+  const fees = asRecord(row.fees)
+  const gasFee = collectFeeParts(fees?.gasFee, nativeSymbol, nativeDecimals)
+  if (gasFee.length) return gasFee.join(' + ')
+  const tx = asRecord(row.transaction)
+  const fromTx = formatGasLimitFee(
+    tx?.gas ?? row.gas,
+    tx?.gasPrice ?? tx?.maxFeePerGas ?? row.gasPrice,
+    nativeSymbol,
+    nativeDecimals,
+  )
+  if (fromTx) return fromTx
+  const total = asString(row.totalNetworkFee ?? row.networkFee)
+  if (total && /^\d+$/.test(total) && BigInt(total) > 10_000_000n) {
+    return formatBridgeFeeAmount(total, nativeSymbol, nativeDecimals)
+  }
+  if (total && !/^\d+$/.test(total)) return formatBridgeFeeAmount(total, nativeSymbol, null)
+  return null
+}
+
+export function parseQuoteOption(
+  row: unknown,
+  index: number,
+  native: { symbol: string; decimals: number } = { symbol: 'ETH', decimals: 18 },
+) {
   const record = asRecord(row)
   if (!record) throw new Error('跨链报价条目无效')
   const issues = asRecord(record.issues)
@@ -119,6 +207,7 @@ export function parseQuoteOption(row: unknown, index: number) {
     minBuyAmount: asString(record.minBuyAmount || record.buyAmount),
     estimatedTimeSeconds: parseEstimatedSeconds(record.estimatedTimeSeconds),
     feeText: parseBridgeFeeText(record.fees),
+    networkFeeText: parseBridgeNetworkFeeText(record, native.symbol, native.decimals),
     allowanceNeeded: Boolean(allowanceTarget) && Boolean(issues?.allowance || allowance?.spender),
     allowanceTarget: allowanceTarget || null,
     transaction: asRecord(record.transaction),
@@ -126,7 +215,10 @@ export function parseQuoteOption(row: unknown, index: number) {
   }
 }
 
-export function parsePriceResponse(data: unknown) {
+export function parsePriceResponse(
+  data: unknown,
+  native: { symbol: string; decimals: number } = { symbol: 'ETH', decimals: 18 },
+) {
   const record = asRecord(data)
   if (!record) throw new Error('跨链询价响应无效')
   const quotes = Array.isArray(record.quotes) ? record.quotes : []
@@ -143,17 +235,20 @@ export function parsePriceResponse(data: unknown) {
     buyToken: asString(record.buyToken),
     liquidityAvailable: record.liquidityAvailable !== false && quotes.length > 0,
     provider: asString(record.provider) || null,
-    options: quotes.map((item, index) => parseQuoteOption(item, index)),
+    options: quotes.map((item, index) => parseQuoteOption(item, index, native)),
     warnings,
   }
 }
 
-export function parseExecutableQuote(data: unknown) {
+export function parseExecutableQuote(
+  data: unknown,
+  native: { symbol: string; decimals: number } = { symbol: 'ETH', decimals: 18 },
+) {
   const record = asRecord(data)
   if (!record) throw new Error('跨链可执行报价无效')
   const quoteId = asString(record.quoteId ?? record.id)
   if (!quoteId) throw new Error('报价未返回 quoteId')
-  const option = parseQuoteOption(record, 0)
+  const option = parseQuoteOption(record, 0, native)
   if (!option.transaction) throw new Error('报价未返回待签名交易')
   return {
     quoteId,
@@ -186,6 +281,43 @@ export function parseBridgeStatus(data: unknown) {
   }
 }
 
+function createdAtOf(value: unknown): string {
+  if (value instanceof Date && Number.isFinite(value.getTime())) return value.toISOString()
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const ms = value < 1e12 ? value * 1000 : value
+    return new Date(ms).toISOString()
+  }
+  const text = asString(value).trim()
+  if (!text) return ''
+  if (/^\d+$/.test(text)) {
+    const n = Number(text)
+    const ms = n < 1e12 ? n * 1000 : n
+    return Number.isFinite(ms) ? new Date(ms).toISOString() : text
+  }
+  const ms = Date.parse(text.includes('T') ? text : text.replace(' ', 'T'))
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : text
+}
+
+export function isBridgeStatusTerminal(status: string): boolean {
+  const value = status.trim().toUpperCase()
+  return (
+    value === 'FILLED' ||
+    value === 'SUCCESS' ||
+    value === 'COMPLETED' ||
+    value === 'FA' ||
+    value === 'FAILED' ||
+    value === 'REFUNDED'
+  )
+}
+
+export function resolveBridgeHistoryStatus(status: string, destTxHash: string | null): string {
+  const value = status.trim().toUpperCase()
+  if (destTxHash && value !== 'QUOTE' && value !== 'FA' && value !== 'FAILED' && value !== 'REFUNDED') {
+    return 'FILLED'
+  }
+  return status
+}
+
 export function parseBridgeHistoryRow(row: unknown) {
   const record = asRecord(row) ?? {}
   const txHash = asString(record.txHash ?? record.tx_hash)
@@ -194,14 +326,16 @@ export function parseBridgeHistoryRow(row: unknown) {
     id: asString(record.id),
     originChainId: asNumber(record.originChainId ?? record.origin_chain_id, 0),
     destinationChainId: asNumber(record.destinationChainId ?? record.destination_chain_id, 0),
-    status: asString(record.status),
+    originAddress: asString(record.originAddress ?? record.origin_address),
+    destinationAddress: asString(record.destinationAddress ?? record.destination_address),
+    status: resolveBridgeHistoryStatus(asString(record.status), destTxHash || null),
     sellToken: asString(record.sellToken ?? record.sell_token),
     buyToken: asString(record.buyToken ?? record.buy_token),
     sellAmount: asString(record.sellAmount ?? record.sell_amount),
     buyAmount: asString(record.buyAmount ?? record.buy_amount),
     txHash: txHash || null,
     destTxHash: destTxHash || null,
-    created: asString(record.created ?? record.createdAt ?? record.created_at),
+    created: createdAtOf(record.created ?? record.createdAt ?? record.created_at),
   }
 }
 
