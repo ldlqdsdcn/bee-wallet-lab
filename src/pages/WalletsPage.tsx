@@ -15,6 +15,7 @@ import { useT } from '../i18n'
 import { useWalletStore } from '../store/walletStore'
 
 type Wizard = 'idle' | 'create' | 'confirm' | 'import' | 'importKey'
+type Pending = 'generate' | 'confirm' | 'import' | 'importKey' | null
 
 const WALLET_NAME_MAX_LENGTH = 200
 
@@ -36,6 +37,7 @@ export default function WalletsPage() {
   const [wizard, setWizard] = useState<Wizard>('idle')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [pending, setPending] = useState<Pending>(null)
 
   const [createForm, setCreateForm] = useState<CreateWalletInput>({ name: '', mnemonicLength: 12 })
   const [draftId, setDraftId] = useState('')
@@ -107,8 +109,9 @@ export default function WalletsPage() {
     setRevealError(null)
   }, [location.key, location.state, wallets])
 
-  const run = async (fn: () => Promise<void>) => {
+  const run = async (fn: () => Promise<void>, kind?: Pending) => {
     setBusy(true)
+    if (kind) setPending(kind)
     setError(null)
     try {
       await fn()
@@ -116,7 +119,24 @@ export default function WalletsPage() {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setBusy(false)
+      setPending(null)
     }
+  }
+
+  const openWizard = (next: Wizard) => {
+    setError(null)
+    setWizard(next)
+  }
+
+  const closeWizard = () => {
+    if (pending) return
+    setWizard('idle')
+    setError(null)
+    setWords([])
+    setDraftId('')
+    setAnswers({})
+    setImportMnemonic('')
+    setKeyForm((current) => ({ ...current, privateKey: '' }))
   }
 
   const selected = wallets.find((item) => item.id === selectedId) ?? null
@@ -126,115 +146,125 @@ export default function WalletsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-ink-200">{t('wallets.title')}</h1>
         <div className="flex gap-2">
-          <Button variant="ghost" onClick={() => setWizard('import')}>
+          <Button variant="ghost" onClick={() => openWizard('import')}>
             {t('wallets.importMnemonic')}
           </Button>
-          <Button variant="ghost" onClick={() => setWizard('importKey')}>
+          <Button variant="ghost" onClick={() => openWizard('importKey')}>
             {t('wallets.importKey')}
           </Button>
-          <Button onClick={() => setWizard('create')}>{t('wallets.create')}</Button>
+          <Button onClick={() => openWizard('create')}>{t('wallets.create')}</Button>
         </div>
       </div>
 
-      <Alert>{error}</Alert>
+      {wizard === 'idle' ? <Alert>{error}</Alert> : null}
 
       {wizard === 'create' || wizard === 'confirm' ? (
-        <Card title={wizard === 'create' ? t('wallets.create') : t('wallets.confirmMnemonic')}>
-          {wizard === 'create' ? (
-            <div className="space-y-3">
-              <Field
-                label={t('wallets.walletName')}
-                maxLength={WALLET_NAME_MAX_LENGTH}
-                value={createForm.name}
-                onChange={(e) =>
-                  setCreateForm({ ...createForm, name: e.target.value.slice(0, WALLET_NAME_MAX_LENGTH) })
-                }
-              />
-              <Select
-                label={t('wallets.mnemonicLen')}
-                value={createForm.mnemonicLength}
-                onChange={(e) =>
-                  setCreateForm({ ...createForm, mnemonicLength: Number(e.target.value) as 12 | 24 })
-                }
-              >
-                <option value={12}>{t('wallets.words', { count: 12 })}</option>
-                <option value={24}>{t('wallets.words', { count: 24 })}</option>
-              </Select>
-              <Field
-                label={t('wallets.passphrase')}
-                value={createForm.passphrase ?? ''}
-                hint={t('wallets.passphraseHint')}
-                onChange={(e) => setCreateForm({ ...createForm, passphrase: e.target.value })}
-              />
-              <div className="flex gap-2">
-                <Button
-                  disabled={busy || !createForm.name}
-                  onClick={() =>
-                    void run(async () => {
-                      const draft = await walletApi.createDraft(createForm)
-                      setDraftId(draft.draftId)
-                      setWords(draft.words)
-                      setChallenge(draft.challengeIndexes)
-                      setAnswers({})
-                      setWizard('confirm')
-                    })
+        <Modal
+          title={wizard === 'create' ? t('wallets.create') : t('wallets.confirmMnemonic')}
+          wide
+          onClose={closeWizard}
+        >
+          <div className="mt-4 space-y-3">
+            <Alert>{error}</Alert>
+            {wizard === 'create' ? (
+              <>
+                <Field
+                  label={t('wallets.walletName')}
+                  maxLength={WALLET_NAME_MAX_LENGTH}
+                  value={createForm.name}
+                  onChange={(e) =>
+                    setCreateForm({ ...createForm, name: e.target.value.slice(0, WALLET_NAME_MAX_LENGTH) })
+                  }
+                />
+                <Select
+                  label={t('wallets.mnemonicLen')}
+                  value={createForm.mnemonicLength}
+                  onChange={(e) =>
+                    setCreateForm({ ...createForm, mnemonicLength: Number(e.target.value) as 12 | 24 })
                   }
                 >
-                  {t('wallets.generate')}
-                </Button>
-                <Button variant="ghost" onClick={() => setWizard('idle')}>
-                  {t('common.cancel')}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-xs text-ink-400">{t('wallets.copyHint')}</p>
-              <ol className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                {words.map((word, index) => (
-                  <li key={index} className="sensitive rounded-lg bg-ink-900 px-2 py-1 text-xs text-ink-200">
-                    <span className="mr-1 text-ink-600">{index + 1}.</span>
-                    {word}
-                  </li>
-                ))}
-              </ol>
-              <div className="grid grid-cols-3 gap-3">
-                {challenge.map((index) => (
-                  <Field
-                    key={index}
-                    label={t('wallets.wordN', { index })}
-                    value={answers[String(index)] ?? ''}
-                    onChange={(e) => setAnswers({ ...answers, [String(index)]: e.target.value })}
-                  />
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      const wallet = await walletApi.confirmDraft(draftId, answers)
-                      setWizard('idle')
-                      setWords([])
-                      await selectWallet(wallet.id)
-                      await load(wallet.id)
-                    })
-                  }
-                >
-                  {t('wallets.confirmSave')}
-                </Button>
-                <Button variant="ghost" onClick={() => setWizard('idle')}>
-                  {t('wallets.discard')}
-                </Button>
-              </div>
-            </div>
-          )}
-        </Card>
+                  <option value={12}>{t('wallets.words', { count: 12 })}</option>
+                  <option value={24}>{t('wallets.words', { count: 24 })}</option>
+                </Select>
+                <Field
+                  label={t('wallets.passphrase')}
+                  value={createForm.passphrase ?? ''}
+                  hint={t('wallets.passphraseHint')}
+                  onChange={(e) => setCreateForm({ ...createForm, passphrase: e.target.value })}
+                />
+                <div className="flex justify-end gap-2">
+                  <Button variant="ghost" disabled={Boolean(pending)} onClick={closeWizard}>
+                    {t('common.cancel')}
+                  </Button>
+                  <Button
+                    loading={pending === 'generate'}
+                    disabled={busy || !createForm.name}
+                    onClick={() =>
+                      void run(async () => {
+                        const draft = await walletApi.createDraft(createForm)
+                        setDraftId(draft.draftId)
+                        setWords(draft.words)
+                        setChallenge(draft.challengeIndexes)
+                        setAnswers({})
+                        setWizard('confirm')
+                      }, 'generate')
+                    }
+                  >
+                    {pending === 'generate' ? t('wallets.generating') : t('wallets.generate')}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-ink-400">{t('wallets.copyHint')}</p>
+                <ol className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {words.map((word, index) => (
+                    <li key={index} className="sensitive rounded-lg bg-ink-800 px-2 py-1 text-xs text-ink-200">
+                      <span className="mr-1 text-ink-600">{index + 1}.</span>
+                      {word}
+                    </li>
+                  ))}
+                </ol>
+                <div className="grid grid-cols-3 gap-3">
+                  {challenge.map((index) => (
+                    <Field
+                      key={index}
+                      label={t('wallets.wordN', { index })}
+                      value={answers[String(index)] ?? ''}
+                      onChange={(e) => setAnswers({ ...answers, [String(index)]: e.target.value })}
+                    />
+                  ))}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="ghost" disabled={Boolean(pending)} onClick={closeWizard}>
+                    {t('wallets.discard')}
+                  </Button>
+                  <Button
+                    loading={pending === 'confirm'}
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        const wallet = await walletApi.confirmDraft(draftId, answers)
+                        setWizard('idle')
+                        setWords([])
+                        await selectWallet(wallet.id)
+                        await load(wallet.id)
+                      }, 'confirm')
+                    }
+                  >
+                    {pending === 'confirm' ? t('wallets.savingWallet') : t('wallets.confirmSave')}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </Modal>
       ) : null}
 
       {wizard === 'import' ? (
-        <Card title={t('wallets.importMnemonic')}>
-          <div className="space-y-3">
+        <Modal title={t('wallets.importMnemonic')} wide onClose={closeWizard}>
+          <div className="mt-4 space-y-3">
+            <Alert>{error}</Alert>
             <Field
               label={t('wallets.walletName')}
               maxLength={WALLET_NAME_MAX_LENGTH}
@@ -253,8 +283,12 @@ export default function WalletsPage() {
               value={importPassphrase}
               onChange={(e) => setImportPassphrase(e.target.value)}
             />
-            <div className="flex gap-2">
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" disabled={Boolean(pending)} onClick={closeWizard}>
+                {t('common.cancel')}
+              </Button>
               <Button
+                loading={pending === 'import'}
                 disabled={busy || !importName || !importMnemonic}
                 onClick={() =>
                   void run(async () => {
@@ -267,87 +301,92 @@ export default function WalletsPage() {
                     setImportMnemonic('')
                     await selectWallet(wallet.id)
                     await load(wallet.id)
-                  })
+                  }, 'import')
                 }
               >
-                {t('wallets.import')}
-              </Button>
-              <Button variant="ghost" onClick={() => setWizard('idle')}>
-                {t('common.cancel')}
+                {pending === 'import' ? t('wallets.importing') : t('wallets.import')}
               </Button>
             </div>
           </div>
-        </Card>
+        </Modal>
       ) : null}
 
       {wizard === 'importKey' ? (
-        <Card title={t('wallets.importKey')}>
-          <div className="grid grid-cols-2 gap-3">
-            <Select
-              label={t('wallets.chain')}
-              value={keyForm.walletType}
-              onChange={(e) => setKeyForm({ ...keyForm, walletType: e.target.value as WalletType })}
-            >
-              <option value="web3">EVM</option>
-              <option value="bitcoin">Bitcoin</option>
-              <option value="tron">TRON</option>
-              <option value="solana">Solana</option>
-            </Select>
-            <Select
-              label={t('common.network')}
-              value={keyForm.networkScope}
-              onChange={(e) =>
-                setKeyForm({ ...keyForm, networkScope: e.target.value as 'mainnet' | 'testnet' })
-              }
-            >
-              <option value="mainnet">{t('common.mainnet')}</option>
-              <option value="testnet">{t('common.testnet')}</option>
-            </Select>
-            {keyForm.walletType === 'bitcoin' ? (
+        <Modal title={t('wallets.importKey')} wide onClose={closeWizard}>
+          <div className="mt-4 space-y-3">
+            <Alert>{error}</Alert>
+            <div className="grid grid-cols-2 gap-3">
               <Select
-                label={t('wallets.addressType')}
-                value={keyForm.addressType ?? 'p2wpkh'}
+                label={t('wallets.chain')}
+                value={keyForm.walletType}
+                onChange={(e) => setKeyForm({ ...keyForm, walletType: e.target.value as WalletType })}
+              >
+                <option value="web3">EVM</option>
+                <option value="bitcoin">Bitcoin</option>
+                <option value="tron">TRON</option>
+                <option value="solana">Solana</option>
+              </Select>
+              <Select
+                label={t('common.network')}
+                value={keyForm.networkScope}
                 onChange={(e) =>
-                  setKeyForm({ ...keyForm, addressType: e.target.value as BitcoinAddressType })
+                  setKeyForm({ ...keyForm, networkScope: e.target.value as 'mainnet' | 'testnet' })
                 }
               >
-                {ADDRESS_TYPES.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
+                <option value="mainnet">{t('common.mainnet')}</option>
+                <option value="testnet">{t('common.testnet')}</option>
               </Select>
-            ) : null}
-            <Field label={t('wallets.note')} value={keyForm.label ?? ''} onChange={(e) => setKeyForm({ ...keyForm, label: e.target.value })} />
-            <div className="col-span-2">
-              <TextArea
-                label={t('wallets.privateKey')}
-                className="sensitive"
-                value={keyForm.privateKey}
-                hint={t('wallets.keyHint')}
-                onChange={(e) => setKeyForm({ ...keyForm, privateKey: e.target.value })}
+              {keyForm.walletType === 'bitcoin' ? (
+                <Select
+                  label={t('wallets.addressType')}
+                  value={keyForm.addressType ?? 'p2wpkh'}
+                  onChange={(e) =>
+                    setKeyForm({ ...keyForm, addressType: e.target.value as BitcoinAddressType })
+                  }
+                >
+                  {ADDRESS_TYPES.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </Select>
+              ) : null}
+              <Field
+                label={t('wallets.note')}
+                value={keyForm.label ?? ''}
+                onChange={(e) => setKeyForm({ ...keyForm, label: e.target.value })}
               />
+              <div className="col-span-2">
+                <TextArea
+                  label={t('wallets.privateKey')}
+                  className="sensitive"
+                  value={keyForm.privateKey}
+                  hint={t('wallets.keyHint')}
+                  onChange={(e) => setKeyForm({ ...keyForm, privateKey: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" disabled={Boolean(pending)} onClick={closeWizard}>
+                {t('common.cancel')}
+              </Button>
+              <Button
+                loading={pending === 'importKey'}
+                disabled={busy || !keyForm.privateKey}
+                onClick={() =>
+                  void run(async () => {
+                    await accountApi.importPrivateKey(keyForm)
+                    setWizard('idle')
+                    setKeyForm({ ...keyForm, privateKey: '' })
+                    await load(selectedId ?? undefined)
+                  }, 'importKey')
+                }
+              >
+                {pending === 'importKey' ? t('wallets.importingAccount') : t('wallets.importAccount')}
+              </Button>
             </div>
           </div>
-          <div className="mt-3 flex gap-2">
-            <Button
-              disabled={busy || !keyForm.privateKey}
-              onClick={() =>
-                void run(async () => {
-                  await accountApi.importPrivateKey(keyForm)
-                  setWizard('idle')
-                  setKeyForm({ ...keyForm, privateKey: '' })
-                  await load(selectedId ?? undefined)
-                })
-              }
-            >
-              {t('wallets.importAccount')}
-            </Button>
-            <Button variant="ghost" onClick={() => setWizard('idle')}>
-              {t('common.cancel')}
-            </Button>
-          </div>
-        </Card>
+        </Modal>
       ) : null}
 
       <div className="grid gap-5 md:grid-cols-[240px_1fr]">
