@@ -48,7 +48,14 @@ import { registerDevToolsIpc } from './devTools'
 import { registerSwapIpc } from './swap'
 import { registerBridgeIpc } from './bridge'
 import { registerDappIpc } from './dapp'
+import { registerWalletConnectIpc } from './walletconnect'
+import { registerDappProviderIpc } from './dappProvider'
 import { clearDappCatalogCache, loadDappCatalog } from '../dapp/service'
+import {
+  startWalletConnectClipboardWatch,
+  stopWalletConnectClipboardWatch,
+} from '../walletconnect/browser'
+import { notifyWalletConnectNetwork, rejectWalletConnectPending, startWalletConnect } from '../walletconnect/service'
 import { refreshAppMenu } from '../appMenu'
 import { startTransactionWatch, stopTransactionWatch } from '../history/watch'
 import { recoverInterruptedHdAirdrops, stopAllHdAirdrops } from '../hdAirdrop/service'
@@ -104,6 +111,9 @@ function registerSettingsIpc(): void {
     }
     if (next.language !== before.language) {
       refreshAppMenu()
+    }
+    if (next.defaultNetworkPk !== before.defaultNetworkPk) {
+      void notifyWalletConnectNetwork().catch(() => undefined)
     }
     return next
   })
@@ -207,6 +217,8 @@ export function registerAllIpc(): void {
   registerSwapIpc()
   registerBridgeIpc()
   registerDappIpc()
+  registerWalletConnectIpc()
+  registerDappProviderIpc()
   registerPlaceholders()
   initWalletAuth()
   recoverInterruptedHdAirdrops()
@@ -225,10 +237,16 @@ export function registerAllIpc(): void {
       void loadDappCatalog()
         .then(() => refreshAppMenu())
         .catch(() => undefined)
+      void startWalletConnect().catch((err) => {
+        console.warn('[walletconnect] 启动失败', err instanceof Error ? err.message : err)
+      })
+      startWalletConnectClipboardWatch()
       startTransactionWatch()
     }
     if (event === 'locked') {
       clearDappCatalogCache()
+      rejectWalletConnectPending()
+      stopWalletConnectClipboardWatch()
       stopAllHdAirdrops()
       stopTransactionWatch()
     }
@@ -236,5 +254,11 @@ export function registerAllIpc(): void {
     broadcast(IPC_EVENT.backendStatusChanged)
   })
 
-  if (vault.getStatus().unlocked) startTransactionWatch()
+  if (vault.getStatus().unlocked) {
+    startTransactionWatch()
+    startWalletConnectClipboardWatch()
+    void startWalletConnect().catch((err) => {
+      console.warn('[walletconnect] 启动失败', err instanceof Error ? err.message : err)
+    })
+  }
 }

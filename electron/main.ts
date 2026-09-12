@@ -1,10 +1,15 @@
+import { installWalletConnectWebSocket } from './main/walletconnect/installWs'
 import { app, BrowserWindow, session, shell } from 'electron'
+import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { bootstrap, shutdown } from './main/bootstrap'
 import { installAppMenu } from './main/appMenu'
 import { isQuitConfirmed, requestQuit } from './main/quit'
 import { ensureLinuxDevDesktopEntry, loadAppIcon, resolveAppIconPath } from './main/icon'
+import { attachWalletConnectCapture } from './main/walletconnect/browser'
+
+installWalletConnectWebSocket()
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -41,20 +46,29 @@ function isHttpsUrl(url: string): boolean {
   }
 }
 
+const CLIPBOARD_PERMISSIONS = new Set(['clipboard-sanitized-write', 'clipboard-read'])
+
+function dappPreloadPath(): string {
+  const candidates = [
+    path.join(__dirname, 'dapp-preload.mjs'),
+    path.join(__dirname, 'dapp-preload.js'),
+    path.join(__dirname, 'preload', 'dapp-preload.mjs'),
+  ]
+  const found = candidates.find((item) => existsSync(item))
+  if (!found) console.warn('[dapp] 缺少 guest preload', candidates[0])
+  return found ?? candidates[0]
+}
+
 /** 浏览器标签页的 guest 进程：只允许 https，不继承钱包 preload。 */
 function hardenWebviewGuests(): void {
+  const explorer = session.fromPartition('persist:explorer')
+  explorer.setPermissionCheckHandler((_contents, permission) => CLIPBOARD_PERMISSIONS.has(permission))
+  explorer.setPermissionRequestHandler((_contents, permission, callback) => {
+    callback(CLIPBOARD_PERMISSIONS.has(permission))
+  })
   app.on('web-contents-created', (_event, contents) => {
     if (contents.getType() !== 'webview') return
-    contents.setWindowOpenHandler(({ url }) => {
-      if (isHttpsUrl(url)) void contents.loadURL(url)
-      return { action: 'deny' }
-    })
-    contents.on('will-navigate', (event, url) => {
-      if (!isHttpsUrl(url)) event.preventDefault()
-    })
-    contents.session.setPermissionRequestHandler((_webContents, _permission, callback) => {
-      callback(false)
-    })
+    attachWalletConnectCapture(contents)
   })
 }
 
@@ -99,6 +113,18 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isHttpsUrl(url)) void shell.openExternal(url)
     return { action: 'deny' }
+  })
+
+  win.webContents.on('will-attach-webview', (event, prefs, params) => {
+    delete (prefs as { preloadURL?: string }).preloadURL
+    const preload = dappPreloadPath()
+    prefs.preload = preload
+    prefs.nodeIntegration = false
+    prefs.contextIsolation = true
+    prefs.sandbox = true
+    prefs.javascript = true
+    console.log('[dapp] guest preload', preload, params.src)
+    if (!isHttpsUrl(params.src) && !params.src.startsWith('about:')) event.preventDefault()
   })
 
   // 禁止导航到非本地页面，防止 XSS 后跳转钓鱼页
@@ -168,8 +194,8 @@ app.on('before-quit', () => {
   shutdown()
 })
 
-app.whenReady().then(() => {
-  bootstrap()
+app.whenReady().then(async () => {
+  await bootstrap()
   applyContentSecurityPolicy()
   hardenWebviewGuests()
   ensureLinuxDevDesktopEntry()

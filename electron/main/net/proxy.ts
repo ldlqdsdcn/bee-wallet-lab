@@ -92,6 +92,24 @@ function ensureLoginHook(electron: typeof import('electron')): void {
   })
 }
 
+function applyNodeProxyEnv(parsed: ParsedProxy | null): void {
+  const keys = ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']
+  for (const key of keys) delete process.env[key]
+  if (!parsed) return
+  const href = serializeProxy(parsed)
+  if (parsed.protocol.startsWith('socks')) {
+    process.env.ALL_PROXY = href
+    process.env.all_proxy = href
+    return
+  }
+  process.env.HTTP_PROXY = href
+  process.env.HTTPS_PROXY = href
+  process.env.ALL_PROXY = href
+  process.env.http_proxy = href
+  process.env.https_proxy = href
+  process.env.all_proxy = href
+}
+
 export async function applyAppProxy(proxyUrl: string): Promise<void> {
   const electron = await loadElectron()
   if (!electron?.session) return
@@ -99,6 +117,7 @@ export async function applyAppProxy(proxyUrl: string): Promise<void> {
   proxyAuth = parsed?.username ? { username: parsed.username, password: parsed.password } : null
   ensureLoginHook(electron)
   const ses = electron.session.defaultSession
+  applyNodeProxyEnv(parsed)
   if (!parsed) {
     await ses.setProxy({ mode: 'direct', proxyBypassRules: BYPASS })
   } else {

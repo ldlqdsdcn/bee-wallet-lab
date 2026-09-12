@@ -18,6 +18,13 @@ import {
 import { invalidArg, notFound } from '../ipc/registry'
 import { applyActiveProxy, displayProxyUrl, normalizeProxyUrl, probeProxy } from './proxy'
 import { resetPriceBackoff } from '../price'
+import { reconnectWalletConnectRelay } from '../walletconnect/service'
+
+async function applyProxyAndRelay(): Promise<void> {
+  await applyActiveProxy()
+  resetPriceBackoff()
+  void reconnectWalletConnectRelay()
+}
 
 function labelOfUrl(url: string): string {
   try {
@@ -61,8 +68,7 @@ export async function setProxyEnabled(enabled: boolean): Promise<ProxyListState>
     if (first) setProxySelected(first.id)
   }
   saveSettings({ proxyEnabled: enabled })
-  await applyActiveProxy()
-  resetPriceBackoff()
+  await applyProxyAndRelay()
   return getProxyState()
 }
 
@@ -83,8 +89,7 @@ export async function addProxy(input: ProxyCreateInput): Promise<ProxyListState>
     isSelected: select,
   })
   if (select && loadSettings().proxyEnabled) {
-    await applyActiveProxy()
-    resetPriceBackoff()
+    await applyProxyAndRelay()
   }
   return getProxyState()
 }
@@ -105,8 +110,7 @@ export async function updateProxy(input: ProxyUpdateInput): Promise<ProxyListSta
   const urlChanged = url !== current.url
   updateProxyRow(current.id, { url, label, clearPing: urlChanged })
   if (urlChanged && current.isSelected && loadSettings().proxyEnabled) {
-    await applyActiveProxy()
-    resetPriceBackoff()
+    await applyProxyAndRelay()
   }
   return getProxyState()
 }
@@ -120,16 +124,14 @@ export async function removeProxy(id: string): Promise<ProxyListState> {
     const next = listProxies()[0]
     if (next) setProxySelected(next.id)
   }
-  await applyActiveProxy()
-  resetPriceBackoff()
+  await applyProxyAndRelay()
   return getProxyState()
 }
 
 export async function selectProxy(id: string): Promise<ProxyListState> {
   if (!getProxy(id)) throw notFound('代理不存在')
   setProxySelected(id)
-  await applyActiveProxy()
-  resetPriceBackoff()
+  await applyProxyAndRelay()
   return getProxyState()
 }
 

@@ -1,11 +1,46 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
+import { mkdirSync } from 'node:fs'
 import path from 'node:path'
-import electron from 'vite-plugin-electron/simple'
+import { build as esbuild } from 'esbuild'
+import electronSimple from 'vite-plugin-electron/simple'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 const sharedAlias = {
   '@shared': path.join(__dirname, 'shared'),
+}
+
+/** 不走 vite-plugin-electron：第三套 watch 会在主进程打完前就 reload，把 esbuild 打成 EPIPE。 */
+function dappPreloadPlugin(): Plugin {
+  const entry = path.join(__dirname, 'electron/dapp-preload.ts')
+  const outfile = path.join(__dirname, 'dist-electron/dapp-preload.mjs')
+
+  const write = async () => {
+    mkdirSync(path.dirname(outfile), { recursive: true })
+    await esbuild({
+      entryPoints: [entry],
+      outfile,
+      bundle: true,
+      platform: 'node',
+      format: 'cjs',
+      external: ['electron'],
+      logLevel: 'silent',
+    })
+  }
+
+  return {
+    name: 'dapp-preload',
+    async buildStart() {
+      this.addWatchFile(entry)
+      await write()
+    },
+    configureServer(server) {
+      server.watcher.add(entry)
+      server.watcher.on('change', (file) => {
+        if (path.resolve(file) === entry) void write()
+      })
+    },
+  }
 }
 
 // https://vitejs.dev/config/
@@ -16,16 +51,21 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    electron({
+    dappPreloadPlugin(),
+    electronSimple({
       main: {
         // Shortcut of `build.lib.entry`.
         entry: 'electron/main.ts',
         vite: {
+          envPrefix: ['VITE_', 'WALLET_'],
           resolve: { alias: sharedAlias },
           build: {
             rollupOptions: {
-              // better-sqlite3 是原生模块，必须保持外部依赖，运行时用 require 加载
-              external: ['better-sqlite3'],
+              // 原生 / 可选原生模块不能打进 bundle：运行时从 node_modules 加载
+              external: ['better-sqlite3', 'ws', 'bufferutil', 'utf-8-validate'],
+              treeshake: {
+                moduleSideEffects: true,
+              },
             },
           },
         },
