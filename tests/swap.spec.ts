@@ -23,6 +23,8 @@ describe('兑换 IPC', () => {
     expect(IPC_CHANNELS).toContain(IPC.swapQuote)
     expect(IPC_CHANNELS).toContain(IPC.swapSubmit)
     expect(IPC_CHANNELS).toContain(IPC.swapList)
+    expect(IPC.portfolioAccount).toBe('portfolio:account')
+    expect(IPC_CHANNELS).toContain(IPC.portfolioAccount)
   })
 })
 

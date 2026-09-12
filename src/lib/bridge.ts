@@ -36,6 +36,7 @@ import type {
   NetworkRecord,
   NetworkUpsertInput,
   PortfolioSnapshot,
+  AssetEntry,
   ProxyCreateInput,
   ProxyListState,
   ProxyTestResult,
@@ -210,6 +211,8 @@ export const catalogApi = {
 export const portfolioApi = {
   snapshot: (networkPk?: string) => call<PortfolioSnapshot>(IPC.portfolioSnapshot, { networkPk }),
   refresh: (networkPk?: string) => call<PortfolioSnapshot>(IPC.portfolioRefresh, { networkPk }),
+  account: (accountId: string, networkPk: string) =>
+    call<AssetEntry[]>(IPC.portfolioAccount, { accountId, networkPk }),
 }
 
 export const tokenApi = {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { AccountRecord, SwapHistoryItem, SwapQuote, TokenRecord, TronEnergyFeeMode } from '@shared/types'
 import { accountApi, catalogApi, swapApi } from '../lib/bridge'
+import { useAccountBalances } from '../lib/accountBalances'
 import { Alert, Button, Card, Field, Select } from '../components/ui'
 import { TokenSelect } from '../components/TokenSelect'
 import { explorerTabTitle, txExplorerUrl } from '../lib/explorer'
@@ -44,7 +45,11 @@ export default function SwapPage() {
   const [history, setHistory] = useState<SwapHistoryItem[]>([])
   const [result, setResult] = useState<{ txid: string; explorerUrl: string | null } | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [pending, setPending] = useState<'quote' | 'submit' | null>(null)
+  const busy = pending != null
+  const balances = useAccountBalances(accountId, networkPk)
+  const sellToken = tokens.find((item) => item.id === sellTokenPk)
+  const sellBalance = balances.of(sellTokenPk)
 
   const supported = networkSupportsSwap(network?.walletType, network?.networkScope, network?.chainId)
   const catalogReady = Boolean(baseUrl.trim())
@@ -118,15 +123,15 @@ export default function SwapPage() {
     }
   }, [supported, catalogReady, accountId, networkPk, result?.txid])
 
-  const run = async (fn: () => Promise<void>) => {
-    setBusy(true)
+  const run = async (kind: 'quote' | 'submit', fn: () => Promise<void>) => {
+    setPending(kind)
     setError(null)
     try {
       await fn()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
-      setBusy(false)
+      setPending(null)
     }
   }
 
@@ -174,14 +179,46 @@ export default function SwapPage() {
                 </option>
               ))}
             </Select>
-            <TokenSelect label={t('swap.sell')} tokens={tokens} value={sellTokenPk} onChange={setSellTokenPk} />
+            <TokenSelect
+              label={t('swap.sell')}
+              tokens={tokens}
+              value={sellTokenPk}
+              onChange={setSellTokenPk}
+              balances={balances.byToken}
+            />
             <div className="flex justify-center">
               <Button variant="ghost" className="px-3 py-1 text-xs" onClick={flip}>
                 {t('swap.flip')}
               </Button>
             </div>
-            <TokenSelect label={t('swap.buy')} tokens={tokens} value={buyTokenPk} onChange={setBuyTokenPk} />
-            <Field label={t('swap.amount')} value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <TokenSelect
+              label={t('swap.buy')}
+              tokens={tokens}
+              value={buyTokenPk}
+              onChange={setBuyTokenPk}
+              balances={balances.byToken}
+            />
+            <div>
+              <Field label={t('swap.amount')} value={amount} onChange={(e) => setAmount(e.target.value)} />
+              <div className="mt-1 flex items-center justify-between text-[11px] text-ink-500">
+                <span>
+                  {balances.loading && sellBalance == null
+                    ? t('common.loading')
+                    : t('common.balance', {
+                        amount: sellBalance != null ? formatAmount(sellBalance) : '—',
+                        symbol: sellToken?.symbol ?? '',
+                      })}
+                </span>
+                <button
+                  type="button"
+                  className="text-honey-400 disabled:text-ink-600"
+                  disabled={!sellBalance || Number(sellBalance) <= 0}
+                  onClick={() => setAmount(sellBalance ?? '')}
+                >
+                  {t('common.max')}
+                </button>
+              </div>
+            </div>
             <Select
               label={t('swap.slippage')}
               value={String(slippageBps)}
@@ -270,9 +307,10 @@ export default function SwapPage() {
             <div className="flex gap-2">
               <Button
                 variant="ghost"
+                loading={pending === 'quote'}
                 disabled={busy || !accountId || !sellTokenPk || !buyTokenPk || !amount}
                 onClick={() =>
-                  void run(async () => {
+                  void run('quote', async () => {
                     setResult(null)
                     const next = await swapApi.quote({
                       accountId,
@@ -287,12 +325,13 @@ export default function SwapPage() {
                   })
                 }
               >
-                {t('swap.quote')}
+                {pending === 'quote' ? t('swap.quoting') : t('swap.quote')}
               </Button>
               <Button
+                loading={pending === 'submit'}
                 disabled={busy || !quote}
                 onClick={() =>
-                  void run(async () => {
+                  void run('submit', async () => {
                     if (!quote) return
                     const receipt = await swapApi.submit({
                       accountId,
@@ -305,10 +344,15 @@ export default function SwapPage() {
                     })
                     setResult({ txid: receipt.txid, explorerUrl: receipt.explorerUrl })
                     setQuote(null)
+                    balances.reload()
                   })
                 }
               >
-                {busy && quote?.energy?.needed && energyFeeMode === 'rent' ? t('swap.waitingEnergy') : t('swap.submit')}
+                {pending === 'submit'
+                  ? quote?.energy?.needed && energyFeeMode === 'rent'
+                    ? t('swap.waitingEnergy')
+                    : t('swap.submitting')
+                  : t('swap.submit')}
               </Button>
             </div>
           </div>

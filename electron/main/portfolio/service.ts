@@ -12,6 +12,7 @@ import { loadBalances, upsertBalance } from '../db/repos/balanceRepo'
 import { getNetwork, listTokens } from '../db/repos/catalogRepo'
 import { loadSettings } from '../db/repos/metaRepo'
 import { findMatchingAccount } from '../db/repos/accountRepo'
+import { getAccount } from '../wallets/service'
 import { BITCOIN_ADDRESS_TYPES } from '../derive/paths'
 import { invalidArg, notFound } from '../ipc/registry'
 import { formatMinor } from '../util/amount'
@@ -291,4 +292,46 @@ export async function getPortfolioSnapshot(networkPk?: string): Promise<Portfoli
     offline: entries.some((item) => item.stale),
     priceError,
   }
+}
+
+/** 指定账户在某条网上的代币余额，供兑换 / 跨链桥展示。 */
+export async function getAccountPortfolio(accountId: string, networkPk: string): Promise<AssetEntry[]> {
+  const settings = loadSettings()
+  const network = getNetwork(networkPk)
+  if (!network) throw notFound('网络不存在，请先同步目录')
+  const account = getAccount(accountId)
+  if (account.walletType !== network.walletType) throw invalidArg('账户与所选网络不匹配')
+  const tokens = listTokens(networkPk)
+  if (network.walletType === 'bitcoin') {
+    const base = nativeToken(tokens)
+    if (!base) return []
+    return [
+      await loadEntry({
+        network,
+        token: base,
+        key: `${base.id}:${account.id}`,
+        addressType: account.addressType,
+        address: account.address,
+        accountId: account.id,
+        displayName: base.symbol,
+        currencyCode: settings.currencyCode,
+      }),
+    ]
+  }
+  const entries: AssetEntry[] = []
+  for (const token of tokens) {
+    entries.push(
+      await loadEntry({
+        network,
+        token,
+        key: `${token.id}:${account.id}`,
+        addressType: null,
+        address: account.address,
+        accountId: account.id,
+        displayName: token.name ?? token.symbol,
+        currencyCode: settings.currencyCode,
+      }),
+    )
+  }
+  return entries
 }
