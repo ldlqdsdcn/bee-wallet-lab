@@ -34,6 +34,7 @@ import { registerWalletIpc } from './wallets'
 import { registerCatalogIpc } from './catalog'
 import { registerPortfolioIpc } from './portfolio'
 import { registerTransferIpc } from './transfer'
+import { registerEnergyIpc } from './energy'
 import { registerSignIpc } from './sign'
 import { registerRpcIpc } from './rpc'
 import { registerProxyIpc } from './proxy'
@@ -188,6 +189,7 @@ export function registerAllIpc(): void {
   registerWalletIpc()
   registerCatalogIpc()
   registerPortfolioIpc()
+  registerEnergyIpc()
   registerTransferIpc()
   registerSignIpc()
   registerAddressBookIpc()

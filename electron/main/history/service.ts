@@ -11,13 +11,19 @@ import { invalidArg, notFound } from '../ipc/registry'
 import { defaultNativeDecimals } from '../catalog/map'
 import { explorerUrlForBitcoin, fetchBitcoinAddressTxs } from '../chain/bitcoin'
 import { explorerUrlForEvm } from '../chain/evm'
-import { explorerUrlForTron, fetchTronAccountTransactions, fetchTronAccountTrc20 } from '../chain/tron'
+import {
+  explorerUrlForTron,
+  fetchTronAccountInternal,
+  fetchTronAccountTransactions,
+  fetchTronAccountTrc20,
+} from '../chain/tron'
 import { explorerUrlForSolana, fetchSolanaSignatures, fetchSolanaTransaction } from '../chain/solana'
 import { fetchEvmHistory } from './evm'
 import {
   parseEsploraAddressTxs,
   parseSolanaSignatures,
   parseSolanaTransaction,
+  parseTronGridInternal,
   parseTronGridTransactions,
   parseTronGridTrc20,
 } from './parse'
@@ -89,11 +95,16 @@ async function fetchForAddress(
     return fetchEvmHistory(network, address, symbol, decimals)
   }
   if (network.walletType === 'tron') {
-    const [nativeTx, trc20] = await Promise.all([
+    const [nativeTx, trc20, internal] = await Promise.all([
       fetchTronAccountTransactions(address, network.networkScope),
       fetchTronAccountTrc20(address, network.networkScope).catch(() => ({ data: [] })),
+      fetchTronAccountInternal(address, network.networkScope).catch(() => ({ data: [] })),
     ])
-    return [...parseTronGridTransactions(nativeTx, address, symbol), ...parseTronGridTrc20(trc20, address)]
+    return [
+      ...parseTronGridTransactions(nativeTx, address, symbol),
+      ...parseTronGridInternal(internal, address, symbol),
+      ...parseTronGridTrc20(trc20, address),
+    ]
   }
   const signatures = parseSolanaSignatures(await fetchSolanaSignatures(network, address, 20))
   const drafts: HistoryTxDraft[] = []

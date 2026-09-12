@@ -19,6 +19,7 @@ import type {
   CurrencyRecord,
   DeriveAccountInput,
   DerivedAddress,
+  EnergyResources,
   ImportPrivateKeyInput,
   HdDerivedEvmKey,
   HdDeriveEvmInput,
@@ -244,6 +245,11 @@ export const bridgeApi = {
   status: (quoteId: string) => call<BridgeStatus>(IPC.bridgeStatus, { quoteId }),
   list: (accountId: string, networkPk: string) =>
     call<BridgeHistoryItem[]>(IPC.bridgeList, { accountId, networkPk }),
+}
+
+export const energyApi = {
+  resources: (accountId: string, networkPk: string) =>
+    call<EnergyResources>(IPC.energyResources, { accountId, networkPk }),
 }
 
 export const transferApi = {

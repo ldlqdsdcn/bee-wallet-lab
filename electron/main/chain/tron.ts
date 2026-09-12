@@ -325,3 +325,10 @@ export async function fetchTronAccountTrc20(address: string, networkScope: Netwo
     networkScope,
   )
 }
+
+export async function fetchTronAccountInternal(address: string, networkScope: NetworkScope): Promise<unknown> {
+  return trongridGet<unknown>(
+    `v1/accounts/${encodeURIComponent(address)}/internal-transactions?limit=50&only_confirmed=true`,
+    networkScope,
+  )
+}

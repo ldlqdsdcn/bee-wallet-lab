@@ -7,6 +7,7 @@ import {
   parseEsploraAddressTxs,
   parseSolanaSignatures,
   parseSolanaTransaction,
+  parseTronGridInternal,
   parseTronGridTransactions,
   parseTronGridTrc20,
 } from '../electron/main/history/parse'
@@ -222,6 +223,36 @@ describe('交易历史解析', () => {
       direction: 'receive',
       symbol: 'USDT',
       amountMinor: 2500000n,
+    })
+
+    const internal = parseTronGridInternal(
+      {
+        data: [
+          {
+            tx_id: 'swap-1',
+            from_address: '414ab38f7ae7eadad03981b2a7d7883760aa63e564',
+            to_address: '418de4ce26894f8d71bba88dc36f3fa58d647eac39',
+            block_timestamp: 1_700_000_200_000,
+            data: { note: 'call', rejected: false, call_value: { _: 5_890_443 } },
+          },
+          {
+            tx_id: 'swap-fail',
+            from_address: '414ab38f7ae7eadad03981b2a7d7883760aa63e564',
+            to_address: '418de4ce26894f8d71bba88dc36f3fa58d647eac39',
+            data: { note: 'call', rejected: true, call_value: { _: 6_000_000 } },
+          },
+        ],
+      },
+      'TNuUNmyrDYfAGHcnApYV3xMF1AjfggbZzc',
+      'TRX',
+    )
+    expect(internal).toHaveLength(1)
+    expect(internal[0]).toMatchObject({
+      txid: 'swap-1',
+      direction: 'receive',
+      symbol: 'TRX',
+      amountMinor: 5_890_443n,
+      toAddress: 'TNuUNmyrDYfAGHcnApYV3xMF1AjfggbZzc',
     })
   })
 

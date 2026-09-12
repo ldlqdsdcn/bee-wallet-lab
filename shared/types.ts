@@ -1064,6 +1064,8 @@ export interface EnergyResources {
   energyLimit: number
   energyUsed: number
   energyLeft: number
+  bandwidthLimit: number
+  bandwidthUsed: number
   bandwidthLeft: number
 }
 

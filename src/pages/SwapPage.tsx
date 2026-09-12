@@ -6,7 +6,7 @@ import { useAccountBalances } from '../lib/accountBalances'
 import { Alert, Button, Card, Field, Select } from '../components/ui'
 import { TokenSelect } from '../components/TokenSelect'
 import { explorerTabTitle, txExplorerUrl } from '../lib/explorer'
-import { formatAmount, shorten, walletTypeLabel } from '../lib/format'
+import { formatAmount, fromMinor, shorten, walletTypeLabel } from '../lib/format'
 import { useBrowserStore } from '../store/browserStore'
 import { useWalletStore } from '../store/walletStore'
 import { currentNetworkOf, useNetworkStore } from '../store/networkStore'
@@ -14,6 +14,40 @@ import { useVaultStore } from '../store/vaultStore'
 import { useT } from '../i18n'
 
 const SLIPPAGE_OPTIONS = [50, 100, 200]
+
+const TRON_NATIVE_SWAP = 'T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb'
+const EVM_NATIVE_SWAP = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+
+function isSwapNativeToken(address: string): boolean {
+  const value = address.trim()
+  return !value || value === TRON_NATIVE_SWAP || value.toLowerCase() === EVM_NATIVE_SWAP
+}
+
+function formatSwapHistoryAmount(raw: string, address: string, tokens: TokenRecord[]): string {
+  if (!raw) return '—'
+  const token = isSwapNativeToken(address)
+    ? tokens.find((item) => !item.isToken)
+    : tokens.find((item) => item.contractAddress === address)
+  if (!token) return raw
+  return `${formatAmount(fromMinor(raw, token.decimals))} ${token.symbol}`
+}
+
+function formatSwapTime(value: string): string {
+  if (!value) return ''
+  const ms = Date.parse(value.includes('T') ? value : value.replace(' ', 'T'))
+  if (!Number.isFinite(ms)) return value
+  return new Date(ms).toLocaleString()
+}
+
+function swapStatusLabel(status: string, t: (key: 'swap.statusSubmitted' | 'swap.statusFilled' | 'swap.statusFailed') => string): string {
+  const value = status.trim().toUpperCase()
+  if (value === 'SUBMITTED' || value === 'PENDING') return t('swap.statusSubmitted')
+  if (value === 'FILLED' || value === 'SUCCESS' || value === 'COMPLETED' || value === 'CONFIRMED') {
+    return t('swap.statusFilled')
+  }
+  if (value === 'FAILED' || value === 'REVERTED') return t('swap.statusFailed')
+  return status || '—'
+}
 
 function networkSupportsSwap(walletType?: string, networkScope?: string, chainId?: string): boolean {
   if (walletType === 'tron') return networkScope === 'mainnet'
@@ -129,7 +163,8 @@ export default function SwapPage() {
     try {
       await fn()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      const message = err instanceof Error ? err.message : String(err)
+      setError(kind === 'quote' && /流动性/.test(message) ? t('swap.quoteFailed') : message)
     } finally {
       setPending(null)
     }
@@ -240,7 +275,27 @@ export default function SwapPage() {
                     min: formatAmount(quote.minBuyAmount),
                   })}
                 </p>
-                <p>{t('swap.feeText', { fee: quote.feeText })}</p>
+                {quote.energy?.needed ? (
+                  <>
+                    <p>
+                      {t('swap.networkFeeEnergy', {
+                        fee:
+                          energyFeeMode === 'rent' && quote.energy.rentTrx
+                            ? formatAmount(quote.energy.rentTrx)
+                            : quote.energy.burnTrx
+                              ? formatAmount(quote.energy.burnTrx)
+                              : quote.feeText,
+                        mode:
+                          energyFeeMode === 'rent' && quote.energy.rentTrx
+                            ? t('swap.energyModeRent')
+                            : t('swap.energyModeBurn'),
+                      })}
+                    </p>
+                    <p>{t('swap.dexFeeHint')}</p>
+                  </>
+                ) : (
+                  <p>{t('swap.feeText', { fee: quote.feeText })}</p>
+                )}
                 {quote.allowanceNeeded ? <p className="text-honey-400">{t('swap.needApprove')}</p> : null}
                 {quote.energy?.needed ? (
                   <div className="space-y-2 pt-1">
@@ -365,8 +420,13 @@ export default function SwapPage() {
             {history.map((item) => (
               <div key={item.id} className="rounded-lg bg-ink-900 px-3 py-2 text-xs text-ink-400">
                 <p>
-                  {item.status} · {item.sellAmount || '—'} → {item.buyAmount || '—'}
+                  {t('swap.historyLine', {
+                    status: swapStatusLabel(item.status, t),
+                    sell: formatSwapHistoryAmount(item.sellAmount, item.sellToken, tokens),
+                    buy: formatSwapHistoryAmount(item.buyAmount, item.buyToken, tokens),
+                  })}
                 </p>
+                {item.created ? <p>{formatSwapTime(item.created)}</p> : null}
                 {item.txHash ? <p className="break-all font-mono text-[11px] text-ink-500">{item.txHash}</p> : null}
               </div>
             ))}

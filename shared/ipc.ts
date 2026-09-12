@@ -82,6 +82,9 @@ export const IPC = {
   portfolioRefresh: 'portfolio:refresh',
   portfolioAccount: 'portfolio:account',
 
+  /* 波场能量 / 带宽 */
+  energyResources: 'energy:resources',
+
   /* 收发转账 */
   transferPreview: 'transfer:preview',
   transferSubmit: 'transfer:submit',

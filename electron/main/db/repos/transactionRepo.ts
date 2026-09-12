@@ -48,7 +48,7 @@ function toRecord(row: TxRow): TransactionRecord {
 }
 
 export function insertTransaction(input: Omit<TransactionRecord, 'submittedToBackend'> & { submittedToBackend?: boolean }): TransactionRecord {
-  const previous = findByUnique(input.networkPk, input.txid, input.accountId)
+  const previous = findByUnique(input.networkPk, input.txid, input.accountId, input.symbol, input.direction)
   const now = Date.now()
   getDatabase()
     .prepare(
@@ -57,7 +57,7 @@ export function insertTransaction(input: Omit<TransactionRecord, 'submittedToBac
          symbol, amount, fee, status, block_height, raw_hex, submitted_to_backend,
          explorer_url, created_at, updated_at
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(network_pk, txid, account_id) DO UPDATE SET
+       ON CONFLICT(network_pk, txid, account_id, symbol, direction) DO UPDATE SET
          direction = excluded.direction,
          from_address = excluded.from_address,
          to_address = excluded.to_address,
@@ -92,10 +92,10 @@ export function insertTransaction(input: Omit<TransactionRecord, 'submittedToBac
       now,
     )
   const row = getDatabase()
-    .prepare<[string, string, string], TxRow>(
-      'SELECT * FROM transactions WHERE network_pk = ? AND txid = ? AND account_id = ?',
+    .prepare<[string, string, string, string, string], TxRow>(
+      'SELECT * FROM transactions WHERE network_pk = ? AND txid = ? AND account_id = ? AND symbol = ? AND direction = ?',
     )
-    .get(input.networkPk, input.txid, input.accountId)
+    .get(input.networkPk, input.txid, input.accountId, input.symbol, input.direction)
   const next = row ? toRecord(row) : (getTransaction(input.id) as TransactionRecord)
   emitSettled(next, previous)
   return next
@@ -128,12 +128,18 @@ function emitSettled(next: TransactionRecord, previous: TransactionRecord | null
   }
 }
 
-function findByUnique(networkPk: string, txid: string, accountId: string): TransactionRecord | null {
+function findByUnique(
+  networkPk: string,
+  txid: string,
+  accountId: string,
+  symbol: string,
+  direction: string,
+): TransactionRecord | null {
   const row = getDatabase()
-    .prepare<[string, string, string], TxRow>(
-      'SELECT * FROM transactions WHERE network_pk = ? AND txid = ? AND account_id = ?',
+    .prepare<[string, string, string, string, string], TxRow>(
+      'SELECT * FROM transactions WHERE network_pk = ? AND txid = ? AND account_id = ? AND symbol = ? AND direction = ?',
     )
-    .get(networkPk, txid, accountId)
+    .get(networkPk, txid, accountId, symbol, direction)
   return row ? toRecord(row) : null
 }
 

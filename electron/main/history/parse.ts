@@ -279,6 +279,48 @@ export function parseTronGridTransactions(payload: unknown, address: string, sym
   return out
 }
 
+function tronInternalCallValue(data: Record<string, unknown> | null): bigint {
+  if (!data) return 0n
+  const call = data.call_value
+  if (call && typeof call === 'object') {
+    const record = asRecord(call)
+    return asBigInt(record?._ ?? record?.amount)
+  }
+  return asBigInt(call ?? data.value)
+}
+
+/** 合约内部转出的 TRX（兑换打回主币）。跳过被拒的内部调用。 */
+export function parseTronGridInternal(payload: unknown, address: string, symbol = 'TRX'): HistoryTxDraft[] {
+  const rows = extractList<unknown>(asRecord(payload)?.data ?? payload)
+  const out: HistoryTxDraft[] = []
+  for (const row of rows) {
+    const tx = asRecord(row)
+    if (!tx) continue
+    const data = asRecord(tx.data)
+    if (data?.rejected === true) continue
+    const txid = asString(tx.tx_id, asString(tx.transaction_id))
+    const from = visibleTronAddress(asString(tx.from_address))
+    const to = visibleTronAddress(asString(tx.to_address))
+    const amountMinor = tronInternalCallValue(data)
+    if (!txid || amountMinor <= 0n || (!sameAddress(from, address) && !sameAddress(to, address))) continue
+    out.push({
+      txid,
+      direction: sameAddress(from, address) ? 'send' : 'receive',
+      fromAddress: from,
+      toAddress: to,
+      amountMinor,
+      decimals: 6,
+      symbol,
+      contractAddress: null,
+      feeMinor: null,
+      status: 'confirmed',
+      blockHeight: asNumber(tx.block_number, 0) || null,
+      timestampMs: asNumber(tx.block_timestamp, Date.now()),
+    })
+  }
+  return out
+}
+
 export function parseTronGridTrc20(payload: unknown, address: string): HistoryTxDraft[] {
   const rows = extractList<unknown>(asRecord(payload)?.data ?? payload)
   const out: HistoryTxDraft[] = []

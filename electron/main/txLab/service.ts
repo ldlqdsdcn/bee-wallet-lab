@@ -89,6 +89,7 @@ export function persistBroadcastedTx(input: {
   fee: string | null
   txid: string
   raw: string
+  direction?: 'send' | 'receive'
 }): BroadcastResult {
   const explorerUrl = explorerUrlForNetwork(input.network, input.txid)
   const transaction = upsertTransaction({
@@ -96,7 +97,7 @@ export function persistBroadcastedTx(input: {
     networkPk: input.network.id,
     accountId: input.accountId,
     txid: input.txid,
-    direction: 'send',
+    direction: input.direction ?? 'send',
     fromAddress: input.from,
     toAddress: input.to,
     tokenPk: input.tokenPk,
