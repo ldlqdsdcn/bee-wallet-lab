@@ -105,6 +105,7 @@ function unlockedTemplate(): MenuItemConstructorOptions[] {
       label: t('menu.dapps'),
       submenu: [
         { label: t('dapp.title'), click: () => navigate('/dapps') },
+        { label: t('wc.menu'), click: () => navigate('/wallet-connect') },
         ...peekDappCategories().map((item) => ({
           label: item.virtual ? t('dapp.hot') : item.name,
           click: () => navigate(`/dapps/${item.id}`),

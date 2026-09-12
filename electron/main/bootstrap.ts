@@ -14,7 +14,7 @@ import { disposeTransactionWatch } from './history/watch'
 
 let started = false
 
-export function bootstrap(): void {
+export async function bootstrap(): Promise<void> {
   if (started) return
 
   const db = openDatabase({ userDataDir: app.getPath('userData') })
@@ -26,11 +26,13 @@ export function bootstrap(): void {
   initVault()
   migrateLegacyProxy()
   ensureDefaultFiat()
+  try {
+    await applyActiveProxy()
+  } catch (err) {
+    console.warn('[proxy] 应用代理失败', err instanceof Error ? err.message : err)
+  }
   registerAllIpc()
   started = true
-  void applyActiveProxy().catch((err) => {
-    console.warn('[proxy] 应用代理失败', err instanceof Error ? err.message : err)
-  })
 }
 
 export function shutdown(): void {

@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useBrowserStore } from '../store/browserStore'
+import { WalletConnectDialog } from './WalletConnectDialog'
 import { useT } from '../i18n'
 
 const WEBVIEW_PREFS = 'contextIsolation=yes, nodeIntegration=no, sandbox=yes, javascript=yes'
@@ -12,6 +13,7 @@ export function BrowserChrome({ children }: { children: ReactNode }) {
   const close = useBrowserStore((s) => s.close)
   const showTabs = tabs.length > 0
   const walletActive = activeId === null
+  const [wcOpen, setWcOpen] = useState(false)
 
   return (
     <div className="flex h-full flex-col">
@@ -69,13 +71,14 @@ export function BrowserChrome({ children }: { children: ReactNode }) {
               webpreferences={WEBVIEW_PREFS}
               className="explorer-webview"
               style={
-                active
+                active && !wcOpen
                   ? { display: 'flex', position: 'absolute', inset: 0 }
                   : { display: 'none' }
               }
             />
           )
         })}
+        <WalletConnectDialog onOpenChange={setWcOpen} />
       </div>
     </div>
   )

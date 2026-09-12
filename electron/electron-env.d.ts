@@ -12,6 +12,8 @@ interface ImportMetaEnv {
   readonly VITE_TRON_TESTNET_API?: string
   readonly VITE_TRONGRID_API_KEY?: string
   readonly VITE_ETHERSCAN_API_KEY?: string
+  readonly VITE_WALLETCONNECT_PROJECT_ID?: string
+  readonly WALLET_CONNECT_PROJECT_ID?: string
 }
 
 interface ImportMeta {
@@ -42,4 +44,11 @@ declare namespace NodeJS {
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
   beeWallet: import('./preload').BeeWalletBridge
+}
+
+declare module 'ws' {
+  const WebSocket: {
+    new (url: string | URL, protocols?: string | string[], options?: object): import('node:events').EventEmitter
+  }
+  export default WebSocket
 }

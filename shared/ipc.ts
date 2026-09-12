@@ -170,6 +170,15 @@ export const IPC = {
 
   /* 三方连接（目录站 DApp） */
   dappCatalog: 'dapp:catalog',
+
+  /* WalletConnect 钱包端 */
+  walletConnectStatus: 'walletConnect:status',
+  walletConnectPair: 'walletConnect:pair',
+  walletConnectSessions: 'walletConnect:sessions',
+  walletConnectDisconnect: 'walletConnect:disconnect',
+  walletConnectPending: 'walletConnect:pending',
+  walletConnectDecide: 'walletConnect:decide',
+  walletConnectClipboard: 'walletConnect:clipboard',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]
@@ -191,6 +200,9 @@ export const IPC_EVENT = {
   transactionUpdated: 'event:transactionUpdated',
   hdAirdropProgress: 'event:hdAirdropProgress',
   appCommand: 'event:appCommand',
+  walletConnectSessions: 'event:walletConnectSessions',
+  walletConnectPending: 'event:walletConnectPending',
+  walletConnectRequest: 'event:walletConnectRequest',
 } as const
 
 export type IpcEventName = (typeof IPC_EVENT)[keyof typeof IPC_EVENT]

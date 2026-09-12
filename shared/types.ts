@@ -1289,3 +1289,29 @@ export interface DappCatalog {
   categories: DappCategoryRecord[]
   dapps: DappRecord[]
 }
+
+export interface WalletConnectStatus {
+  ready: boolean
+  projectIdSet: boolean
+  error: string | null
+}
+
+export interface WalletConnectSession {
+  topic: string
+  name: string
+  url: string
+  icon: string
+  chains: string[]
+  expiry: number
+}
+
+export type WalletConnectPendingKind = 'session' | 'auth' | 'sign' | 'send' | 'switch'
+
+export interface WalletConnectPending {
+  id: string
+  kind: WalletConnectPendingKind
+  origin: string
+  name: string
+  method: string
+  detail: string
+}
