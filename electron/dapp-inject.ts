@@ -98,3 +98,99 @@ export const DAPP_PROVIDER_INJECT = `(() => {
   console.log('[dapp] 已注入 Bee Wallet Lab')
   return true
 })()`
+
+/** 截网站出示的 wc:：二维码属性、复制、window.open。不扫页面像素，不按站点写规则。 */
+export const DAPP_DEEP_LINK_INJECT = `(() => {
+  if (window.__beeWalletDeepLink) return true
+  if (!window.beeDapp || typeof window.beeDapp.pairDeepLink !== 'function') return false
+  window.__beeWalletDeepLink = true
+  var last = ''
+  function isWc(raw) {
+    var text = String(raw || '')
+    return text.indexOf('wc:') >= 0 || text.indexOf('walletconnect.com/wc') >= 0 || text.indexOf('link.walletconnect') >= 0
+  }
+  function offer(raw) {
+    var text = String(raw || '')
+    if (text.indexOf('wc:') < 0 || text.indexOf('symKey=') < 0) return
+    var uri = text.slice(text.indexOf('wc:')).split(/[\\s"'<>\\\\]/)[0].replace(/[),.;]+$/, '')
+    if (!uri || uri === last) return
+    last = uri
+    console.log('[dapp] 页面出示 WalletConnect 链接')
+    try { window.beeDapp.pairDeepLink(uri) } catch (e) {}
+  }
+  function scan(node) {
+    if (!node) return
+    try {
+      if (node.getAttribute) {
+        ;['uri', 'data-uri', 'href', 'alt', 'value'].forEach(function (name) {
+          offer(node.getAttribute(name) || '')
+        })
+      }
+      if (node.shadowRoot) walk(node.shadowRoot)
+    } catch (e) {}
+  }
+  function walk(root) {
+    if (!root) return
+    scan(root)
+    var nodes
+    try { nodes = root.querySelectorAll('*') } catch (e) { return }
+    for (var i = 0; i < nodes.length; i++) scan(nodes[i])
+  }
+  var open = window.open
+  window.open = function (url) {
+    offer(String(url || ''))
+    if (isWc(url)) {
+      return { closed: false, close: function () {}, focus: function () {}, location: { href: String(url || '') } }
+    }
+    return open.apply(window, arguments)
+  }
+  try {
+    var href = Object.getOwnPropertyDescriptor(Location.prototype, 'href')
+    if (href && href.set) {
+      Object.defineProperty(Location.prototype, 'href', {
+        configurable: true,
+        get: href.get,
+        set: function (value) {
+          offer(String(value || ''))
+          if (isWc(value)) return
+          return href.set.call(this, value)
+        },
+      })
+    }
+  } catch (e) {}
+  try {
+    var clip = navigator.clipboard
+    if (clip && clip.writeText) {
+      var writeText = clip.writeText.bind(clip)
+      clip.writeText = function (text) {
+        offer(String(text || ''))
+        return writeText(text)
+      }
+    }
+  } catch (e) {}
+  document.addEventListener('click', function () {
+    setTimeout(function () { walk(document) }, 200)
+    setTimeout(function () { walk(document) }, 1200)
+  }, true)
+  try {
+    new MutationObserver(function (records) {
+      for (var i = 0; i < records.length; i++) {
+        var rec = records[i]
+        if (rec.type === 'attributes') scan(rec.target)
+        var added = rec.addedNodes || []
+        for (var j = 0; j < added.length; j++) {
+          if (added[j].nodeType === 1) walk(added[j])
+          if (added[j].nodeType === 3) offer(added[j].textContent || '')
+        }
+      }
+    }).observe(document.documentElement, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['uri', 'data-uri', 'href', 'alt', 'value'],
+    })
+  } catch (e) {}
+  walk(document)
+  console.log('[dapp] 已监听 WalletConnect 深链接')
+  return true
+})()`

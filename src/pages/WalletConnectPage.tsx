@@ -12,6 +12,7 @@ export default function WalletConnectPage() {
   const [uri, setUri] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [waiting, setWaiting] = useState(false)
 
   const refresh = () => {
     void walletConnectApi.status().then(setStatus).catch((err) => setError(String(err)))
@@ -23,8 +24,15 @@ export default function WalletConnectPage() {
     const offSessions = on(IPC_EVENT.walletConnectSessions, (payload) => {
       if (Array.isArray(payload)) setSessions(payload as WalletConnectSession[])
     })
+    const offPairing = on(IPC_EVENT.walletConnectPairing, (payload) => {
+      const next = payload as { active?: boolean; error?: string | null }
+      setWaiting(Boolean(next.active))
+      if (next.error) setError(next.error)
+    })
+    void walletConnectApi.pairing().then((row) => setWaiting(row.active)).catch(() => undefined)
     return () => {
       offSessions()
+      offPairing()
     }
   }, [])
 
@@ -89,7 +97,7 @@ export default function WalletConnectPage() {
             placeholder="wc:..."
           />
           <div className="flex flex-wrap gap-2">
-            <Button disabled={busy || !uri.trim() || !status?.projectIdSet} loading={busy} onClick={() => void pair()}>
+            <Button disabled={busy || waiting || !uri.trim() || !status?.projectIdSet} loading={busy || waiting} onClick={() => void pair()}>
               {t('wc.connect')}
             </Button>
             <Button

@@ -59,6 +59,22 @@ export function parseWalletConnectUri(raw: string): string {
   return found
 }
 
+/** wc:topic@2?... 里的 pairing topic，用来丢掉断开后还在飞的旧提案。 */
+export function pairingTopicFromUri(uri: string): string {
+  const parsed = parseWalletConnectUri(uri)
+  const body = parsed.startsWith('wc:') ? parsed.slice(3) : parsed
+  const at = body.indexOf('@')
+  return (at >= 0 ? body.slice(0, at) : body).trim()
+}
+
+export function findWalletConnectDeepLink(argv: readonly string[]): string | null {
+  for (const item of argv) {
+    const found = extractWalletConnectUri(item)
+    if (found?.includes('symKey=')) return found
+  }
+  return null
+}
+
 export function chainIdDecimal(raw: string): string {
   const value = raw.trim()
   if (/^0x[0-9a-fA-F]+$/.test(value)) return BigInt(value).toString(10)

@@ -3,6 +3,8 @@ import {
   chainIdDecimal,
   describeSessionProposal,
   hexToUtf8,
+  findWalletConnectDeepLink,
+  pairingTopicFromUri,
   parseWalletConnectUri,
   sessionSummary,
   toCaipAccount,
@@ -21,8 +23,14 @@ describe('WalletConnect 解析', () => {
     expect(parseWalletConnectUri(`${uri}&methods=wc_sessionPropose,wc_sessionAuthenticate`)).toBe(
       `${uri}&methods=wc_sessionPropose,wc_sessionAuthenticate`,
     )
+    expect(
+      findWalletConnectDeepLink(['/usr/bin/electron', `https://walletconnect.com/wc?uri=${encodeURIComponent(uri)}`]),
+    ).toBe(uri)
+    expect(findWalletConnectDeepLink(['bee-wallet://wc?uri=' + encodeURIComponent(uri)])).toBe(uri)
+    expect(findWalletConnectDeepLink(['/usr/bin/electron', '.'])).toBeNull()
     expect(() => parseWalletConnectUri('https://app.uniswap.org')).toThrow('不是 WalletConnect')
     expect(() => parseWalletConnectUri('')).toThrow('请粘贴')
+    expect(pairingTopicFromUri(uri)).toBe('abc123')
   })
 
   it('chainId 转成十进制和 CAIP-10', () => {

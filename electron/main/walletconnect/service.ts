@@ -13,6 +13,7 @@ import { hexToBytes } from '@noble/hashes/utils'
 import type {
   AccountRecord,
   NetworkRecord,
+  WalletConnectPairing,
   WalletConnectPending,
   WalletConnectSession,
   WalletConnectStatus,
@@ -21,8 +22,8 @@ import { IPC_EVENT } from '../../../shared/ipc'
 import { findNetworkByChain, getNetwork, listNetworks } from '../db/repos/catalogRepo'
 import { getAccountRow } from '../db/repos/accountRepo'
 import { loadSettings, saveSettings } from '../db/repos/metaRepo'
-import { broadcast } from '../ipc/registry'
-import { invalidArg } from '../ipc/registry'
+import { broadcast, IpcError, invalidArg } from '../ipc/registry'
+import { t } from '../i18n'
 import { getStatus } from '../security/vault'
 import { getCurrentWallet, listAccounts, withAccountPrivateKey } from '../wallets/service'
 import {
@@ -36,11 +37,13 @@ import {
 import { personalSign } from '../sign/evm'
 import { walletConnectProjectId, walletConnectRelayUrl } from '../rpc/walletconnectEnv'
 import { createFileKeyValueStorage } from './storage'
+import { applyPairingOverlay } from './pairingOverlay'
 import {
   chainIdDecimal,
   describeSessionProposal,
   describeWcRequest,
   hexToUtf8,
+  pairingTopicFromUri,
   parseWalletConnectUri,
   pendingKind,
   sessionSummary,
@@ -100,8 +103,17 @@ const READ = new Set([
 let kit: Kit | null = null
 let starting: Promise<Kit> | null = null
 let pairLock: Promise<void> | null = null
-const activePairings = new Map<string, Promise<void>>()
+let pairAbort: AbortController | null = null
+let expectedPairingTopic: string | null = null
+let queuedDeepLink: string | null = null
+/** 等待网站提案。到点就停，不再后台空等。 */
+export const PAIR_PROPOSAL_WAIT_MS = 45_000
+export const PAIR_OVERLAY_MS = PAIR_PROPOSAL_WAIT_MS
+export const WALLETCONNECT_PAIR_WAIT_MS = PAIR_PROPOSAL_WAIT_MS
+
+let pairingState: WalletConnectPairing = { active: false, error: null, deadlineAt: null }
 const usedUris = new Set<string>()
+const stalePairingTopics = new Set<string>()
 const handledSessionIds = new Set<number>()
 const sessionWaiters = new Set<(kind: 'proposal' | 'auth') => void>()
 let lastIncomingSession: 'proposal' | 'auth' | null = null
@@ -122,6 +134,57 @@ export function walletConnectStatus(): WalletConnectStatus {
     projectIdSet: Boolean(projectId),
     error: projectId ? null : '请在 .env 填写 WALLET_CONNECT_PROJECT_ID',
   }
+}
+
+export function walletConnectPairing(): WalletConnectPairing {
+  return pairingState
+}
+
+function setPairing(active: boolean, error: string | null = null): void {
+  pairingState = {
+    active,
+    error,
+    deadlineAt: active ? Date.now() + PAIR_PROPOSAL_WAIT_MS : null,
+  }
+  if (active) focusWalletWindow()
+  applyPairingOverlay(active, pairingState.deadlineAt)
+  broadcast(IPC_EVENT.walletConnectPairing, pairingState)
+  if (!active && error) {
+    setTimeout(() => {
+      if (!pairingState.active && pairingState.error === error) setPairing(false)
+    }, 6000)
+  }
+}
+
+export function cancelWalletConnectPair(): void {
+  pairAbort?.abort()
+  if (expectedPairingTopic) stalePairingTopics.add(expectedPairingTopic)
+  expectedPairingTopic = null
+  setPairing(false)
+  console.log('[walletconnect] 已取消等待')
+}
+
+function pairWaitTimeout(): IpcError {
+  return new IpcError('PAIR_WAIT_TIMEOUT', t('wc.waitingTimeout'))
+}
+
+function pairReplaced(): IpcError {
+  return new IpcError('PAIR_REPLACED', '连接已改用新的链接')
+}
+
+function isPairWaitTimeout(err: unknown): boolean {
+  return err instanceof IpcError && err.code === 'PAIR_WAIT_TIMEOUT'
+}
+
+function isPairReplaced(err: unknown): boolean {
+  return err instanceof IpcError && err.code === 'PAIR_REPLACED'
+}
+
+async function replaceInFlightPair(): Promise<void> {
+  const prev = pairLock
+  pairAbort?.abort()
+  if (!prev) return
+  await Promise.race([prev.catch(() => undefined), new Promise<void>((resolve) => setTimeout(resolve, 1500))])
 }
 
 export async function startWalletConnect(): Promise<Kit | null> {
@@ -147,13 +210,19 @@ export async function startWalletConnect(): Promise<Kit | null> {
         description: '本地优先的多链实验钱包',
         url: 'https://github.com/ldlqdsdcn/bee-wallet-lab',
         icons: [],
+        redirect: {
+          native: 'bee-wallet://wc',
+          universal: 'https://github.com/ldlqdsdcn/bee-wallet-lab',
+        },
       },
     })
     attachSessionListeners(next)
     next.on('session_request', (event) => {
       void onRequest(event)
     })
-    next.on('session_delete', () => broadcastSessions())
+    next.on('session_delete', () => {
+      broadcastSessions()
+    })
     next.on('proposal_expire', () => {
       console.warn('[walletconnect] 连接请求已过期。请在网站上重新打开 WalletConnect，立刻复制新链接。')
     })
@@ -162,9 +231,9 @@ export async function startWalletConnect(): Promise<Kit | null> {
     } catch (err) {
       console.warn('[walletconnect] 中继尚未连通', err instanceof Error ? err.message : err)
     }
-    discardLeftoverProposals(next)
-    discardLeftoverAuthentications(next)
     kit = next
+    drainPendingProposals(next)
+    drainPendingAuthentications(next)
     broadcastSessions()
     return next
   })()
@@ -239,11 +308,76 @@ export function rejectWalletConnectPending(reason = '钱包已锁定'): void {
 }
 
 export async function pairWalletConnect(uri: string): Promise<WalletConnectSession[]> {
-  if (!getStatus().unlocked) throw invalidArg('请先解锁钱包')
-  if (pairLock || activePairings.size) {
-    throw invalidArg('上一次连接还在进行。请先确认弹窗，不要连贴第二条链接，否则网站会停在旧二维码上。')
+  try {
+    return await pairWalletConnectInner(uri)
+  } catch (err) {
+    if (isPairReplaced(err)) throw err
+    const message = err instanceof Error ? err.message : String(err)
+    setPairing(false, isPairWaitTimeout(err) ? null : message)
+    throw err
   }
-  if ([...pending.values()].some((item) => item.item.kind === 'session' || item.item.kind === 'auth')) {
+}
+
+function hasPairingTopic(client: Kit, topic: string): boolean {
+  try {
+    return (client.core.pairing.getPairings() ?? []).some((item) => item.topic === topic)
+  } catch {
+    return false
+  }
+}
+
+function hasSessionForPairing(client: Kit, topic: string): boolean {
+  return Object.values(client.getActiveSessions()).some(
+    (session) => pairingTopicOf(session as { pairingTopic?: string }) === topic,
+  )
+}
+
+function hasOpenConfirm(): boolean {
+  return [...pending.values()].some((item) => item.item.kind === 'session' || item.item.kind === 'auth')
+}
+
+function watchProposal(client: Kit): void {
+  if (pairLock) return
+  const abort = new AbortController()
+  pairAbort = abort
+  const pairing = (async () => {
+    const tick = setInterval(() => {
+      if (abort.signal.aborted) return
+      drainPendingProposals(client)
+      drainPendingAuthentications(client)
+    }, 1000)
+    try {
+      if (hasOpenConfirm() || lastIncomingSession) return
+      await waitForIncomingSession(PAIR_PROPOSAL_WAIT_MS, abort.signal)
+    } catch (err) {
+      if (isPairReplaced(err)) throw err
+      drainPendingProposals(client)
+      drainPendingAuthentications(client)
+      if (!lastIncomingSession && !hasOpenConfirm()) throw err
+    } finally {
+      clearInterval(tick)
+    }
+  })()
+  pairLock = pairing
+  void pairing.then(
+    () => {
+      setPairing(false)
+    },
+    (err) => {
+      if (isPairReplaced(err)) return
+      if (isPairWaitTimeout(err)) console.log('[walletconnect] 等待网站确认超时')
+      expectedPairingTopic = null
+      setPairing(false, isPairWaitTimeout(err) ? t('wc.waitingTimeout') : err instanceof Error ? err.message : String(err))
+    },
+  ).finally(() => {
+    if (pairLock === pairing) pairLock = null
+    if (pairAbort === abort) pairAbort = null
+  })
+}
+
+async function pairWalletConnectInner(uri: string): Promise<WalletConnectSession[]> {
+  if (!getStatus().unlocked) throw invalidArg('请先解锁钱包')
+  if (hasOpenConfirm()) {
     throw invalidArg('请先确认当前弹窗，再连接下一个网站。')
   }
   const client = await requireKit()
@@ -251,58 +385,99 @@ export async function pairWalletConnect(uri: string): Promise<WalletConnectSessi
   if (!parsed.includes('symKey=')) {
     throw invalidArg('链接不完整，缺少 symKey。请复制二维码下方以 wc: 开头的整段链接。')
   }
-  if (usedUris.has(parsed)) {
-    throw invalidArg('这个链接已经用过。请关掉网站上的 WalletConnect 窗口，重新点一次，立刻复制新链接。')
-  }
-  const active = activePairings.get(parsed)
-  if (active) {
-    await active
+  const topic = pairingTopicFromUri(parsed)
+  if (hasSessionForPairing(client, topic)) {
     return listWalletConnectSessions()
   }
 
-  const pairing = (async () => {
-    try {
-      if (!client.core.relayer.connected) await client.core.relayer.transportOpen()
-    } catch {
-      /* pair 里还会再连一次 */
-    }
-    lastIncomingSession = null
-    console.log('[walletconnect] 开始配对', {
-      chars: parsed.length,
-      hasSymKey: parsed.includes('symKey='),
-      topic: parsed.slice(3, parsed.indexOf('@') > 0 ? parsed.indexOf('@') : 19),
-    })
-    await client.pair({ uri: parsed, activatePairing: true })
-    usedUris.add(parsed)
-    console.log('[walletconnect] 配对请求已交给中继，等待网站确认')
-    const alreadyOpen = lastIncomingSession || [...pending.values()].some((item) => item.item.kind === 'session' || item.item.kind === 'auth')
-    if (!alreadyOpen) {
-      try {
-        await waitForIncomingSession(20_000)
-      } catch (err) {
-        drainPendingProposals(client)
-        drainPendingAuthentications(client)
-        if (!lastIncomingSession && ![...pending.values()].some((item) => item.item.kind === 'session' || item.item.kind === 'auth')) {
-          throw err
-        }
-      }
-    }
-  })()
-  pairLock = pairing
-  activePairings.set(parsed, pairing)
+  const livePairing = hasPairingTopic(client, topic) || expectedPairingTopic === topic
+  if (livePairing) {
+    console.log('[walletconnect] 这条链接已经在配对，继续等网站确认', topic.slice(0, 16))
+    expectedPairingTopic = topic
+    setPairing(true)
+    drainPendingProposals(client)
+    drainPendingAuthentications(client)
+    watchProposal(client)
+    return listWalletConnectSessions()
+  }
+  if (usedUris.has(parsed)) {
+    throw invalidArg('这个链接已经用过。请关掉网站上的 WalletConnect 窗口，重新点一次，立刻复制新链接。')
+  }
+
+  if (pairLock || expectedPairingTopic) {
+    if (expectedPairingTopic) stalePairingTopics.add(expectedPairingTopic)
+    console.log('[walletconnect] 改用最新链接')
+    await replaceInFlightPair()
+  }
+
+  expectedPairingTopic = topic
+  setPairing(true)
+  lastIncomingSession = null
   try {
-    await pairing
+    if (!client.core.relayer.connected) await client.core.relayer.transportOpen()
+  } catch {
+    /* pair 里还会再连一次 */
+  }
+  console.log('[walletconnect] 开始配对', {
+    chars: parsed.length,
+    hasSymKey: parsed.includes('symKey='),
+    topic,
+  })
+  try {
+    await client.pair({ uri: parsed, activatePairing: true })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    expectedPairingTopic = null
+    setPairing(false, message)
     if (/subscribing/i.test(message) || /please try again/i.test(message)) {
       throw invalidArg('连不上 WalletConnect 中继。直连 relay.walletconnect.com 会超时，请先在设置里打开代理后再配对')
     }
     throw err
-  } finally {
-    if (activePairings.get(parsed) === pairing) activePairings.delete(parsed)
-    if (pairLock === pairing) pairLock = null
   }
+  usedUris.add(parsed)
+  console.log('[walletconnect] 配对请求已交给中继，等待网站确认')
+  watchProposal(client)
   return listWalletConnectSessions()
+}
+
+/** 网站或系统打开的 wc: 深链接。不是扫页面二维码。 */
+export async function acceptWalletConnectDeepLink(raw: string): Promise<void> {
+  let uri: string
+  try {
+    uri = parseWalletConnectUri(raw)
+  } catch {
+    return
+  }
+  if (!uri.includes('symKey=')) return
+  if (!getStatus().unlocked) {
+    queuedDeepLink = uri
+    focusWalletWindow()
+    console.log('[walletconnect] 深链接已记下，解锁后再连接')
+    return
+  }
+  focusWalletWindow()
+  try {
+    console.log('[walletconnect] 收到深链接', uri.slice(3, uri.indexOf('@') > 0 ? uri.indexOf('@') : 19))
+    await pairWalletConnect(uri)
+  } catch (err) {
+    if (isPairWaitTimeout(err)) {
+      console.log('[walletconnect] 等待网站确认超时')
+      return
+    }
+    if (isPairReplaced(err)) return
+    const message = err instanceof Error ? err.message : String(err)
+    if (/已经用过|还在进行|请先确认|改用新的/.test(message)) {
+      console.log('[walletconnect] 深链接已忽略', message)
+      return
+    }
+    console.warn('[walletconnect] 深链接配对失败', message)
+  }
+}
+
+export function flushQueuedWalletConnectDeepLink(): void {
+  const raw = queuedDeepLink
+  queuedDeepLink = null
+  if (raw) void acceptWalletConnectDeepLink(raw)
 }
 
 export async function reconnectWalletConnectRelay(): Promise<void> {
@@ -325,8 +500,18 @@ export function listWalletConnectSessions(): WalletConnectSession[] {
 
 export async function disconnectWalletConnect(topic: string): Promise<WalletConnectSession[]> {
   const client = await requireKit()
-  await client.disconnectSession({ topic, reason: getSdkError('USER_DISCONNECTED') })
+  const session = client.getActiveSessions()[topic] as { pairingTopic?: string } | undefined
+  pairAbort?.abort()
+  expectedPairingTopic = null
+  setPairing(false)
+  try {
+    await client.disconnectSession({ topic, reason: getSdkError('USER_DISCONNECTED') })
+  } catch {
+    /* 会话可能已经被网站断开 */
+  }
+  if (session?.pairingTopic) await disconnectPairing(client, session.pairingTopic)
   broadcastSessions()
+  console.log('[walletconnect] 已断开会话', topic.slice(0, 16))
   return listWalletConnectSessions()
 }
 
@@ -381,23 +566,45 @@ function noteSessionEvent(kind: 'proposal' | 'auth', id: number): boolean {
   return true
 }
 
-function waitForIncomingSession(ms: number): Promise<'proposal' | 'auth'> {
+function waitForIncomingSession(ms: number, signal?: AbortSignal): Promise<'proposal' | 'auth'> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      sessionWaiters.delete(onEvent)
-      reject(
-        invalidArg(
-          '网站没有发来连接请求。请关掉网站上的 WalletConnect 窗口，重新点一次，立刻复制最新的完整 wc: 链接（旧链接只能用一次）。',
-        ),
-      )
-    }, ms)
-    const onEvent = (kind: 'proposal' | 'auth') => {
+    const finish = (fn: () => void) => {
       clearTimeout(timer)
       sessionWaiters.delete(onEvent)
-      resolve(kind)
+      signal?.removeEventListener('abort', onAbort)
+      fn()
     }
+    const onAbort = () => finish(() => reject(pairReplaced()))
+    const timer = setTimeout(() => finish(() => reject(pairWaitTimeout())), ms)
+    const onEvent = (kind: 'proposal' | 'auth') => finish(() => resolve(kind))
+    if (signal?.aborted) {
+      reject(pairReplaced())
+      return
+    }
+    signal?.addEventListener('abort', onAbort)
     sessionWaiters.add(onEvent)
   })
+}
+
+function pairingTopicOf(value: { pairingTopic?: string; topic?: string } | undefined): string {
+  return (value?.pairingTopic || value?.topic || '').trim()
+}
+
+function isCurrentPairingTopic(topic: string | undefined): boolean {
+  if (topic && stalePairingTopics.has(topic)) return false
+  if (!expectedPairingTopic) return true
+  if (!topic) return true
+  return topic === expectedPairingTopic
+}
+
+async function disconnectPairing(client: Kit, topic: string): Promise<void> {
+  if (!topic) return
+  try {
+    await client.core.pairing.disconnect({ topic })
+    console.log('[walletconnect] 已断开配对', topic.slice(0, 16))
+  } catch {
+    /* 配对可能已经过期 */
+  }
 }
 
 function peerOrigin(url: string | undefined): string {
@@ -424,21 +631,6 @@ async function disconnectOtherSessions(client: Kit, url: string, keepTopic?: str
   }
 }
 
-function discardLeftoverProposals(client: Kit): void {
-  try {
-    const leftovers = Object.values(client.getPendingSessionProposals())
-    for (const params of leftovers) {
-      const id = Number(params.id)
-      if (!id) continue
-      handledSessionIds.add(id)
-      void rejectProposal(client, id)
-    }
-    if (leftovers.length) console.log('[walletconnect] 已清理启动时遗留的连接请求', leftovers.length)
-  } catch {
-    /* 没有遗留提案就跳过 */
-  }
-}
-
 function signClientOf(client: Kit): {
   auth?: { requests?: { getAll?: () => AuthTypes.PendingRequest[] } }
 } | undefined {
@@ -451,17 +643,6 @@ function listPendingAuthRequests(client: Kit): AuthTypes.PendingRequest[] {
   } catch {
     return []
   }
-}
-
-function discardLeftoverAuthentications(client: Kit): void {
-  const leftovers = listPendingAuthRequests(client)
-  for (const item of leftovers) {
-    const id = Number(item.id)
-    if (!id) continue
-    handledSessionIds.add(id)
-    void client.rejectSessionAuthenticate({ id, reason: getSdkError('USER_REJECTED') }).catch(() => undefined)
-  }
-  if (leftovers.length) console.log('[walletconnect] 已清理启动时遗留的登录请求', leftovers.length)
 }
 
 function drainPendingAuthentications(client: Kit): void {
@@ -563,6 +744,8 @@ function drainPendingProposals(client: Kit): void {
     }
     if (stale.length) console.log('[walletconnect] 已丢掉同一网站的旧提案', stale.length)
     for (const { id, params } of latest.values()) {
+      const pairingTopic = pairingTopicOf(params)
+      if (!isCurrentPairingTopic(pairingTopic)) continue
       if (!noteSessionEvent('proposal', id)) continue
       console.log(
         '[walletconnect] 收到待处理 session_proposal',
@@ -579,16 +762,32 @@ function drainPendingProposals(client: Kit): void {
 
 function attachSessionListeners(next: Kit): void {
   const onProposalEvent = (proposal: WalletKitTypes.SessionProposal) => {
+    const pairingTopic = pairingTopicOf(proposal.params)
+    if (!isCurrentPairingTopic(pairingTopic)) {
+      console.log('[walletconnect] 忽略旧配对的提案', pairingTopic.slice(0, 16) || '(空)')
+      if (pairingTopic) {
+        handledSessionIds.add(proposal.id)
+        void rejectProposal(next, proposal.id)
+      }
+      return
+    }
     if (!noteSessionEvent('proposal', proposal.id)) return
     console.log(
       '[walletconnect] 收到 session_proposal',
       proposal.params.proposer.metadata.url,
-      proposal.params.pairingTopic || '',
+      pairingTopic,
       proposalAuthRequests(proposal).length ? '含登录' : '无登录',
     )
     void onProposal(proposal)
   }
   const onAuthEvent = (event: WalletKitTypes.SessionAuthenticate) => {
+    const pairingTopic = pairingTopicOf(event as { pairingTopic?: string; topic?: string })
+    if (expectedPairingTopic && pairingTopic && pairingTopic !== expectedPairingTopic) {
+      console.log('[walletconnect] 忽略旧配对的登录', pairingTopic.slice(0, 16))
+      handledSessionIds.add(event.id)
+      void next.rejectSessionAuthenticate({ id: event.id, reason: getSdkError('USER_REJECTED') }).catch(() => undefined)
+      return
+    }
     if (!noteSessionEvent('auth', event.id)) return
     console.log('[walletconnect] 收到 session_authenticate', event.params.requester.metadata.url)
     void onAuthenticate(event)
@@ -643,6 +842,7 @@ async function onProposal(proposal: WalletKitTypes.SessionProposal): Promise<voi
   })
   if (!approved) {
     await rejectProposal(client, proposalId)
+    if (expectedPairingTopic === pairingTopicOf(proposal.params)) expectedPairingTopic = null
     return
   }
   try {
@@ -673,6 +873,7 @@ async function onProposal(proposal: WalletKitTypes.SessionProposal): Promise<voi
       const loginOk = await confirmLogin(meta)
       if (!loginOk) {
         await rejectProposal(client, proposalId)
+        if (expectedPairingTopic === pairingTopicOf(proposal.params)) expectedPairingTopic = null
         return
       }
       cacao = await signAuthCacao(embeddedAuth[0])
@@ -685,6 +886,7 @@ async function onProposal(proposal: WalletKitTypes.SessionProposal): Promise<voi
       proposalRequestsResponses: cacao ? { authentication: [cacao] } : undefined,
     })
     await disconnectOtherSessions(client, meta.url, session.topic)
+    expectedPairingTopic = null
     broadcastSessions()
     void notifyWalletConnectNetwork()
     console.log('[walletconnect] 会话已批准', meta.url, session.topic)
@@ -699,6 +901,7 @@ async function onProposal(proposal: WalletKitTypes.SessionProposal): Promise<voi
   } catch (err) {
     console.warn('[walletconnect] 批准会话失败', err instanceof Error ? err.message : err)
     await rejectProposal(client, proposalId)
+    if (expectedPairingTopic === pairingTopicOf(proposal.params)) expectedPairingTopic = null
   }
 }
 

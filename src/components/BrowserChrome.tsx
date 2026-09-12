@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { useBrowserStore } from '../store/browserStore'
-import { WalletConnectDialog } from './WalletConnectDialog'
+import { WalletConnectDialog, WalletConnectWaitLock } from './WalletConnectDialog'
 import { useT } from '../i18n'
 
 const WEBVIEW_PREFS = 'contextIsolation=yes, nodeIntegration=no, sandbox=yes, javascript=yes'
@@ -80,6 +80,7 @@ export function BrowserChrome({ children }: { children: ReactNode }) {
         })}
         <WalletConnectDialog onOpenChange={setWcOpen} />
       </div>
+      <WalletConnectWaitLock />
     </div>
   )
 }
