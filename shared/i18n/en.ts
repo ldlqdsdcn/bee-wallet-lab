@@ -445,7 +445,7 @@ export const en = {
 
   'wc.menu': 'WalletConnect',
   'wc.title': 'WalletConnect',
-  'wc.subtitle': 'Close the site WalletConnect modal, copy the latest full wc: link once, then approve connect and sign-in. The QR closes only after the second confirm.',
+  'wc.subtitle': 'Close the site WalletConnect modal and paste the latest wc: link once. A second paste leaves the site on the old QR. Some sites also need a sign-in confirm.',
   'wc.pair': 'Pair',
   'wc.uri': 'WalletConnect URI',
   'wc.uriHint': 'Copy the full wc: link under the QR code (it must include symKey). Closing the modal first expires the link.',

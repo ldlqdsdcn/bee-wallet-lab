@@ -45,6 +45,8 @@ import {
   pendingKind,
   sessionSummary,
   toCaipChain,
+  toHexChainId,
+  walletCapabilities,
 } from './codec'
 
 type WalletKitCtor = (typeof import('@reown/walletkit'))['WalletKit']
@@ -91,11 +93,13 @@ const READ = new Set([
   'eth_getTransactionByHash',
   'wallet_getPermissions',
   'wallet_requestPermissions',
+  'wallet_getCapabilities',
   'net_version',
 ])
 
 let kit: Kit | null = null
 let starting: Promise<Kit> | null = null
+let pairLock: Promise<void> | null = null
 const activePairings = new Map<string, Promise<void>>()
 const usedUris = new Set<string>()
 const handledSessionIds = new Set<number>()
@@ -236,6 +240,12 @@ export function rejectWalletConnectPending(reason = '钱包已锁定'): void {
 
 export async function pairWalletConnect(uri: string): Promise<WalletConnectSession[]> {
   if (!getStatus().unlocked) throw invalidArg('请先解锁钱包')
+  if (pairLock || activePairings.size) {
+    throw invalidArg('上一次连接还在进行。请先确认弹窗，不要连贴第二条链接，否则网站会停在旧二维码上。')
+  }
+  if ([...pending.values()].some((item) => item.item.kind === 'session' || item.item.kind === 'auth')) {
+    throw invalidArg('请先确认当前弹窗，再连接下一个网站。')
+  }
   const client = await requireKit()
   const parsed = parseWalletConnectUri(uri)
   if (!parsed.includes('symKey=')) {
@@ -265,11 +275,20 @@ export async function pairWalletConnect(uri: string): Promise<WalletConnectSessi
     await client.pair({ uri: parsed, activatePairing: true })
     usedUris.add(parsed)
     console.log('[walletconnect] 配对请求已交给中继，等待网站确认')
-    drainPendingProposals(client)
-    drainPendingAuthentications(client)
     const alreadyOpen = lastIncomingSession || [...pending.values()].some((item) => item.item.kind === 'session' || item.item.kind === 'auth')
-    if (!alreadyOpen) await waitForIncomingSession(20_000)
+    if (!alreadyOpen) {
+      try {
+        await waitForIncomingSession(20_000)
+      } catch (err) {
+        drainPendingProposals(client)
+        drainPendingAuthentications(client)
+        if (!lastIncomingSession && ![...pending.values()].some((item) => item.item.kind === 'session' || item.item.kind === 'auth')) {
+          throw err
+        }
+      }
+    }
   })()
+  pairLock = pairing
   activePairings.set(parsed, pairing)
   try {
     await pairing
@@ -281,6 +300,7 @@ export async function pairWalletConnect(uri: string): Promise<WalletConnectSessi
     throw err
   } finally {
     if (activePairings.get(parsed) === pairing) activePairings.delete(parsed)
+    if (pairLock === pairing) pairLock = null
   }
   return listWalletConnectSessions()
 }
@@ -563,7 +583,8 @@ function attachSessionListeners(next: Kit): void {
     console.log(
       '[walletconnect] 收到 session_proposal',
       proposal.params.proposer.metadata.url,
-      proposalAuthRequests(proposal).length ? '含登录' : '',
+      proposal.params.pairingTopic || '',
+      proposalAuthRequests(proposal).length ? '含登录' : '无登录',
     )
     void onProposal(proposal)
   }
@@ -665,11 +686,15 @@ async function onProposal(proposal: WalletKitTypes.SessionProposal): Promise<voi
     })
     await disconnectOtherSessions(client, meta.url, session.topic)
     broadcastSessions()
+    void notifyWalletConnectNetwork()
     console.log('[walletconnect] 会话已批准', meta.url, session.topic)
     if (!cacao) {
       console.log('[walletconnect] 等待网站登录请求，请再确认一次')
       drainPendingAuthentications(client)
-      await waitForPendingAuth(client, 12_000)
+      await waitForPendingAuth(client, 20_000)
+      if (![...pending.values()].some((item) => item.item.kind === 'auth')) {
+        console.log('[walletconnect] 网站没有再发登录。若页面仍停在二维码，请关掉窗口后只连一次最新链接')
+      }
     }
   } catch (err) {
     console.warn('[walletconnect] 批准会话失败', err instanceof Error ? err.message : err)
@@ -743,11 +768,17 @@ async function handleRead(method: string, params: unknown[], caipChain: string):
     return method === 'wallet_requestPermissions' ? [{ parentCapability: 'eth_accounts' }] : [account.address]
   }
   if (method === 'wallet_getPermissions') return [{ parentCapability: 'eth_accounts' }]
+  if (method === 'wallet_getCapabilities') {
+    const catalog = listNetworks()
+      .filter((item) => item.walletType === 'web3' && item.chainId)
+      .map((item) => item.chainId)
+    return walletCapabilities(params, [caipChain, ...catalog])
+  }
   if (method === 'eth_chainId' || method === 'net_version') {
     const network = networkFromCaip(caipChain) ?? currentNetwork()
     if (!network) throw new Error('请先选择 EVM 网络')
     const decimal = chainIdDecimal(network.chainId)
-    return method === 'net_version' ? decimal : `0x${BigInt(decimal).toString(16)}`
+    return method === 'net_version' ? decimal : toHexChainId(decimal)
   }
   const network = networkFromCaip(caipChain) ?? currentNetwork()
   if (!network) throw new Error('当前链不在目录里')

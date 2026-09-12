@@ -445,7 +445,7 @@ export const zh = {
 
   'wc.menu': 'WalletConnect',
   'wc.title': 'WalletConnect',
-  'wc.subtitle': '关掉网站上旧的 WalletConnect 窗口，重新点一次，复制最新 wc: 链接，只粘贴一次。先确认连接，再确认登录，网站才会关掉二维码。',
+  'wc.subtitle': '关掉网站上旧的 WalletConnect 窗口，重新点一次，复制最新 wc: 链接，只粘贴一次。连第二条网站会停在旧二维码上。有的网站还要再确认登录。',
   'wc.pair': '配对',
   'wc.uri': 'WalletConnect 链接',
   'wc.uriHint': '复制二维码下方以 wc: 开头的整段链接（必须含 symKey）。关掉窗口再复制会过期。',
