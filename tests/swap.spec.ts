@@ -75,8 +75,15 @@ describe('兑换 codec', () => {
     expect(quote.allowanceNeeded).toBe(true)
     expect(quote.quoteId).toBe('99')
     expect(quote.buyAmount).toBe('30000000')
-    const row = parseHistoryRow({ id: '1', chain_id: 56, status: 'SUBMITTED', tx_hash: '0xab' })
+    const row = parseHistoryRow({
+      id: '1',
+      chain_id: 56,
+      status: 'SUBMITTED',
+      tx_hash: '0xab',
+      created: '2026-09-12 15:11:02',
+    })
     expect(row.chainId).toBe(56)
     expect(row.txHash).toBe('0xab')
+    expect(row.created).toContain('2026-09-12')
   })
 })

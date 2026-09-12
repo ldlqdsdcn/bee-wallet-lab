@@ -148,12 +148,16 @@ export function parseResourcePayload(
   const freeNetUsed = asNumber(record.freeNetUsed, 0)
   const netLimit = asNumber(record.NetLimit, 0)
   const netUsed = asNumber(record.NetUsed, 0)
+  const bandwidthLimit = Math.max(0, freeNetLimit) + Math.max(0, netLimit)
+  const bandwidthUsed = Math.max(0, freeNetUsed) + Math.max(0, netUsed)
   return {
     address,
     balanceTrx: sunToTrx(balanceSun),
     energyLimit,
     energyUsed,
     energyLeft: Math.max(0, energyLimit - energyUsed),
+    bandwidthLimit,
+    bandwidthUsed,
     bandwidthLeft: Math.max(0, freeNetLimit - freeNetUsed) + Math.max(0, netLimit - netUsed),
   }
 }

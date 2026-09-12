@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import QRCode from 'qrcode'
 import { IPC_EVENT } from '@shared/ipc'
@@ -11,7 +11,10 @@ import type {
   TronEnergyFeeMode,
 } from '@shared/types'
 import { accountApi, catalogApi, on, transferApi } from '../lib/bridge'
+import { useAccountBalances } from '../lib/accountBalances'
+import { useTronResources } from '../lib/tronResources'
 import { Alert, Button, Card, Field, Select } from '../components/ui'
+import { TronResourcesCard } from '../components/TronResourcesCard'
 import AddressBookPicker from '../components/AddressBookPicker'
 import { TokenSelect } from '../components/TokenSelect'
 import { explorerTabTitle } from '../lib/explorer'
@@ -24,6 +27,8 @@ import { useT } from '../i18n'
 interface NavState {
   tokenPk?: string
   accountId?: string
+  networkPk?: string
+  tab?: 'receive' | 'send'
 }
 
 export default function TransferPage() {
@@ -33,8 +38,9 @@ export default function TransferPage() {
   const currentWalletId = useWalletStore((s) => s.currentId)
   const networks = useNetworkStore((s) => s.networks)
   const networkPk = useNetworkStore((s) => s.currentPk)
+  const selectNetwork = useNetworkStore((s) => s.select)
   const network = currentNetworkOf({ networks, currentPk: networkPk })
-  const [tab, setTab] = useState<'receive' | 'send'>('send')
+  const [tab, setTab] = useState<'receive' | 'send'>(nav.tab === 'receive' ? 'receive' : 'send')
   const [tokens, setTokens] = useState<TokenRecord[]>([])
   const [accounts, setAccounts] = useState<AccountRecord[]>([])
   const [tokenPk, setTokenPk] = useState(nav.tokenPk ?? '')
@@ -50,9 +56,22 @@ export default function TransferPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const openExplorer = useBrowserStore((s) => s.open)
+  const balances = useAccountBalances(accountId, networkPk)
+  const isTron = network?.walletType === 'tron'
+  const tronResources = useTronResources(accountId, networkPk, Boolean(isTron && accountId))
+  const resultRef = useRef<HTMLDivElement>(null)
 
   const account = accounts.find((item) => item.id === accountId)
   const token = tokens.find((item) => item.id === tokenPk)
+  const tokenBalance = balances.of(tokenPk)
+
+  useEffect(() => {
+    const state = (location.state ?? {}) as NavState
+    if (state.tab === 'receive' || state.tab === 'send') setTab(state.tab)
+    if (state.tokenPk) setTokenPk(state.tokenPk)
+    if (state.accountId) setAccountId(state.accountId)
+    if (state.networkPk) void selectNetwork(state.networkPk)
+  }, [location.key])
 
   useEffect(() => {
     if (!currentWalletId) {
@@ -94,6 +113,10 @@ export default function TransferPage() {
     setTo('')
     setAmount('')
   }, [networkPk])
+
+  useEffect(() => {
+    if (receipt) resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [receipt?.txid])
 
   useEffect(() => {
     const txid = receipt?.txid
@@ -175,29 +198,91 @@ export default function TransferPage() {
         )}
       </Select>
 
+      {isTron && accountId ? (
+        <TronResourcesCard
+          resources={tronResources.resources}
+          loading={tronResources.loading}
+          error={tronResources.error}
+          onRefresh={tronResources.reload}
+        />
+      ) : null}
+
       <Alert>{error}</Alert>
+      {tab === 'send' && receipt ? (
+        <div
+          ref={resultRef}
+          className={
+            receipt.transaction.status === 'failed'
+              ? 'rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3'
+              : 'rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3'
+          }
+        >
+          <p
+            className={`text-sm font-semibold ${
+              receipt.transaction.status === 'failed' ? 'text-red-300' : 'text-emerald-300'
+            }`}
+          >
+            {receipt.transaction.status === 'failed' ? t('transfer.failed') : t('transfer.success')}
+          </p>
+          {receipt.transaction.status !== 'failed' ? (
+            <p className="mt-1 text-xs text-emerald-200/90">
+              {t('transfer.successDetail', {
+                amount: formatAmount(receipt.transaction.amount),
+                symbol: receipt.transaction.symbol,
+                to: shorten(receipt.transaction.toAddress, 8, 6),
+              })}
+            </p>
+          ) : null}
+          {receipt.transaction.status !== 'failed' ? (
+            <p className="mt-1 text-[11px] text-ink-400">
+              {receipt.transaction.status === 'confirmed' ? t('transfer.confirmed') : t('transfer.pending')}
+            </p>
+          ) : null}
+          <p className="sensitive mt-2 break-all font-mono text-[11px] text-ink-300">{receipt.txid}</p>
+          {receipt.explorerUrl ? (
+            <Button
+              variant="ghost"
+              className="mt-2 px-2 py-1 text-xs"
+              onClick={() => openExplorer(receipt.explorerUrl!, explorerTabTitle(receipt.explorerUrl!))}
+            >
+              {t('transfer.openExplorer')}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       {tab === 'receive' ? (
         <Card title={t('transfer.receive')}>
           {!account ? (
             <p className="text-sm text-ink-400">{t('transfer.noAccountHint')}</p>
           ) : (
-            <div className="flex flex-col items-center gap-4">
-              {qr ? <img src={qr} alt={t('transfer.qrAlt')} className="rounded-xl" /> : null}
-              <p className="sensitive break-all text-center text-sm text-ink-200">{account.address}</p>
-              <Button
-                variant="ghost"
-                onClick={() => void navigator.clipboard.writeText(account.address)}
-              >
-                {t('transfer.copyAddress')}
-              </Button>
+            <div className="space-y-4">
+              <TokenSelect tokens={tokens} value={tokenPk} onChange={setTokenPk} balances={balances.byToken} />
+              <p className="text-[11px] text-ink-500">
+                {balances.loading && tokenBalance == null
+                  ? t('common.loading')
+                  : t('common.balance', {
+                      amount: tokenBalance != null ? formatAmount(tokenBalance) : '—',
+                      symbol: token?.symbol ?? '',
+                    })}
+              </p>
+              <div className="flex flex-col items-center gap-4">
+                {qr ? <img src={qr} alt={t('transfer.qrAlt')} className="rounded-xl" /> : null}
+                <p className="sensitive break-all text-center text-sm text-ink-200">{account.address}</p>
+                <Button
+                  variant="ghost"
+                  onClick={() => void navigator.clipboard.writeText(account.address)}
+                >
+                  {t('transfer.copyAddress')}
+                </Button>
+              </div>
             </div>
           )}
         </Card>
       ) : (
         <Card title={t('transfer.send')}>
           <div className="space-y-3">
-            <TokenSelect tokens={tokens} value={tokenPk} onChange={setTokenPk} />
+            <TokenSelect tokens={tokens} value={tokenPk} onChange={setTokenPk} balances={balances.byToken} />
             {tokens.length === 0 ? (
               <p className="text-xs text-ink-500">{t('transfer.noToken')}</p>
             ) : (
@@ -222,11 +307,31 @@ export default function TransferPage() {
                 onChange={(e) => setTo(e.target.value)}
               />
             </div>
-            <Field
-              label={`${t('common.amount')}${token ? ` (${token.symbol})` : ''}`}
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
+            <div>
+              <Field
+                label={`${t('common.amount')}${token ? ` (${token.symbol})` : ''}`}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
+              <div className="mt-1 flex items-center justify-between text-[11px] text-ink-500">
+                <span>
+                  {balances.loading && tokenBalance == null
+                    ? t('common.loading')
+                    : t('common.balance', {
+                        amount: tokenBalance != null ? formatAmount(tokenBalance) : '—',
+                        symbol: token?.symbol ?? '',
+                      })}
+                </span>
+                <button
+                  type="button"
+                  className="text-honey-400 disabled:text-ink-600"
+                  disabled={!tokenBalance || Number(tokenBalance) <= 0}
+                  onClick={() => setAmount(tokenBalance ?? '')}
+                >
+                  {t('common.max')}
+                </button>
+              </div>
+            </div>
             {network?.walletType !== 'tron' ? (
               <>
                 <Select
@@ -387,25 +492,21 @@ export default function TransferPage() {
             ) : null}
 
             {receipt ? (
-              <div className="space-y-2 rounded-lg border border-honey-600/30 bg-honey-600/10 px-3 py-2">
-                <p className="text-xs text-honey-400">
-                  {receipt.transaction.status === 'confirmed'
-                    ? t('transfer.confirmed')
-                    : receipt.transaction.status === 'failed'
-                      ? t('transfer.failed')
-                      : t('transfer.pending')}
+              <Alert tone={receipt.transaction.status === 'failed' ? 'error' : 'success'}>
+                <p className="font-semibold">
+                  {receipt.transaction.status === 'failed' ? t('transfer.failed') : t('transfer.success')}
                 </p>
-                <p className="sensitive break-all font-mono text-[11px] text-ink-300">{receipt.txid}</p>
-                {receipt.explorerUrl ? (
-                  <Button
-                    variant="ghost"
-                    className="px-2 py-1 text-xs"
-                    onClick={() => openExplorer(receipt.explorerUrl!, explorerTabTitle(receipt.explorerUrl!))}
-                  >
-                    {t('transfer.openExplorer')}
-                  </Button>
+                {receipt.transaction.status !== 'failed' ? (
+                  <p className="mt-1">
+                    {t('transfer.successDetail', {
+                      amount: formatAmount(receipt.transaction.amount),
+                      symbol: receipt.transaction.symbol,
+                      to: shorten(receipt.transaction.toAddress, 8, 6),
+                    })}
+                  </p>
                 ) : null}
-              </div>
+                <p className="sensitive mt-1 break-all font-mono text-[11px]">{receipt.txid}</p>
+              </Alert>
             ) : null}
 
             <div className="flex gap-2">
@@ -443,6 +544,8 @@ export default function TransferPage() {
                     )
                     setReceipt(result)
                     setPreview(null)
+                    balances.reload()
+                    tronResources.reload()
                   })
                 }
               >

@@ -499,6 +499,17 @@ const migrations: Migration[] = [
       `)
     },
   },
+  {
+    version: 14,
+    description: 'one transaction hash may have send and receive legs',
+    up: (db) => {
+      db.exec(`
+        DROP INDEX IF EXISTS idx_tx_unique;
+        CREATE UNIQUE INDEX idx_tx_unique
+          ON transactions(network_pk, txid, account_id, symbol, direction);
+      `)
+    },
+  },
 ]
 
 export const LATEST_SCHEMA_VERSION = migrations[migrations.length - 1].version

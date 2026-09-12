@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import type { AssetEntry, FaucetRecord, PortfolioSnapshot } from '@shared/types'
 import { faucetApi, portfolioApi } from '../lib/bridge'
 import { Alert, Button, Card } from '../components/ui'
+import { TronResourcesCard } from '../components/TronResourcesCard'
+import { useTronResources } from '../lib/tronResources'
 import { AccountAddress } from '../components/AccountAddress'
 import { addressExplorerUrl, explorerTabTitle } from '../lib/explorer'
 import { bitcoinAddressLabel, formatAmount } from '../lib/format'
@@ -18,6 +20,7 @@ export default function HomePage() {
   const currentWallet = useWalletStore((s) => s.current)
   const networks = useNetworkStore((s) => s.networks)
   const networkPk = useNetworkStore((s) => s.currentPk)
+  const selectNetwork = useNetworkStore((s) => s.select)
   const current = currentNetworkOf({ networks, currentPk: networkPk })
   const open = useBrowserStore((s) => s.open)
   const [snapshot, setSnapshot] = useState<PortfolioSnapshot | null>(null)
@@ -78,7 +81,26 @@ export default function HomePage() {
   }
 
   const isBitcoin = current?.walletType === 'bitcoin'
+  const isTron = current?.walletType === 'tron'
   const accountEntries = useMemo(() => uniqueAccountEntries(snapshot?.entries ?? []), [snapshot])
+  const tronAccounts = useMemo(
+    () => accountEntries.filter((entry) => entry.accountId).map((entry) => ({ accountId: entry.accountId! })),
+    [accountEntries],
+  )
+
+  const goTransfer = (tab: 'receive' | 'send', entry: AssetEntry) => {
+    if (entry.networkPk && entry.networkPk !== networkPk) {
+      void selectNetwork(entry.networkPk)
+    }
+    navigate('/transfer', {
+      state: {
+        tab,
+        networkPk: entry.networkPk,
+        tokenPk: entry.tokenPk,
+        accountId: entry.accountId,
+      },
+    })
+  }
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
@@ -162,26 +184,20 @@ export default function HomePage() {
         ) : null}
       </Card>
 
+      {isTron
+        ? tronAccounts.map((item) => (
+            <HomeTronResources key={item.accountId} accountId={item.accountId} networkPk={networkPk} />
+          ))
+        : null}
+
       <Card title={t('home.tokens')}>
         {!snapshot || snapshot.entries.length === 0 ? (
           <p className="text-sm text-ink-400">{t('home.noAssets')}</p>
         ) : (
           <ul className="divide-y divide-ink-700">
             {snapshot.entries.map((entry) => (
-              <li key={entry.key}>
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-3 py-3 text-left hover:bg-ink-800/40"
-                  onClick={() =>
-                    navigate('/transfer', {
-                      state: {
-                        networkPk: entry.networkPk,
-                        tokenPk: entry.tokenPk,
-                        accountId: entry.accountId,
-                      },
-                    })
-                  }
-                >
+              <li key={entry.key} className="py-3">
+                <div className="flex items-center gap-3">
                   {entry.iconUrl ? (
                     <img src={entry.iconUrl} alt="" className="h-8 w-8 rounded-full" />
                   ) : (
@@ -213,13 +229,29 @@ export default function HomePage() {
                       {entry.currencyBalance ?? '--'} {snapshot.currencyCode}
                     </p>
                   </div>
-                </button>
-                {isBitcoin && entry.address ? (
-                  <div className="pb-3 pl-11">
-                    <AccountAddress
-                      address={entry.address}
-                      explorerUrl={current ? addressExplorerUrl(current, entry.address) : null}
-                    />
+                </div>
+                {entry.address ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 pl-11">
+                    <Button
+                      variant="ghost"
+                      className="px-2 py-1 text-xs"
+                      onClick={() => goTransfer('receive', entry)}
+                    >
+                      {t('home.goReceive')}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="px-2 py-1 text-xs"
+                      onClick={() => goTransfer('send', entry)}
+                    >
+                      {t('home.goSend')}
+                    </Button>
+                    {isBitcoin ? (
+                      <AccountAddress
+                        address={entry.address}
+                        explorerUrl={current ? addressExplorerUrl(current, entry.address) : null}
+                      />
+                    ) : null}
                   </div>
                 ) : null}
               </li>
@@ -229,6 +261,11 @@ export default function HomePage() {
       </Card>
     </div>
   )
+}
+
+function HomeTronResources({ accountId, networkPk }: { accountId: string; networkPk: string }) {
+  const { resources, loading, error, reload } = useTronResources(accountId, networkPk, true)
+  return <TronResourcesCard resources={resources} loading={loading} error={error} onRefresh={reload} />
 }
 
 function uniqueAccountEntries(entries: AssetEntry[]): AssetEntry[] {

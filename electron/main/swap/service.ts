@@ -13,7 +13,7 @@ import type {
   TronEnergyFeeMode,
 } from '@shared/types'
 import { getBaseUrl } from '../backend/config'
-import { asRecord, asString } from '../backend/list'
+import { asNumber, asRecord, asString } from '../backend/list'
 import {
   broadcastEvmTx,
   estimateEvmGas,
@@ -237,6 +237,19 @@ export async function submitSwap(input: SwapSubmitInput): Promise<SwapSubmitResu
     network,
     accountId: account.id,
     from: account.address,
+    to: quote.allowanceTarget || account.address,
+    tokenPk: sellToken.id,
+    symbol: sellToken.symbol,
+    amount: formatMinor(sellAmountMinor, sellToken.decimals),
+    fee: null,
+    txid,
+    raw: '',
+    direction: 'send',
+  })
+  persistBroadcastedTx({
+    network,
+    accountId: account.id,
+    from: quote.allowanceTarget || account.address,
     to: account.address,
     tokenPk: buyToken.id,
     symbol: buyToken.symbol,
@@ -244,6 +257,7 @@ export async function submitSwap(input: SwapSubmitInput): Promise<SwapSubmitResu
     fee: null,
     txid,
     raw: '',
+    direction: 'receive',
   })
 
   return {
@@ -259,7 +273,29 @@ export async function listAccountSwaps(accountId: string, networkPk: string): Pr
   const network = requireNetwork(networkPk)
   const { chainId, kind } = requireSwapChain(network)
   const account = getAccount(accountId)
-  return listSwapOrders(kind, account.address, chainId)
+  const rows = await listSwapOrders(kind, account.address, chainId)
+  if (kind !== 'tron') return rows
+  return Promise.all(rows.map((row) => confirmTronSwapRow(row, network.networkScope)))
+}
+
+async function confirmTronSwapRow(
+  row: SwapHistoryItem,
+  networkScope: NetworkRecord['networkScope'],
+): Promise<SwapHistoryItem> {
+  if (!row.txHash) return row
+  const current = row.status.trim().toUpperCase()
+  if (current === 'FILLED' || current === 'SUCCESS' || current === 'FAILED') return row
+  try {
+    const info = asRecord(await fetchTronTxInfo(row.txHash, networkScope))
+    if (!info) return row
+    const receipt = asRecord(info.receipt)
+    const result = asString(receipt?.result || info.result || info.contractRet)
+    if (/REVERT|FAILED/i.test(result)) return { ...row, status: 'FAILED' }
+    if (/SUCCESS/i.test(result) || asNumber(info.blockNumber, 0) > 0) return { ...row, status: 'FILLED' }
+  } catch {
+    /* 目录状态保持 SUBMITTED */
+  }
+  return row
 }
 
 async function approveEvm(

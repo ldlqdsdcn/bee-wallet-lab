@@ -120,6 +120,15 @@ export function formatSwapFee(networkFeeWei: string | null, decimals: number, sy
   return `约 ${formatMinor(parseWei(networkFeeWei), decimals)} ${symbol}`
 }
 
+function createdAtOf(value: unknown): string {
+  if (value instanceof Date && Number.isFinite(value.getTime())) return value.toISOString()
+  if (typeof value === 'number' && Number.isFinite(value)) return new Date(value).toISOString()
+  const text = asString(value).trim()
+  if (!text) return ''
+  const ms = Date.parse(text.includes('T') ? text : text.replace(' ', 'T'))
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : text
+}
+
 export function parseHistoryRow(row: unknown): {
   id: string
   chainId: number
@@ -142,6 +151,6 @@ export function parseHistoryRow(row: unknown): {
     sellAmount: asString(record.sellAmount ?? record.sell_amount),
     buyAmount: asString(record.buyAmount ?? record.buy_amount),
     txHash: txHash || null,
-    created: asString(record.created ?? record.created_at),
+    created: createdAtOf(record.created ?? record.created_at),
   }
 }

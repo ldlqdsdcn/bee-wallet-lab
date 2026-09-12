@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { IPC, IPC_CHANNELS } from '../shared/ipc'
 import {
   burnSunForEnergy,
   compareEnergyFees,
@@ -16,6 +17,10 @@ import {
 } from '../electron/main/energy/codec'
 
 describe('能量租赁 codec', () => {
+  it('登记能量查询通道', () => {
+    expect(IPC_CHANNELS).toContain(IPC.energyResources)
+  })
+
   it('sun 转 TRX 不走浮点', () => {
     expect(sunToTrx(565000)).toBe('0.565')
     expect(sunToTrx('1500000')).toBe('1.5')
@@ -88,6 +93,7 @@ describe('能量租赁 codec', () => {
       2_500_000n,
     )
     expect(resources.energyLeft).toBe(800)
+    expect(resources.bandwidthLimit).toBe(600)
     expect(resources.bandwidthLeft).toBe(550)
     expect(resources.balanceTrx).toBe('2.5')
   })
