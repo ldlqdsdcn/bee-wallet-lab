@@ -47,6 +47,8 @@ import { registerContractIpc } from './contract'
 import { registerDevToolsIpc } from './devTools'
 import { registerSwapIpc } from './swap'
 import { registerBridgeIpc } from './bridge'
+import { registerDappIpc } from './dapp'
+import { clearDappCatalogCache, loadDappCatalog } from '../dapp/service'
 import { refreshAppMenu } from '../appMenu'
 import { startTransactionWatch, stopTransactionWatch } from '../history/watch'
 import { recoverInterruptedHdAirdrops, stopAllHdAirdrops } from '../hdAirdrop/service'
@@ -204,6 +206,7 @@ export function registerAllIpc(): void {
   registerDevToolsIpc()
   registerSwapIpc()
   registerBridgeIpc()
+  registerDappIpc()
   registerPlaceholders()
   initWalletAuth()
   recoverInterruptedHdAirdrops()
@@ -219,9 +222,13 @@ export function registerAllIpc(): void {
         broadcast(IPC_EVENT.catalogUpdated, result)
         refreshAppMenu()
       }).catch(() => undefined)
+      void loadDappCatalog()
+        .then(() => refreshAppMenu())
+        .catch(() => undefined)
       startTransactionWatch()
     }
     if (event === 'locked') {
+      clearDappCatalogCache()
       stopAllHdAirdrops()
       stopTransactionWatch()
     }

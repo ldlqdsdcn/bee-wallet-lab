@@ -29,6 +29,7 @@ const navItems: { to: string; key: MessageKey }[] = [
   { to: '/activity', key: 'nav.activity' },
   { to: '/address-book', key: 'nav.addressBook' },
   { to: '/sign', key: 'nav.sign' },
+  { to: '/dapps', key: 'nav.dapps' },
 ]
 
 /** 用户活动上报节流间隔 */

@@ -167,6 +167,9 @@ export const IPC = {
   bridgeSubmit: 'bridge:submit',
   bridgeStatus: 'bridge:status',
   bridgeList: 'bridge:list',
+
+  /* 三方连接（目录站 DApp） */
+  dappCatalog: 'dapp:catalog',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

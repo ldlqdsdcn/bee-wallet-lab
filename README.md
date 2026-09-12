@@ -48,7 +48,7 @@ Electron 桌面端。密钥只存在于主进程，渲染进程通过白名单 I
 | 批量转账 | EVM 上按分层地址批量打 ERC-20；失败可重试 |
 | 消息签名 | EVM/TRON `personal_sign`；Bitcoin BIP-137；Solana Ed25519 |
 | 地址簿 | 本机保存公开地址，转账时选用 |
-| 三方连接 | 应用内浏览器打开精选 DApp / 水龙头（第三方站点，请自行核对网址） |
+| 三方连接 | 从目录站拉取 DApp 分类与站点，应用内浏览器打开（第三方站点，请自行核对网址） |
 | 网络 / 节点 / 代币 / 水龙头 / 代理 | 维护目录、RPC 测速、测试网领水、http/socks5 代理 |
 | 中英界面 | 简体中文 / English 即时切换，菜单一起更新 |
 
@@ -139,7 +139,7 @@ Built-in networks include Ethereum, BSC, Base, Optimism, Polygon, Arbitrum, Line
 | Batch transfer | Send ERC-20 to HD addresses on EVM; retry failed rows |
 | Sign message | EVM/TRON `personal_sign`; Bitcoin BIP-137; Solana Ed25519 |
 | Address book | Local public addresses for the send form |
-| DApps | In-app browser for a curated list (third-party sites — verify the URL) |
+| DApps | In-app browser for catalog DApps (third-party sites — verify the URL) |
 | Networks / RPC / tokens / faucets / proxy | Catalog, latency checks, testnet faucets, http/socks5 proxy |
 | Language | Instant Simplified Chinese / English, including the native menu |
 

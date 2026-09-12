@@ -3,8 +3,7 @@
  */
 import { Menu, app, dialog, type MenuItemConstructorOptions } from 'electron'
 import { IPC_EVENT, type AppCommand } from '../../shared/ipc'
-import { DAPP_CATEGORIES } from '../../shared/dapps'
-import type { MessageKey } from '../../shared/i18n'
+import { peekDappCategories } from './dapp/service'
 import { broadcast } from './ipc/registry'
 import { getStatus, onVaultEvent } from './security/vault'
 import { requestQuit } from './quit'
@@ -34,10 +33,6 @@ async function showCheckUpdates(): Promise<void> {
     message: t('menu.updateMsg'),
     detail: t('menu.updateDetail'),
   })
-}
-
-function dappLabel(id: string): string {
-  return t(`dapp.${id}` as MessageKey)
 }
 
 function unlockedTemplate(): MenuItemConstructorOptions[] {
@@ -108,10 +103,13 @@ function unlockedTemplate(): MenuItemConstructorOptions[] {
     },
     {
       label: t('menu.dapps'),
-      submenu: DAPP_CATEGORIES.map((item) => ({
-        label: dappLabel(item.id),
-        click: () => navigate(`/dapps/${item.id}`),
-      })),
+      submenu: [
+        { label: t('dapp.title'), click: () => navigate('/dapps') },
+        ...peekDappCategories().map((item) => ({
+          label: item.virtual ? t('dapp.hot') : item.name,
+          click: () => navigate(`/dapps/${item.id}`),
+        })),
+      ],
     },
     {
       label: t('menu.help'),
