@@ -72,6 +72,30 @@ export function toCaipChain(chainId: string): string {
   return `eip155:${chainIdDecimal(chainId)}`
 }
 
+export function toHexChainId(raw: string): string {
+  return `0x${BigInt(chainIdDecimal(raw)).toString(16)}`
+}
+
+/** EIP-5792：告诉网站我们不会批量代发，让它走普通 eth_sendTransaction。 */
+export function walletCapabilities(params: unknown[], fallbackChains: string[]): Record<string, Record<string, unknown>> {
+  const none = {
+    atomic: { status: 'unsupported' },
+    atomicBatch: { supported: false },
+    paymasterService: { supported: false },
+    auxiliaryFunds: { supported: false },
+  }
+  const requested = Array.isArray(params[1]) ? params[1] : []
+  const raw = requested.length ? requested.map(String) : fallbackChains
+  const chains = raw.map((item) => {
+    try {
+      return toHexChainId(item)
+    } catch {
+      return null
+    }
+  })
+  return Object.fromEntries(chains.filter((item): item is string => Boolean(item)).map((id) => [id, none]))
+}
+
 export function toCaipAccount(chainId: string, address: string): string {
   return `${toCaipChain(chainId)}:${address}`
 }

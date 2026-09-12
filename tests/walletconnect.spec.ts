@@ -6,6 +6,8 @@ import {
   parseWalletConnectUri,
   sessionSummary,
   toCaipAccount,
+  toHexChainId,
+  walletCapabilities,
 } from '../electron/main/walletconnect/codec'
 
 describe('WalletConnect 解析', () => {
@@ -27,6 +29,14 @@ describe('WalletConnect 解析', () => {
     expect(chainIdDecimal('0x1')).toBe('1')
     expect(chainIdDecimal('eip155:56')).toBe('56')
     expect(toCaipAccount('0x2105', '0xabc')).toBe('eip155:8453:0xabc')
+    expect(toHexChainId('eip155:56')).toBe('0x38')
+  })
+
+  it('wallet_getCapabilities 声明不支持批量代发，避免网站当方法不存在反复重试', () => {
+    const result = walletCapabilities(['0xabc', ['0x1', 'eip155:56']], ['eip155:8453'])
+    expect(result['0x1']?.atomic).toEqual({ status: 'unsupported' })
+    expect(result['0x38']?.atomicBatch).toEqual({ supported: false })
+    expect(walletCapabilities(['0xabc'], ['eip155:1'])['0x1']?.paymasterService).toEqual({ supported: false })
   })
 
   it('把 hex 消息还原成文本', () => {
