@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { TokenRecord } from '@shared/types'
 import { NetworkIcon } from './NetworkSelect'
-import { shorten } from '../lib/format'
+import { formatAmount, shorten } from '../lib/format'
 import { useT } from '../i18n'
 
 export function TokenSelect({
@@ -9,12 +9,14 @@ export function TokenSelect({
   tokens,
   value,
   onChange,
+  balances,
   className = '',
 }: {
   label?: string
   tokens: TokenRecord[]
   value: string
   onChange: (id: string) => void
+  balances?: Record<string, string>
   className?: string
 }) {
   const t = useT()
@@ -22,6 +24,8 @@ export function TokenSelect({
   const rootRef = useRef<HTMLDivElement>(null)
   const selected = tokens.find((item) => item.id === value) ?? null
   const caption = (token: TokenRecord) => {
+    const balance = balances?.[token.id]
+    if (balance != null) return formatAmount(balance)
     if (!token.isToken) return t('common.nativeToken')
     if (token.contractAddress) return shorten(token.contractAddress, 6, 4)
     return token.tokenStandard || t('common.token')
@@ -47,6 +51,9 @@ export function TokenSelect({
         <span className="min-w-0 flex-1 truncate">
           {selected ? `${selected.symbol} · ${selected.name}` : tokens.length ? t('token.select') : t('token.none')}
         </span>
+        {selected && balances?.[selected.id] != null ? (
+          <span className="shrink-0 text-[11px] text-ink-400">{formatAmount(balances[selected.id])}</span>
+        ) : null}
         <span className="shrink-0 text-[10px] text-ink-500">{open ? '▴' : '▾'}</span>
       </button>
       {open && tokens.length > 0 ? (

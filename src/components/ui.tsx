@@ -12,9 +12,19 @@ const variants = {
 export function Button({
   variant = 'primary',
   className = '',
+  loading = false,
+  children,
+  disabled,
   ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: keyof typeof variants }) {
-  return <button className={`${base} ${variants[variant]} ${className}`} {...rest} />
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: keyof typeof variants; loading?: boolean }) {
+  return (
+    <button className={`${base} ${variants[variant]} ${className}`} disabled={disabled || loading} {...rest}>
+      {loading ? (
+        <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
+      ) : null}
+      {children}
+    </button>
+  )
 }
 
 export function Field({

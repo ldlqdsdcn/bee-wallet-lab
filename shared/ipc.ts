@@ -80,6 +80,7 @@ export const IPC = {
   /* 资产 */
   portfolioSnapshot: 'portfolio:snapshot',
   portfolioRefresh: 'portfolio:refresh',
+  portfolioAccount: 'portfolio:account',
 
   /* 收发转账 */
   transferPreview: 'transfer:preview',

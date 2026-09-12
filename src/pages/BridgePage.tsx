@@ -11,6 +11,7 @@ import type {
   TronEnergyFeeMode,
 } from '@shared/types'
 import { accountApi, bridgeApi, catalogApi } from '../lib/bridge'
+import { useAccountBalances } from '../lib/accountBalances'
 import { Alert, Button, Card, Field, Select } from '../components/ui'
 import { TokenSelect } from '../components/TokenSelect'
 import { explorerTabTitle, txExplorerUrl } from '../lib/explorer'
@@ -110,6 +111,8 @@ export default function BridgePage() {
   const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const originBalances = useAccountBalances(originAccountId, originPk)
+  const destBalances = useAccountBalances(destAccountId, destPk)
 
   const catalogReady = Boolean(baseUrl.trim())
   const originNetwork = supportedNetworks.find((item) => item.id === originPk) ?? null
@@ -139,6 +142,8 @@ export default function BridgePage() {
     () => filterBridgeTokens(destTokens, destNetwork, pairIsBtc),
     [destTokens, destNetwork, pairIsBtc],
   )
+  const sellBalance = originBalances.of(sellTokenPk)
+  const sellSymbol = sellTokens.find((item) => item.id === sellTokenPk)?.symbol ?? ''
 
   useEffect(() => {
     if (originPk && supportedNetworks.some((item) => item.id === originPk)) return
@@ -367,10 +372,42 @@ export default function BridgePage() {
               onChange={(e) => setDestAddress(e.target.value)}
             />
 
-            <TokenSelect label={t('bridge.sell')} tokens={sellTokens} value={sellTokenPk} onChange={setSellTokenPk} />
-            <TokenSelect label={t('bridge.buy')} tokens={buyTokens} value={buyTokenPk} onChange={setBuyTokenPk} />
+            <TokenSelect
+              label={t('bridge.sell')}
+              tokens={sellTokens}
+              value={sellTokenPk}
+              onChange={setSellTokenPk}
+              balances={originBalances.byToken}
+            />
+            <TokenSelect
+              label={t('bridge.buy')}
+              tokens={buyTokens}
+              value={buyTokenPk}
+              onChange={setBuyTokenPk}
+              balances={destBalances.byToken}
+            />
             {pairIsBtc ? <p className="text-xs text-ink-500">{t('bridge.btcOnly')}</p> : null}
-            <Field label={t('bridge.amount')} value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <div>
+              <Field label={t('bridge.amount')} value={amount} onChange={(e) => setAmount(e.target.value)} />
+              <div className="mt-1 flex items-center justify-between text-[11px] text-ink-500">
+                <span>
+                  {originBalances.loading && sellBalance == null
+                    ? t('common.loading')
+                    : t('common.balance', {
+                        amount: sellBalance != null ? formatAmount(sellBalance) : '—',
+                        symbol: sellSymbol,
+                      })}
+                </span>
+                <button
+                  type="button"
+                  className="text-honey-400 disabled:text-ink-600"
+                  disabled={!sellBalance || Number(sellBalance) <= 0}
+                  onClick={() => setAmount(sellBalance ?? '')}
+                >
+                  {t('common.max')}
+                </button>
+              </div>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <Select
                 label={t('bridge.slippage')}
@@ -550,6 +587,8 @@ export default function BridgePage() {
                       destTxHash: receipt.destTxHash,
                     })
                     setQuote(null)
+                    originBalances.reload()
+                    destBalances.reload()
                   })
                 }
               >

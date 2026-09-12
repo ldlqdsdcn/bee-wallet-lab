@@ -1,7 +1,7 @@
 import { IPC, IPC_EVENT } from '../../../shared/ipc'
-import type { PortfolioSnapshot } from '../../../shared/types'
-import { handle, broadcast } from './registry'
-import { getPortfolioSnapshot } from '../portfolio/service'
+import type { AssetEntry, PortfolioSnapshot } from '../../../shared/types'
+import { handle, broadcast, requireString } from './registry'
+import { getAccountPortfolio, getPortfolioSnapshot } from '../portfolio/service'
 import { saveSettings } from '../db/repos/metaRepo'
 
 export function registerPortfolioIpc(): void {
@@ -15,4 +15,8 @@ export function registerPortfolioIpc(): void {
     broadcast(IPC_EVENT.balanceUpdated, snapshot)
     return snapshot
   })
+
+  handle<{ accountId: string; networkPk: string }, AssetEntry[]>(IPC.portfolioAccount, (arg) =>
+    getAccountPortfolio(requireString(arg?.accountId, 'accountId'), requireString(arg?.networkPk, 'networkPk')),
+  )
 }
