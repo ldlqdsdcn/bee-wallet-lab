@@ -2,7 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import QRCode from 'qrcode'
 import { IPC_EVENT } from '@shared/ipc'
-import type { AccountRecord, BroadcastResult, FeeLevel, TokenRecord, TransferPreview } from '@shared/types'
+import type {
+  AccountRecord,
+  BroadcastResult,
+  FeeLevel,
+  TokenRecord,
+  TransferPreview,
+  TronEnergyFeeMode,
+} from '@shared/types'
 import { accountApi, catalogApi, on, transferApi } from '../lib/bridge'
 import { Alert, Button, Card, Field, Select } from '../components/ui'
 import AddressBookPicker from '../components/AddressBookPicker'
@@ -36,6 +43,7 @@ export default function TransferPage() {
   const [amount, setAmount] = useState('')
   const [feeLevel, setFeeLevel] = useState<FeeLevel>('medium')
   const [customFeeRate, setCustomFeeRate] = useState('')
+  const [energyFeeMode, setEnergyFeeMode] = useState<TronEnergyFeeMode>('burn')
   const [preview, setPreview] = useState<TransferPreview | null>(null)
   const [receipt, setReceipt] = useState<BroadcastResult | null>(null)
   const [qr, setQr] = useState<string | null>(null)
@@ -219,28 +227,32 @@ export default function TransferPage() {
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
-            <Select
-              label={t('common.fee')}
-              value={feeLevel}
-              onChange={(e) => setFeeLevel(e.target.value as FeeLevel)}
-            >
-              <option value="low">{t('common.slow')}</option>
-              <option value="medium">{t('common.standard')}</option>
-              <option value="high">{t('common.fast')}</option>
-              <option value="custom">{t('common.custom')}</option>
-            </Select>
-            {feeLevel === 'custom' ? (
-              <Field
-                label={
-                  network?.walletType === 'bitcoin'
-                    ? t('transfer.customBtc')
-                    : network?.walletType === 'solana'
-                      ? t('transfer.customSol')
-                      : t('transfer.customEvm')
-                }
-                value={customFeeRate}
-                onChange={(e) => setCustomFeeRate(e.target.value)}
-              />
+            {network?.walletType !== 'tron' ? (
+              <>
+                <Select
+                  label={t('common.fee')}
+                  value={feeLevel}
+                  onChange={(e) => setFeeLevel(e.target.value as FeeLevel)}
+                >
+                  <option value="low">{t('common.slow')}</option>
+                  <option value="medium">{t('common.standard')}</option>
+                  <option value="high">{t('common.fast')}</option>
+                  <option value="custom">{t('common.custom')}</option>
+                </Select>
+                {feeLevel === 'custom' ? (
+                  <Field
+                    label={
+                      network?.walletType === 'bitcoin'
+                        ? t('transfer.customBtc')
+                        : network?.walletType === 'solana'
+                          ? t('transfer.customSol')
+                          : t('transfer.customEvm')
+                    }
+                    value={customFeeRate}
+                    onChange={(e) => setCustomFeeRate(e.target.value)}
+                  />
+                ) : null}
+              </>
             ) : null}
 
             {preview ? (
@@ -253,6 +265,119 @@ export default function TransferPage() {
                   })}
                 </p>
                 <p>{t('transfer.feeText', { fee: preview.feeText })}</p>
+                {preview.energy ? (
+                  <p>
+                    {preview.energy.short
+                      ? t('transfer.energyShort', {
+                          left: preview.energy.left,
+                          required: preview.energy.required,
+                        })
+                      : t('transfer.energyOk', { left: preview.energy.left, required: preview.energy.required })}
+                  </p>
+                ) : null}
+                {preview.energy?.short ? (
+                  <div className="mt-2 space-y-2">
+                    <div className="space-y-0.5 text-ink-300">
+                      {preview.energy.quote ? (
+                        <p>
+                          {t('transfer.energyCompare', {
+                            rent: formatAmount(preview.energy.quote.priceTrx),
+                            burn: formatAmount(preview.energy.burnTrx),
+                          })}
+                          {preview.energy.saveTrx && preview.energy.cheaper && preview.energy.cheaper !== 'same' ? (
+                            <span className="ml-1 text-honey-400">
+                              · {t('transfer.energySave', { trx: formatAmount(preview.energy.saveTrx) })}
+                            </span>
+                          ) : null}
+                        </p>
+                      ) : null}
+                      <p>
+                        {t('transfer.energyTimeCompare', {
+                          rent: t('transfer.energyRentTime'),
+                          burn: t('transfer.energyBurnTime'),
+                        })}
+                        <span className="ml-1 text-honey-400">· {t('transfer.energyFaster')}</span>
+                      </p>
+                    </div>
+                    <label className="flex items-start gap-2 text-ink-300">
+                      <input
+                        type="radio"
+                        className="mt-0.5"
+                        name="energy-fee"
+                        checked={energyFeeMode === 'rent'}
+                        disabled={!preview.energy.canRent || busy}
+                        onChange={() =>
+                          void run(async () => {
+                            setEnergyFeeMode('rent')
+                            setPreview(
+                              await transferApi.preview({
+                                accountId,
+                                networkPk,
+                                tokenPk,
+                                to,
+                                amount,
+                                feeLevel,
+                                customFeeRate: customFeeRate || undefined,
+                                energyFeeMode: 'rent',
+                              }),
+                            )
+                          })
+                        }
+                      />
+                      <span>
+                        {t('transfer.energyRent', {
+                          trx: preview.energy.quote?.priceTrx ?? '—',
+                          time: t('transfer.energyRentTime'),
+                        })}
+                        {preview.energy.cheaper === 'rent' ? (
+                          <span className="ml-1 text-honey-400">{t('transfer.energySave', { trx: formatAmount(preview.energy.saveTrx) })}</span>
+                        ) : null}
+                        <span className="mt-0.5 block text-[11px] text-ink-600">{t('transfer.energyRentHint')}</span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-2 text-ink-300">
+                      <input
+                        type="radio"
+                        className="mt-0.5"
+                        name="energy-fee"
+                        checked={energyFeeMode === 'burn'}
+                        disabled={busy}
+                        onChange={() =>
+                          void run(async () => {
+                            setEnergyFeeMode('burn')
+                            setPreview(
+                              await transferApi.preview({
+                                accountId,
+                                networkPk,
+                                tokenPk,
+                                to,
+                                amount,
+                                feeLevel,
+                                customFeeRate: customFeeRate || undefined,
+                                energyFeeMode: 'burn',
+                              }),
+                            )
+                          })
+                        }
+                      />
+                      <span>
+                        {t('transfer.energyBurn', {
+                          trx: preview.energy.burnTrx,
+                          time: t('transfer.energyBurnTime'),
+                        })}
+                        {preview.energy.cheaper === 'burn' ? (
+                          <span className="ml-1 text-honey-400">{t('transfer.energySave', { trx: formatAmount(preview.energy.saveTrx) })}</span>
+                        ) : (
+                          <span className="ml-1 text-honey-400">{t('transfer.energyFaster')}</span>
+                        )}
+                        <span className="mt-0.5 block text-[11px] text-ink-600">{t('transfer.energyBurnHint')}</span>
+                      </span>
+                    </label>
+                    {!preview.energy.canRent && preview.energy.rentReason ? (
+                      <p className="text-honey-400">{t('transfer.energyRentUnavailable', { reason: preview.energy.rentReason })}</p>
+                    ) : null}
+                  </div>
+                ) : null}
                 {preview.warnings.map((item) => (
                   <p key={item} className="text-honey-400">
                     {item}
@@ -290,17 +415,18 @@ export default function TransferPage() {
                 onClick={() =>
                   void run(async () => {
                     setReceipt(null)
-                    setPreview(
-                      await transferApi.preview({
-                        accountId,
-                        networkPk,
-                        tokenPk,
-                        to,
-                        amount,
-                        feeLevel,
-                        customFeeRate: customFeeRate || undefined,
-                      }),
-                    )
+                    const next = await transferApi.preview({
+                      accountId,
+                      networkPk,
+                      tokenPk,
+                      to,
+                      amount,
+                      feeLevel,
+                      customFeeRate: customFeeRate || undefined,
+                      energyFeeMode,
+                    })
+                    setPreview(next)
+                    if (next.energy) setEnergyFeeMode(next.energy.selected)
                   })
                 }
               >
@@ -311,13 +437,18 @@ export default function TransferPage() {
                 onClick={() =>
                   void run(async () => {
                     if (!preview) return
-                    const result = await transferApi.submit(preview.draftId)
+                    const result = await transferApi.submit(
+                      preview.draftId,
+                      preview.energy?.short ? energyFeeMode : undefined,
+                    )
                     setReceipt(result)
                     setPreview(null)
                   })
                 }
               >
-                {t('transfer.signBroadcast')}
+                {busy && preview?.energy?.short && energyFeeMode === 'rent'
+                  ? t('transfer.energyWaiting')
+                  : t('transfer.signBroadcast')}
               </Button>
             </div>
           </div>

@@ -4,7 +4,8 @@
 import { secp256k1 } from '@noble/curves/secp256k1'
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils'
 import type { NetworkScope } from '@shared/types'
-import { asRecord, asString } from '../backend/list'
+import { asNumber, asRecord, asString } from '../backend/list'
+import { DEFAULT_ENERGY_FEE_SUN, parseEnergyPriceSun } from '../energy/codec'
 import { isTronAddress, tronAddressToHex } from '../derive/tron'
 import { networkByType, tronApiCandidates, tryRpcUrls } from '../rpc/nodes'
 import { setPreferredRpc } from '../rpc/preference'
@@ -184,6 +185,17 @@ export async function broadcastTronTx(
   return txid
 }
 
+export async function getTronAccountResource(
+  address: string,
+  networkScope: NetworkScope,
+): Promise<Record<string, unknown>> {
+  return trongrid<Record<string, unknown>>(
+    'wallet/getaccountresource',
+    { address, visible: true },
+    networkScope,
+  )
+}
+
 export async function getTronAccount(address: string, networkScope: NetworkScope): Promise<{
   balanceSun: bigint
   active: boolean
@@ -225,6 +237,68 @@ export async function getTrc20Balance(
 
 export function estimateTronNativeFeeSun(recipientActive: boolean): bigint {
   return recipientActive ? 270_000n : 1_100_000n + 270_000n
+}
+
+/** 当前能量单价，单位 sun / energy。 */
+export async function getTronEnergyFeeSun(networkScope: NetworkScope): Promise<bigint> {
+  try {
+    const payload = await trongridGet<Record<string, unknown>>('wallet/getenergyprices', networkScope)
+    const fee = parseEnergyPriceSun(payload.prices)
+    if (fee > 0n) return fee
+  } catch {
+    /* 部分节点只接受 POST */
+  }
+  try {
+    const payload = await trongrid<Record<string, unknown>>('wallet/getenergyprices', {}, networkScope)
+    const fee = parseEnergyPriceSun(payload.prices)
+    if (fee > 0n) return fee
+  } catch {
+    /* 再读链参数 */
+  }
+  try {
+    const payload = await trongrid<Record<string, unknown>>('wallet/getchainparameters', {}, networkScope)
+    const params = payload.chainParameter
+    if (Array.isArray(params)) {
+      for (const item of params) {
+        const record = asRecord(item)
+        if (record && asString(record.key) === 'getEnergyFee') {
+          const value = asNumber(record.value, 0)
+          if (value > 0) return BigInt(Math.round(value))
+        }
+      }
+    }
+  } catch {
+    /* 用默认单价 */
+  }
+  return DEFAULT_ENERGY_FEE_SUN
+}
+
+/** 只读模拟 TRC-20 transfer，估算本次消耗的能量。失败返回 0。 */
+export async function estimateTrc20Energy(input: {
+  from: string
+  to: string
+  contract: string
+  amount: bigint
+  networkScope: NetworkScope
+}): Promise<number> {
+  try {
+    const payload = await trongrid<Record<string, unknown>>(
+      'wallet/triggerconstantcontract',
+      {
+        owner_address: input.from,
+        contract_address: input.contract,
+        function_selector: 'transfer(address,uint256)',
+        parameter: encodeTrc20TransferParameter(input.to, input.amount),
+        visible: true,
+      },
+      input.networkScope,
+    )
+    const used = asNumber(payload.energy_used, 0) + asNumber(payload.energy_penalty, 0)
+    if (used > 0) return used
+    return asNumber(payload.energy_required, 0)
+  } catch {
+    return 0
+  }
 }
 
 export function explorerUrlForTron(txid: string, networkScope: NetworkScope, browser: string | null): string | null {

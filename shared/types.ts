@@ -477,6 +477,30 @@ export interface TransferDraftInput {
   gasLimit?: string
   nonce?: number
   feeLimit?: string
+  /** TRC-20 能量不足时：租赁能量或燃烧 TRX */
+  energyFeeMode?: TronEnergyFeeMode
+}
+
+export type TronEnergyFeeMode = 'burn' | 'rent'
+
+export interface TransferEnergyQuote {
+  priceTrx: string
+  quantity: number
+}
+
+export interface TransferEnergyInfo {
+  required: number
+  left: number
+  short: boolean
+  canRent: boolean
+  rentReason: string
+  selected: TronEnergyFeeMode
+  quote: TransferEnergyQuote | null
+  /** 按链上能量单价估算的燃烧花费 */
+  burnTrx: string
+  /** 较贵方案多付的 TRX；无法对比时为空 */
+  saveTrx: string
+  cheaper: TronEnergyFeeMode | 'same' | null
 }
 
 export interface TransferPreview {
@@ -493,6 +517,8 @@ export interface TransferPreview {
   /** 开发者视角：构建出的未签名交易描述 */
   detail: Record<string, string>
   warnings: string[]
+  /** 仅 TRC-20：账户能量与租/烧选择 */
+  energy?: TransferEnergyInfo
 }
 
 export interface TokenIssueInput {
@@ -1019,4 +1045,67 @@ export interface DevHashItem {
 export interface DevHashResult {
   bytes: number
   hashes: DevHashItem[]
+}
+
+/* ------------------------------- 波场能量租赁 ------------------------------- */
+
+export type EnergyDuration = '1h' | '1d'
+
+export interface EnergyEstimateInput {
+  accountId: string
+  networkPk: string
+  quantity: number
+  duration: EnergyDuration
+}
+
+export interface EnergyResources {
+  address: string
+  balanceTrx: string
+  energyLimit: number
+  energyUsed: number
+  energyLeft: number
+  bandwidthLeft: number
+}
+
+export interface EnergyQuote {
+  queryNo: string
+  quantity: number
+  duration: EnergyDuration
+  priceSun: string
+  priceTrx: string
+  targetAddress: string
+  payAccount: string
+  resources: EnergyResources
+}
+
+export interface EnergyRentInput {
+  accountId: string
+  networkPk: string
+  queryNo: string
+  quantity: number
+  duration: EnergyDuration
+  priceSun: string
+  targetAddress: string
+}
+
+export interface EnergyRentResult {
+  orderNo: string | null
+  payTxHash: string
+  explorerUrl: string | null
+  status: number
+  description: string
+}
+
+export interface EnergyConfirmInput {
+  accountId: string
+  networkPk: string
+  queryNo: string
+  targetAddress: string
+  payTxHash: string
+}
+
+export interface EnergyOrderStatus {
+  orderNo: string
+  status: number
+  description: string
 }
