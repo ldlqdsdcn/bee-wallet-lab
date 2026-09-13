@@ -1,11 +1,17 @@
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { createFileKeyValueStorage } from '../electron/main/walletconnect/storage'
 import {
   chainIdDecimal,
   describeSessionProposal,
+  describeWcRequest,
   hexToUtf8,
   findWalletConnectDeepLink,
   pairingTopicFromUri,
   parseWalletConnectUri,
+  pendingKind,
   sessionSummary,
   toCaipAccount,
   toHexChainId,
@@ -38,6 +44,11 @@ describe('WalletConnect 解析', () => {
     expect(chainIdDecimal('eip155:56')).toBe('56')
     expect(toCaipAccount('0x2105', '0xabc')).toBe('eip155:8453:0xabc')
     expect(toHexChainId('eip155:56')).toBe('0x38')
+  })
+
+  it('wallet_sendCalls 当成发交易，其它请求用人话描述', () => {
+    expect(pendingKind('wallet_sendCalls')).toBe('send')
+    expect(describeWcRequest('wallet_sendCalls', [{ calls: [{ to: '0x1', data: '0x' }] }])).toContain('0x1')
   })
 
   it('wallet_getCapabilities 声明不支持批量代发，避免网站当方法不存在反复重试', () => {
@@ -75,5 +86,20 @@ describe('WalletConnect 解析', () => {
       url: 'https://pancakeswap.finance',
       chains: ['eip155:56'],
     })
+  })
+})
+
+describe('WalletConnect 本地存储', () => {
+  it('并行写入不会互相覆盖', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'bee-wc-'))
+    const storage = createFileKeyValueStorage(join(dir, 'walletconnect.json'))
+    await Promise.all([
+      storage.setItem('session', { topic: 'a' }),
+      storage.setItem('keychain', { topic: 'secret' }),
+      storage.setItem('history', [1, 2, 3]),
+    ])
+    expect(await storage.getItem('session')).toEqual({ topic: 'a' })
+    expect(await storage.getItem('keychain')).toEqual({ topic: 'secret' })
+    expect(await storage.getItem('history')).toEqual([1, 2, 3])
   })
 })

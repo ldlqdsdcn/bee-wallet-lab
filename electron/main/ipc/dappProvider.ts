@@ -10,8 +10,8 @@ export function registerDappProviderIpc(): void {
     if (!fromExplorer(event)) return { ok: false, message: 'forbidden' }
     const uri = String(payload?.uri || '')
     console.log('[dapp] 深链接', uri.slice(0, 32))
-    await acceptWalletConnectDeepLink(uri)
-    return { ok: true }
+    const result = await acceptWalletConnectDeepLink(uri)
+    return { ok: true, ignored: Boolean(result.ignored) }
   })
   ipcMain.handle('dapp:providerRequest', async (event: IpcMainInvokeEvent, payload: { method?: string; params?: unknown[] }) => {
     if (!fromExplorer(event)) {

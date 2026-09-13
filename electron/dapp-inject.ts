@@ -116,7 +116,14 @@ export const DAPP_DEEP_LINK_INJECT = `(() => {
     if (!uri || uri === last) return
     last = uri
     console.log('[dapp] 页面出示 WalletConnect 链接')
-    try { window.beeDapp.pairDeepLink(uri) } catch (e) {}
+    try {
+      var done = window.beeDapp.pairDeepLink(uri)
+      if (done && typeof done.then === 'function') {
+        done.then(function (result) {
+          if (result && result.ignored && last === uri) last = ''
+        }).catch(function () {})
+      }
+    } catch (e) {}
   }
   function scan(node) {
     if (!node) return
