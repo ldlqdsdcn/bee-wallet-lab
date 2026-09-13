@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { DAPP_HOT_CATEGORY_ID, dappCategoryById, dappsInCategory, defaultDappCategoryId } from '../shared/dapps'
 import { assembleDappCatalog, parseDapp, parseDappCategory, parseHttpsUrl } from '../electron/main/dapp/codec'
+import { DAPP_PROVIDER_INJECT } from '../electron/dapp-inject'
+import { DAPP_PROVIDER_INFO } from '../electron/dapp-provider-info'
 
 describe('三方连接目录解包', () => {
   it('只接受 https 链接', () => {
@@ -64,5 +66,15 @@ describe('三方连接目录解包', () => {
     expect(defaultDappCategoryId(catalog)).toBe(DAPP_HOT_CATEGORY_ID)
     expect(dappsInCategory(catalog, DAPP_HOT_CATEGORY_ID).map((item) => item.name)).toEqual(['PancakeSwap'])
     expect(dappsInCategory(catalog, '3')).toHaveLength(1)
+  })
+})
+
+describe('EIP-6963 钱包图标', () => {
+  it('注入蜜蜂 logo，而不是字母 B', () => {
+    expect(DAPP_PROVIDER_INFO.name).toBe('Bee Wallet Lab')
+    expect(DAPP_PROVIDER_INFO.rdns).toBe('lab.bee-wallet')
+    expect(DAPP_PROVIDER_INFO.icon.startsWith('data:image/png;base64,')).toBe(true)
+    expect(DAPP_PROVIDER_INJECT).toContain('data:image/png;base64,')
+    expect(DAPP_PROVIDER_INJECT).not.toContain('%3EB')
   })
 })

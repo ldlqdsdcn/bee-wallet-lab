@@ -434,7 +434,7 @@ export const zh = {
   'activity.receive': '转入',
 
   'dapp.title': '三方连接',
-  'dapp.subtitle': '分类和站点来自目录站，在应用内浏览器打开。连接前请自行核对网址。',
+  'dapp.subtitle': '可从目录打开站点，也可自己填写 https 网址。均在应用内浏览器打开，连接前请自行核对。',
   'dapp.pick': '请从上面选择分类。',
   'dapp.empty': '这一类还没有站点。',
   'dapp.hot': '热门 DApp',
@@ -442,6 +442,11 @@ export const zh = {
   'dapp.openSettings': '打开设置',
   'dapp.retry': '重试',
   'dapp.refresh': '刷新',
+  'dapp.customTitle': '打开网址',
+  'dapp.customUrl': '网址',
+  'dapp.customHint': '只支持 https。没有写协议时会自动加上。请自行核对，不要打开陌生链接。',
+  'dapp.customPlaceholder': 'https://app.uniswap.org',
+  'dapp.customInvalid': '请输入有效的 https 网址。',
 
   'wc.menu': 'WalletConnect',
   'wc.title': 'WalletConnect',

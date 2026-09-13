@@ -3,8 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import type { DappCatalog } from '@shared/types'
 import { DAPP_HOT_CATEGORY_ID, dappCategoryById, dappsInCategory, defaultDappCategoryId } from '@shared/dapps'
 import { dappApi, settingsApi } from '../lib/bridge'
-import { Alert, Button, Card } from '../components/ui'
-import { explorerTabTitle } from '../lib/explorer'
+import { Alert, Button, Card, Field } from '../components/ui'
+import { explorerTabTitle, normalizeHttpsUrl } from '../lib/explorer'
 import { useBrowserStore } from '../store/browserStore'
 import { useT } from '../i18n'
 
@@ -17,6 +17,8 @@ export default function DappsPage() {
   const [catalogReady, setCatalogReady] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [customUrl, setCustomUrl] = useState('')
+  const [customError, setCustomError] = useState<string | null>(null)
 
   const load = (force = false) => {
     let alive = true
@@ -68,12 +70,52 @@ export default function DappsPage() {
       : category.name
     : ''
 
+  const openCustom = () => {
+    const url = normalizeHttpsUrl(customUrl)
+    if (!url) {
+      setCustomError(t('dapp.customInvalid'))
+      return
+    }
+    setCustomError(null)
+    open(url, explorerTabTitle(url))
+  }
+
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <div>
         <h1 className="text-lg font-semibold text-ink-200">{t('dapp.title')}</h1>
         <p className="mt-1 text-xs text-ink-500">{t('dapp.subtitle')}</p>
       </div>
+
+      <Card title={t('dapp.customTitle')}>
+        <form
+          className="flex items-end gap-3"
+          onSubmit={(event) => {
+            event.preventDefault()
+            openCustom()
+          }}
+        >
+          <div className="min-w-0 flex-1">
+            <Field
+              label={t('dapp.customUrl')}
+              placeholder={t('dapp.customPlaceholder')}
+              value={customUrl}
+              onChange={(event) => {
+                setCustomUrl(event.target.value)
+                if (customError) setCustomError(null)
+              }}
+              autoComplete="url"
+              inputMode="url"
+              spellCheck={false}
+            />
+          </div>
+          <Button type="submit" className="shrink-0">
+            {t('dapp.open')}
+          </Button>
+        </form>
+        <p className="mt-2 text-xs text-ink-600">{t('dapp.customHint')}</p>
+        {customError ? <p className="mt-2 text-xs text-red-300">{customError}</p> : null}
+      </Card>
 
       {!catalogReady && !loading ? (
         <Card>

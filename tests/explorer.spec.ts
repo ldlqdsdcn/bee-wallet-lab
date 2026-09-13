@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { NetworkRecord } from '../shared/types'
-import { addressExplorerUrl, explorerTabTitle, txExplorerUrl } from '../src/lib/explorer'
+import { addressExplorerUrl, explorerTabTitle, normalizeHttpsUrl, txExplorerUrl } from '../src/lib/explorer'
 
 function network(partial: Partial<NetworkRecord> & Pick<NetworkRecord, 'walletType' | 'chainId'>): NetworkRecord {
   return {
@@ -72,6 +72,16 @@ describe('区块链浏览器地址', () => {
 
   it('标签标题取 hostname', () => {
     expect(explorerTabTitle('https://etherscan.io/address/0xabc')).toBe('etherscan.io')
+  })
+
+  it('用户输入补 https，拒绝非 https', () => {
+    expect(normalizeHttpsUrl('app.uniswap.org')).toBe('https://app.uniswap.org/')
+    expect(normalizeHttpsUrl('https://app.uniswap.org/swap')).toBe('https://app.uniswap.org/swap')
+    expect(normalizeHttpsUrl('  https://pancakeswap.finance  ')).toBe('https://pancakeswap.finance/')
+    expect(normalizeHttpsUrl('http://example.com')).toBeNull()
+    expect(normalizeHttpsUrl('javascript:alert(1)')).toBeNull()
+    expect(normalizeHttpsUrl('wc:abc')).toBeNull()
+    expect(normalizeHttpsUrl('')).toBeNull()
   })
 
   it('交易哈希拼 tx 页', () => {

@@ -36,6 +36,7 @@ import {
 } from '../chain/evm'
 import { personalSign } from '../sign/evm'
 import { walletConnectProjectId, walletConnectRelayUrl } from '../rpc/walletconnectEnv'
+import { DAPP_PROVIDER_ICON_URL } from '../../dapp-provider-info'
 import { createFileKeyValueStorage } from './storage'
 import { applyPairingOverlay } from './pairingOverlay'
 import { guardVerifyResolution, installVerifyFetch, verificationStatus } from './verify'
@@ -225,7 +226,7 @@ export async function startWalletConnect(): Promise<Kit | null> {
         name: 'Bee Wallet Lab',
         description: '本地优先的多链实验钱包',
         url: 'https://github.com/ldlqdsdcn/bee-wallet-lab',
-        icons: [],
+        icons: [DAPP_PROVIDER_ICON_URL],
         redirect: {
           native: 'bee-wallet://wc',
           universal: 'https://github.com/ldlqdsdcn/bee-wallet-lab',

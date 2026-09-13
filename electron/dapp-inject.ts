@@ -1,3 +1,5 @@
+import { DAPP_PROVIDER_INFO } from './dapp-provider-info'
+
 /** 跑在 DApp 页面主世界。依赖 preload 挂上的 window.beeDapp，不冒充 MetaMask。 */
 export const DAPP_PROVIDER_INJECT = `(() => {
   if (window.__beeWalletProvider) return true
@@ -9,12 +11,7 @@ export const DAPP_PROVIDER_INJECT = `(() => {
   var listeners = {}
   var selectedAddress = null
   var chainId = null
-  var info = window.beeWalletProviderInfo || {
-    uuid: 'a6c8d2e1-7b54-4f0a-9c31-2e8c4b0f1a77',
-    name: 'Bee Wallet Lab',
-    icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"%3E%3Crect width="32" height="32" rx="8" fill="%23f5c518"/%3E%3Ctext x="16" y="21" text-anchor="middle" font-size="14" font-family="sans-serif" fill="%23111111"%3EB%3C/text%3E%3C/svg%3E',
-    rdns: 'lab.bee-wallet',
-  }
+  var info = window.beeWalletProviderInfo || ${JSON.stringify(DAPP_PROVIDER_INFO)};
   function emit(name, value) {
     (listeners[name] || []).slice().forEach(function (fn) {
       try { fn(value) } catch (e) {}
