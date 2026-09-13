@@ -77,4 +77,9 @@ describe('EIP-6963 钱包图标', () => {
     expect(DAPP_PROVIDER_INJECT).toContain('data:image/png;base64,')
     expect(DAPP_PROVIDER_INJECT).not.toContain('%3EB')
   })
+
+  it('账户没变时不重复广播 accountsChanged', () => {
+    expect(DAPP_PROVIDER_INJECT).toContain('function sameList')
+    expect(DAPP_PROVIDER_INJECT).toContain('if (!sameList(lastAccounts, data))')
+  })
 })

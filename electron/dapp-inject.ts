@@ -11,11 +11,19 @@ export const DAPP_PROVIDER_INJECT = `(() => {
   var listeners = {}
   var selectedAddress = null
   var chainId = null
+  var lastAccounts = []
   var info = window.beeWalletProviderInfo || ${JSON.stringify(DAPP_PROVIDER_INFO)};
   function emit(name, value) {
     (listeners[name] || []).slice().forEach(function (fn) {
       try { fn(value) } catch (e) {}
     })
+  }
+  function sameList(a, b) {
+    if (!a || !b || a.length !== b.length) return false
+    for (var i = 0; i < a.length; i++) {
+      if (String(a[i]).toLowerCase() !== String(b[i]).toLowerCase()) return false
+    }
+    return true
   }
   function fail(code, message) {
     var error = new Error(message || 'Provider request failed')
@@ -36,12 +44,19 @@ export const DAPP_PROVIDER_INJECT = `(() => {
       var data = result.data
       if ((args.method === 'eth_requestAccounts' || args.method === 'eth_accounts') && Array.isArray(data)) {
         selectedAddress = data[0] || null
-        emit('accountsChanged', data)
+        if (!sameList(lastAccounts, data)) {
+          lastAccounts = data.slice()
+          emit('accountsChanged', data)
+        }
       }
-      if (args.method === 'eth_chainId' && typeof data === 'string') chainId = data
+      if (args.method === 'eth_chainId' && typeof data === 'string') {
+        if (chainId && chainId !== data) emit('chainChanged', data)
+        chainId = data
+      }
       if (args.method === 'wallet_switchEthereumChain' && args.params && args.params[0] && args.params[0].chainId) {
-        chainId = args.params[0].chainId
-        emit('chainChanged', chainId)
+        var nextChain = args.params[0].chainId
+        if (chainId !== nextChain) emit('chainChanged', nextChain)
+        chainId = nextChain
       }
       return data
     })

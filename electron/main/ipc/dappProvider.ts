@@ -25,7 +25,9 @@ export function registerDappProviderIpc(): void {
     } catch {
       origin = event.sender.getURL()
     }
-    console.log('[dapp]', origin, method)
+    if (method !== 'eth_chainId' && method !== 'eth_accounts' && method !== 'net_version') {
+      console.log('[dapp]', origin, method)
+    }
     try {
       return {
         ok: true,
