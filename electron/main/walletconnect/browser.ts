@@ -65,11 +65,7 @@ export function attachWalletConnectCapture(contents: WebContents): void {
   })
   contents.setWindowOpenHandler(({ url }) => {
     if (captureDeepLink(url)) return { action: 'deny' }
-    try {
-      if (new URL(url).protocol === 'https:') void contents.loadURL(url)
-    } catch {
-      /* 忽略 */
-    }
+    // 不能把弹窗加载进当前页：站点一 window.open 就会整页像在刷新。
     return { action: 'deny' }
   })
   contents.on('will-navigate', (event, url) => {
