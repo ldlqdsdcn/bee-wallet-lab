@@ -434,7 +434,7 @@ export const en = {
   'activity.receive': 'Received',
 
   'dapp.title': 'DApps',
-  'dapp.subtitle': 'Categories and sites come from the catalog. They open in the in-app browser. Verify the URL before connecting.',
+  'dapp.subtitle': 'Open catalog sites or paste any https URL. They open in the in-app browser. Verify the URL before connecting.',
   'dapp.pick': 'Pick a category above.',
   'dapp.empty': 'No sites in this category yet.',
   'dapp.hot': 'Popular',
@@ -442,6 +442,11 @@ export const en = {
   'dapp.openSettings': 'Open settings',
   'dapp.retry': 'Retry',
   'dapp.refresh': 'Refresh',
+  'dapp.customTitle': 'Open a URL',
+  'dapp.customUrl': 'URL',
+  'dapp.customHint': 'HTTPS only. The scheme is added if you omit it. Check the address yourself and do not open unknown links.',
+  'dapp.customPlaceholder': 'https://app.uniswap.org',
+  'dapp.customInvalid': 'Enter a valid https URL.',
 
   'wc.menu': 'WalletConnect',
   'wc.title': 'WalletConnect',

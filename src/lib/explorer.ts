@@ -90,3 +90,17 @@ export function explorerTabTitle(url: string): string {
     return 'Explorer'
   }
 }
+
+/** 用户输入的 DApp 地址：无协议时补 https，只接受 https。 */
+export function normalizeHttpsUrl(raw: string): string | null {
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  const withScheme = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmed) ? trimmed : `https://${trimmed}`
+  try {
+    const url = new URL(withScheme)
+    if (url.protocol !== 'https:' || !url.hostname) return null
+    return url.toString()
+  } catch {
+    return null
+  }
+}

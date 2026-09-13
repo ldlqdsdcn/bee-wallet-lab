@@ -31,7 +31,7 @@ function toRecord(row: ProxyRow): ProxyRecord {
 export function listProxies(): ProxyRecord[] {
   return getDatabase()
     .prepare<[], ProxyRow>(
-      `SELECT * FROM proxies ORDER BY is_selected DESC, created_at ASC`,
+      `SELECT * FROM proxies ORDER BY created_at ASC, id ASC`,
     )
     .all()
     .map(toRecord)

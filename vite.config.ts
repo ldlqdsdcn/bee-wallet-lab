@@ -14,6 +14,8 @@ const sharedAlias = {
 function dappPreloadPlugin(): Plugin {
   const entry = path.join(__dirname, 'electron/dapp-preload.ts')
   const inject = path.join(__dirname, 'electron/dapp-inject.ts')
+  const info = path.join(__dirname, 'electron/dapp-provider-info.ts')
+  const icon = path.join(__dirname, 'electron/dapp-icon-data.ts')
   const outfile = path.join(__dirname, 'dist-electron/dapp-preload.mjs')
 
   const write = async () => {
@@ -34,14 +36,18 @@ function dappPreloadPlugin(): Plugin {
     async buildStart() {
       this.addWatchFile(entry)
       this.addWatchFile(inject)
+      this.addWatchFile(info)
+      this.addWatchFile(icon)
       await write()
     },
     configureServer(server) {
       server.watcher.add(entry)
       server.watcher.add(inject)
+      server.watcher.add(info)
+      server.watcher.add(icon)
       server.watcher.on('change', (file) => {
         const resolved = path.resolve(file)
-        if (resolved === entry || resolved === inject) void write()
+        if (resolved === entry || resolved === inject || resolved === info || resolved === icon) void write()
       })
     },
   }
