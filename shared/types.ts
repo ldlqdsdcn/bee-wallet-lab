@@ -1320,4 +1320,5 @@ export interface WalletConnectPending {
   name: string
   method: string
   detail: string
+  verification?: 'VALID' | 'UNKNOWN' | 'INVALID' | 'SCAM'
 }

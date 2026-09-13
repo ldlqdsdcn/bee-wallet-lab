@@ -133,11 +133,13 @@ export function Modal({
   children,
   onClose,
   wide,
+  className = '',
 }: {
   title: string
   children: ReactNode
   onClose: () => void
   wide?: boolean
+  className?: string
 }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -153,7 +155,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        className={`w-full rounded-xl border border-ink-600 bg-ink-900 p-5 shadow-2xl ${wide ? 'max-w-xl' : 'max-w-md'}`}
+        className={`w-full rounded-xl border border-ink-600 bg-ink-900 p-5 shadow-2xl ${wide ? 'max-w-xl' : 'max-w-md'} ${className}`}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <h2 id="modal-title" className="text-sm font-semibold text-ink-200">

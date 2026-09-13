@@ -4,7 +4,7 @@
 import path from 'node:path'
 import { app, BrowserWindow } from 'electron'
 import type { WalletKitTypes } from '@reown/walletkit'
-import type { AuthTypes } from '@walletconnect/types'
+import type { AuthTypes, JsonRpcRecord, Verify } from '@walletconnect/types'
 import { installWalletConnectWebSocket } from './installWs'
 import { buildApprovedNamespaces, buildAuthObject, getSdkError, populateAuthPayload } from '@walletconnect/utils'
 import { bytesToHex, hashTypedData, type Hex, type TypedDataDefinition } from 'viem'
@@ -38,6 +38,7 @@ import { personalSign } from '../sign/evm'
 import { walletConnectProjectId, walletConnectRelayUrl } from '../rpc/walletconnectEnv'
 import { createFileKeyValueStorage } from './storage'
 import { applyPairingOverlay } from './pairingOverlay'
+import { guardVerifyResolution, installVerifyFetch, verificationStatus } from './verify'
 import {
   chainIdDecimal,
   describeSessionProposal,
@@ -78,6 +79,9 @@ const METHODS = [
   'wallet_requestPermissions',
   'wallet_watchAsset',
   'wallet_getCapabilities',
+  'wallet_sendCalls',
+  'wallet_getCallsStatus',
+  'wallet_showCallsStatus',
   'eth_sendRawTransaction',
   'eth_signTransaction',
   'net_version',
@@ -97,6 +101,8 @@ const READ = new Set([
   'wallet_getPermissions',
   'wallet_requestPermissions',
   'wallet_getCapabilities',
+  'wallet_getCallsStatus',
+  'wallet_showCallsStatus',
   'net_version',
 ])
 
@@ -112,9 +118,10 @@ export const PAIR_OVERLAY_MS = PAIR_PROPOSAL_WAIT_MS
 export const WALLETCONNECT_PAIR_WAIT_MS = PAIR_PROPOSAL_WAIT_MS
 
 let pairingState: WalletConnectPairing = { active: false, error: null, deadlineAt: null }
-const usedUris = new Set<string>()
 const stalePairingTopics = new Set<string>()
 const handledSessionIds = new Set<number>()
+const handledRequestIds = new Set<string>()
+const sendCallRecords = new Map<string, { chainId: string; hashes: string[] }>()
 const sessionWaiters = new Set<(kind: 'proposal' | 'auth') => void>()
 let lastIncomingSession: 'proposal' | 'auth' | null = null
 const pending = new Map<
@@ -158,8 +165,8 @@ function setPairing(active: boolean, error: string | null = null): void {
 
 export function cancelWalletConnectPair(): void {
   pairAbort?.abort()
-  if (expectedPairingTopic) stalePairingTopics.add(expectedPairingTopic)
   expectedPairingTopic = null
+  lastIncomingSession = null
   setPairing(false)
   console.log('[walletconnect] 已取消等待')
 }
@@ -194,6 +201,7 @@ export async function startWalletConnect(): Promise<Kit | null> {
   if (!projectId) return null
   starting = (async () => {
     installWalletConnectWebSocket()
+    installVerifyFetch()
     process.env.DISABLE_GLOBAL_CORE = 'true'
     const { Core } = await import('@walletconnect/core')
     const { WalletKit } = await import('@reown/walletkit')
@@ -202,6 +210,14 @@ export async function startWalletConnect(): Promise<Kit | null> {
       relayUrl: walletConnectRelayUrl(),
       customStoragePrefix: 'bee-wallet',
       storage: createFileKeyValueStorage(path.join(app.getPath('userData'), 'walletconnect.json')),
+    })
+    guardVerifyResolution(core.verify)
+    // 只记录方法和链，不把交易参数、签名内容或密钥写入日志。
+    core.history.on('history_created', (record: JsonRpcRecord) => {
+      if (record.request?.method !== 'wc_sessionRequest') return
+      const params = record.request.params
+      console.log('[walletconnect] 中继请求已解密，进入 SDK 校验',
+        params?.request?.method, params?.chainId, record.id)
     })
     const next = await WalletKit.init({
       core,
@@ -216,13 +232,9 @@ export async function startWalletConnect(): Promise<Kit | null> {
         },
       },
     })
+    // 中继重连期间就可能收到事件，处理器必须已经能取得当前 client。
+    kit = next
     attachSessionListeners(next)
-    next.on('session_request', (event) => {
-      void onRequest(event)
-    })
-    next.on('session_delete', () => {
-      broadcastSessions()
-    })
     next.on('proposal_expire', () => {
       console.warn('[walletconnect] 连接请求已过期。请在网站上重新打开 WalletConnect，立刻复制新链接。')
     })
@@ -231,9 +243,10 @@ export async function startWalletConnect(): Promise<Kit | null> {
     } catch (err) {
       console.warn('[walletconnect] 中继尚未连通', err instanceof Error ? err.message : err)
     }
-    kit = next
     drainPendingProposals(next)
     drainPendingAuthentications(next)
+    drainPendingSessionRequests(next)
+    watchSessionList(next)
     broadcastSessions()
     return next
   })()
@@ -257,6 +270,7 @@ class ProviderError extends Error {
 }
 
 export async function handleDappProviderRequest(origin: string, method: string, params: unknown[]): Promise<unknown> {
+
   if (!getStatus().unlocked) throw new ProviderError(4100, '请先解锁钱包')
   const network = currentNetwork()
   if (!network) throw new ProviderError(4901, '请先选择 EVM 网络')
@@ -296,6 +310,7 @@ export async function handleDappProviderRequest(origin: string, method: string, 
   if (!approved) throw new ProviderError(4001, '用户拒绝')
   return handleWrite(method, requestParams, chainId)
 }
+
 
 export function rejectWalletConnectPending(reason = '钱包已锁定'): void {
   grantedOrigins.clear()
@@ -361,9 +376,11 @@ function watchProposal(client: Kit): void {
   pairLock = pairing
   void pairing.then(
     () => {
+      if (pairLock !== pairing || abort.signal.aborted) return
       setPairing(false)
     },
     (err) => {
+      if (pairLock !== pairing || abort.signal.aborted) return
       if (isPairReplaced(err)) return
       if (isPairWaitTimeout(err)) console.log('[walletconnect] 等待网站确认超时')
       expectedPairingTopic = null
@@ -390,26 +407,23 @@ async function pairWalletConnectInner(uri: string): Promise<WalletConnectSession
     return listWalletConnectSessions()
   }
 
-  const livePairing = hasPairingTopic(client, topic) || expectedPairingTopic === topic
-  if (livePairing) {
+  const waitingThis = expectedPairingTopic === topic && Boolean(pairLock)
+  if (waitingThis || (hasPairingTopic(client, topic) && pairLock && expectedPairingTopic === topic)) {
     console.log('[walletconnect] 这条链接已经在配对，继续等网站确认', topic.slice(0, 16))
-    expectedPairingTopic = topic
     setPairing(true)
     drainPendingProposals(client)
     drainPendingAuthentications(client)
     watchProposal(client)
     return listWalletConnectSessions()
   }
-  if (usedUris.has(parsed)) {
-    throw invalidArg('这个链接已经用过。请关掉网站上的 WalletConnect 窗口，重新点一次，立刻复制新链接。')
-  }
 
   if (pairLock || expectedPairingTopic) {
-    if (expectedPairingTopic) stalePairingTopics.add(expectedPairingTopic)
+    if (expectedPairingTopic && expectedPairingTopic !== topic) stalePairingTopics.add(expectedPairingTopic)
     console.log('[walletconnect] 改用最新链接')
     await replaceInFlightPair()
   }
 
+  stalePairingTopics.delete(topic)
   expectedPairingTopic = topic
   setPairing(true)
   lastIncomingSession = null
@@ -417,6 +431,16 @@ async function pairWalletConnectInner(uri: string): Promise<WalletConnectSession
     if (!client.core.relayer.connected) await client.core.relayer.transportOpen()
   } catch {
     /* pair 里还会再连一次 */
+  }
+  if (hasPairingTopic(client, topic)) {
+    console.log('[walletconnect] 配对已存在，继续等网站确认', topic.slice(0, 16))
+    // activate 只更新本地状态；上次订阅失败时必须重新订阅才能收到提案。
+    await client.core.relayer.subscribe(topic)
+    await client.core.pairing.activate({ topic })
+    drainPendingProposals(client)
+    drainPendingAuthentications(client)
+    watchProposal(client)
+    return listWalletConnectSessions()
   }
   console.log('[walletconnect] 开始配对', {
     chars: parsed.length,
@@ -427,6 +451,11 @@ async function pairWalletConnectInner(uri: string): Promise<WalletConnectSession
     await client.pair({ uri: parsed, activatePairing: true })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    if (hasPairingTopic(client, topic) && /already|exist/i.test(message)) {
+      console.log('[walletconnect] 配对已在中继上，等待网站确认', topic.slice(0, 16))
+      watchProposal(client)
+      return listWalletConnectSessions()
+    }
     expectedPairingTopic = null
     setPairing(false, message)
     if (/subscribing/i.test(message) || /please try again/i.test(message)) {
@@ -434,26 +463,25 @@ async function pairWalletConnectInner(uri: string): Promise<WalletConnectSession
     }
     throw err
   }
-  usedUris.add(parsed)
   console.log('[walletconnect] 配对请求已交给中继，等待网站确认')
   watchProposal(client)
   return listWalletConnectSessions()
 }
 
 /** 网站或系统打开的 wc: 深链接。不是扫页面二维码。 */
-export async function acceptWalletConnectDeepLink(raw: string): Promise<void> {
+export async function acceptWalletConnectDeepLink(raw: string): Promise<{ ignored?: boolean }> {
   let uri: string
   try {
     uri = parseWalletConnectUri(raw)
   } catch {
-    return
+    return {}
   }
-  if (!uri.includes('symKey=')) return
+  if (!uri.includes('symKey=')) return {}
   if (!getStatus().unlocked) {
     queuedDeepLink = uri
     focusWalletWindow()
     console.log('[walletconnect] 深链接已记下，解锁后再连接')
-    return
+    return {}
   }
   focusWalletWindow()
   try {
@@ -462,16 +490,17 @@ export async function acceptWalletConnectDeepLink(raw: string): Promise<void> {
   } catch (err) {
     if (isPairWaitTimeout(err)) {
       console.log('[walletconnect] 等待网站确认超时')
-      return
+      return {}
     }
-    if (isPairReplaced(err)) return
+    if (isPairReplaced(err)) return {}
     const message = err instanceof Error ? err.message : String(err)
     if (/已经用过|还在进行|请先确认|改用新的/.test(message)) {
       console.log('[walletconnect] 深链接已忽略', message)
-      return
+      return {}
     }
     console.warn('[walletconnect] 深链接配对失败', message)
   }
+  return {}
 }
 
 export function flushQueuedWalletConnectDeepLink(): void {
@@ -500,18 +529,11 @@ export function listWalletConnectSessions(): WalletConnectSession[] {
 
 export async function disconnectWalletConnect(topic: string): Promise<WalletConnectSession[]> {
   const client = await requireKit()
-  const session = client.getActiveSessions()[topic] as { pairingTopic?: string } | undefined
   pairAbort?.abort()
   expectedPairingTopic = null
+  lastIncomingSession = null
   setPairing(false)
-  try {
-    await client.disconnectSession({ topic, reason: getSdkError('USER_DISCONNECTED') })
-  } catch {
-    /* 会话可能已经被网站断开 */
-  }
-  if (session?.pairingTopic) await disconnectPairing(client, session.pairingTopic)
-  broadcastSessions()
-  console.log('[walletconnect] 已断开会话', topic.slice(0, 16))
+  await forgetSession(client, topic, 'wallet')
   return listWalletConnectSessions()
 }
 
@@ -597,15 +619,6 @@ function isCurrentPairingTopic(topic: string | undefined): boolean {
   return topic === expectedPairingTopic
 }
 
-async function disconnectPairing(client: Kit, topic: string): Promise<void> {
-  if (!topic) return
-  try {
-    await client.core.pairing.disconnect({ topic })
-    console.log('[walletconnect] 已断开配对', topic.slice(0, 16))
-  } catch {
-    /* 配对可能已经过期 */
-  }
-}
 
 function peerOrigin(url: string | undefined): string {
   const raw = (url || '').trim()
@@ -632,9 +645,97 @@ async function disconnectOtherSessions(client: Kit, url: string, keepTopic?: str
 }
 
 function signClientOf(client: Kit): {
+  on?: (name: string, fn: (event: unknown) => void) => void
+  events?: { on?: (name: string, fn: (event: unknown) => void) => void }
+  ping?: (args: { topic: string }) => Promise<void>
+  session?: { delete?: (topic: string, reason: { code: number; message: string }) => unknown }
   auth?: { requests?: { getAll?: () => AuthTypes.PendingRequest[] } }
 } | undefined {
-  return (client.engine as { signClient?: { auth?: { requests?: { getAll?: () => AuthTypes.PendingRequest[] } } } }).signClient
+  return (
+    client.engine as {
+      signClient?: {
+        on?: (name: string, fn: (event: unknown) => void) => void
+        events?: { on?: (name: string, fn: (event: unknown) => void) => void }
+        ping?: (args: { topic: string }) => Promise<void>
+        session?: { delete?: (topic: string, reason: { code: number; message: string }) => unknown }
+        auth?: { requests?: { getAll?: () => AuthTypes.PendingRequest[] } }
+      }
+    }
+  ).signClient
+}
+
+function eventTopic(event: unknown): string {
+  if (typeof event === 'string') return event.trim()
+  if (!event || typeof event !== 'object') return ''
+  const row = event as { topic?: string; params?: { topic?: string } }
+  return String(row.topic || row.params?.topic || '').trim()
+}
+
+const forgettingTopics = new Set<string>()
+
+async function forgetSession(client: Kit, topic: string, source: string): Promise<void> {
+  if (!topic) {
+    broadcastSessions()
+    return
+  }
+  if (forgettingTopics.has(topic)) return
+  forgettingTopics.add(topic)
+  try {
+    const session = client.getActiveSessions()[topic] as { pairingTopic?: string } | undefined
+    if (!session) {
+      lastSessionKey = sessionsKey(client)
+      broadcastSessions()
+      console.log('[walletconnect] 会话已不在列表', source, topic.slice(0, 16))
+      return
+    }
+    try {
+      await client.disconnectSession({ topic, reason: getSdkError('USER_DISCONNECTED') })
+    } catch {
+      try {
+        signClientOf(client)?.session?.delete?.(topic, getSdkError('USER_DISCONNECTED'))
+      } catch {
+        /* 本地已经没有这条会话 */
+      }
+    }
+    // 会话授权已撤销；保留配对通道，网站才能在此通道上发起新的连接提案。
+    broadcastSessions()
+    lastSessionKey = sessionsKey(client)
+    console.log('[walletconnect] 已清理会话', source, topic.slice(0, 16))
+  } finally {
+    forgettingTopics.delete(topic)
+  }
+}
+
+function onRemoteSessionGone(event: unknown, source: string): void {
+  const topic = eventTopic(event)
+  console.log('[walletconnect] 收到网站断开', source, topic.slice(0, 16) || String(event))
+  if (!kit) {
+    broadcastSessions()
+    return
+  }
+  // SDK 已处理远端删除/过期事件，不再回发 disconnect 或删除共享配对。
+  lastSessionKey = sessionsKey(kit)
+  broadcastSessions()
+}
+
+let sessionPoll: ReturnType<typeof setInterval> | null = null
+let lastSessionKey = ''
+
+function sessionsKey(client: Kit): string {
+  return Object.keys(client.getActiveSessions()).sort().join(',')
+}
+
+function watchSessionList(client: Kit): void {
+  if (sessionPoll) return
+  lastSessionKey = sessionsKey(client)
+  sessionPoll = setInterval(() => {
+    drainPendingSessionRequests(client)
+    const next = sessionsKey(client)
+    if (next === lastSessionKey) return
+    console.log('[walletconnect] 会话列表已变化', lastSessionKey || '(空)', '->', next || '(空)')
+    lastSessionKey = next
+    broadcastSessions()
+  }, 3_000)
 }
 
 function listPendingAuthRequests(client: Kit): AuthTypes.PendingRequest[] {
@@ -642,6 +743,79 @@ function listPendingAuthRequests(client: Kit): AuthTypes.PendingRequest[] {
     return signClientOf(client)?.auth?.requests?.getAll?.() ?? []
   } catch {
     return []
+  }
+}
+
+function listPendingSessionRequests(client: Kit): WalletKitTypes.SessionRequest[] {
+  const fromKit = (client as { getPendingSessionRequests?: () => WalletKitTypes.SessionRequest[] }).getPendingSessionRequests
+  if (typeof fromKit === 'function') {
+    try {
+      return fromKit.call(client) ?? []
+    } catch {
+      /* 个别版本方法签名不同 */
+    }
+  }
+  try {
+    return (
+      (
+        signClientOf(client) as
+          | { pendingRequest?: { getAll?: () => WalletKitTypes.SessionRequest[] } }
+          | undefined
+      )?.pendingRequest?.getAll?.() ?? []
+    )
+  } catch {
+    return []
+  }
+}
+
+function listHistorySessionRequests(client: Kit): WalletKitTypes.SessionRequest[] {
+  const history = client.core as {
+    history?: { getAll?: (filter?: { topic?: string }) => unknown[] }
+  }
+  let records: unknown[] = []
+  try {
+    records = history.history?.getAll?.() ?? []
+  } catch {
+    return []
+  }
+  const now = Math.floor(Date.now() / 1000)
+  const out: WalletKitTypes.SessionRequest[] = []
+  for (const item of records) {
+    if (!item || typeof item !== 'object') continue
+    const row = item as {
+      id?: number
+      topic?: string
+      expiry?: number
+      response?: unknown
+      request?: {
+        method?: string
+        params?: { request?: { method: string; params?: unknown[] }; chainId?: string }
+      }
+    }
+    if (row.response) continue
+    if (row.expiry && row.expiry < now) continue
+    if (row.request?.method !== 'wc_sessionRequest') continue
+    const method = row.request.params?.request?.method
+    if (!method || READ.has(method)) continue
+    const id = Number(row.id || 0)
+    const topic = String(row.topic || '')
+    const params = row.request.params
+    if (!id || !topic || !params?.request) continue
+    out.push({ id, topic, params } as WalletKitTypes.SessionRequest)
+  }
+  return out
+}
+
+function drainPendingSessionRequests(client: Kit): void {
+  const seen = new Set<string>()
+  const events = [...listPendingSessionRequests(client), ...listHistorySessionRequests(client)]
+  for (const event of events) {
+    const id = Number(event.id)
+    const requestKey = `${event.topic}:${id}`
+    if (!id || seen.has(requestKey) || handledRequestIds.has(requestKey)) continue
+    seen.add(requestKey)
+    console.log('[walletconnect] 收到待处理 session_request', event.params?.request?.method, id)
+    void onRequest(event)
   }
 }
 
@@ -662,8 +836,8 @@ function drainPendingAuthentications(client: Kit): void {
   }
 }
 
-function proposalAuthRequests(proposal: WalletKitTypes.SessionProposal): AuthTypes.AuthenticateParams[] {
-  return proposal.params.requests?.authentication ?? []
+function proposalAuthRequests(proposal: WalletKitTypes.SessionProposal): AuthTypes.PayloadParams[] {
+  return (proposal.params as { requests?: { authentication?: AuthTypes.PayloadParams[] } }).requests?.authentication ?? []
 }
 
 function pickAuthIss(chains: string[], address: string): string {
@@ -673,17 +847,18 @@ function pickAuthIss(chains: string[], address: string): string {
   return `${chain}:${address}`
 }
 
-async function confirmLogin(meta: { url?: string; name?: string }): Promise<boolean> {
+async function confirmLogin(meta: { url?: string; name?: string }, context?: Verify.Context): Promise<boolean> {
   return confirm({
     kind: 'auth',
     origin: meta.url || meta.name || '',
     name: meta.name || meta.url || 'DApp',
     method: 'session_authenticate',
+    verification: verificationStatus(context),
     detail: `${meta.url || ''}\n网站要求签名登录，确认后页面才会显示已连接。`.trim(),
   })
 }
 
-async function signAuthCacao(authPayload: AuthTypes.PayloadParams | AuthTypes.AuthenticateParams): Promise<AuthTypes.Cacao> {
+async function signAuthCacao(authPayload: AuthTypes.PayloadParams | AuthTypes.PayloadParams): Promise<AuthTypes.Cacao> {
   const client = kit
   if (!client) throw new Error('WalletConnect 未就绪')
   const account = requireEvmAccount()
@@ -711,15 +886,6 @@ async function signAuthCacao(authPayload: AuthTypes.PayloadParams | AuthTypes.Au
   const message = client.formatAuthMessage({ request: payload, iss })
   const signature = withAccountPrivateKey(row, (key) => personalSign(key, message))
   return buildAuthObject(payload, { t: 'eip191', s: signature }, iss)
-}
-
-async function waitForPendingAuth(client: Kit, ms: number): Promise<void> {
-  const deadline = Date.now() + ms
-  while (Date.now() < deadline) {
-    drainPendingAuthentications(client)
-    if ([...pending.values()].some((item) => item.item.kind === 'auth')) return
-    await new Promise((resolve) => setTimeout(resolve, 400))
-  }
 }
 
 function drainPendingProposals(client: Kit): void {
@@ -751,7 +917,7 @@ function drainPendingProposals(client: Kit): void {
         '[walletconnect] 收到待处理 session_proposal',
         params.proposer.metadata.url,
         id,
-        params.requests?.authentication?.length ? '含登录' : '',
+        (params as { requests?: { authentication?: unknown[] } }).requests?.authentication?.length ? '含登录' : '',
       )
       void onProposal({ id, params } as WalletKitTypes.SessionProposal)
     }
@@ -792,11 +958,29 @@ function attachSessionListeners(next: Kit): void {
     console.log('[walletconnect] 收到 session_authenticate', event.params.requester.metadata.url)
     void onAuthenticate(event)
   }
+  const onRequestEvent = (event: WalletKitTypes.SessionRequest) => {
+    void onRequest(event)
+  }
   next.on('session_proposal', onProposalEvent)
   next.on('session_authenticate', onAuthEvent)
-  const signClient = (next.engine as unknown as { signClient?: { on: (name: string, fn: (event: unknown) => void) => void } }).signClient
-  signClient?.on('session_proposal', (event) => onProposalEvent(event as WalletKitTypes.SessionProposal))
-  signClient?.on('session_authenticate', (event) => onAuthEvent(event as WalletKitTypes.SessionAuthenticate))
+  next.on('session_request', onRequestEvent)
+  next.on('session_delete', (event) => onRemoteSessionGone(event, 'walletkit'))
+  const signClient = signClientOf(next)
+  signClient?.on?.('session_proposal', (event) => onProposalEvent(event as WalletKitTypes.SessionProposal))
+  signClient?.on?.('session_authenticate', (event) => onAuthEvent(event as WalletKitTypes.SessionAuthenticate))
+  signClient?.on?.('session_request', (event) => onRequestEvent(event as WalletKitTypes.SessionRequest))
+  signClient?.on?.('session_delete', (event) => onRemoteSessionGone(event, 'signClient'))
+  signClient?.on?.('session_expire', (event) => onRemoteSessionGone(event, 'expire'))
+  signClient?.events?.on?.('session_request', (event) => onRequestEvent(event as WalletKitTypes.SessionRequest))
+  signClient?.events?.on?.('session_delete', (event) => onRemoteSessionGone(event, 'signClient.events'))
+  signClient?.events?.on?.('session_expire', (event) => onRemoteSessionGone(event, 'expire.events'))
+  const kitEvents = (next as unknown as { events?: { on?: (name: string, fn: (event: unknown) => void) => void } }).events
+  kitEvents?.on?.('session_request', (event) => onRequestEvent(event as WalletKitTypes.SessionRequest))
+  kitEvents?.on?.('session_delete', (event) => onRemoteSessionGone(event, 'walletkit.events'))
+  const engine = next.engine as { on?: (name: string, fn: (event: unknown) => void) => void }
+  engine?.on?.('session_request', (event) => onRequestEvent(event as WalletKitTypes.SessionRequest))
+  engine?.on?.('session_delete', (event) => onRemoteSessionGone(event, 'engine'))
+  console.log('[walletconnect] 已监听网站断开')
 }
 
 function focusWalletWindow(): void {
@@ -834,6 +1018,7 @@ async function onProposal(proposal: WalletKitTypes.SessionProposal): Promise<voi
     origin: meta.url || meta.name,
     name: meta.name || meta.url || 'DApp',
     method: 'session_propose',
+    verification: verificationStatus(proposal.verifyContext),
     detail: describeSessionProposal({
       url: meta.url,
       requiredNamespaces: proposal.params.requiredNamespaces,
@@ -870,7 +1055,7 @@ async function onProposal(proposal: WalletKitTypes.SessionProposal): Promise<voi
     let cacao: AuthTypes.Cacao | undefined
     if (embeddedAuth[0]) {
       console.log('[walletconnect] 提案里带了登录请求，请再确认一次')
-      const loginOk = await confirmLogin(meta)
+      const loginOk = await confirmLogin(meta, proposal.verifyContext)
       if (!loginOk) {
         await rejectProposal(client, proposalId)
         if (expectedPairingTopic === pairingTopicOf(proposal.params)) expectedPairingTopic = null
@@ -883,21 +1068,14 @@ async function onProposal(proposal: WalletKitTypes.SessionProposal): Promise<voi
       id: proposalId,
       namespaces,
       sessionProperties: proposal.params.sessionProperties,
-      proposalRequestsResponses: cacao ? { authentication: [cacao] } : undefined,
     })
     await disconnectOtherSessions(client, meta.url, session.topic)
     expectedPairingTopic = null
     broadcastSessions()
     void notifyWalletConnectNetwork()
     console.log('[walletconnect] 会话已批准', meta.url, session.topic)
-    if (!cacao) {
-      console.log('[walletconnect] 等待网站登录请求，请再确认一次')
-      drainPendingAuthentications(client)
-      await waitForPendingAuth(client, 20_000)
-      if (![...pending.values()].some((item) => item.item.kind === 'auth')) {
-        console.log('[walletconnect] 网站没有再发登录。若页面仍停在二维码，请关掉窗口后只连一次最新链接')
-      }
-    }
+    drainPendingAuthentications(client)
+    drainPendingSessionRequests(client)
   } catch (err) {
     console.warn('[walletconnect] 批准会话失败', err instanceof Error ? err.message : err)
     await rejectProposal(client, proposalId)
@@ -909,7 +1087,7 @@ async function onAuthenticate(event: WalletKitTypes.SessionAuthenticate): Promis
   const client = kit
   if (!client) return
   const meta = event.params.requester.metadata
-  const approved = await confirmLogin(meta)
+  const approved = await confirmLogin(meta, event.verifyContext)
   if (!approved) {
     await client.rejectSessionAuthenticate({ id: event.id, reason: getSdkError('USER_REJECTED') })
     return
@@ -931,10 +1109,28 @@ async function onRequest(event: WalletKitTypes.SessionRequest): Promise<void> {
   const client = kit
   if (!client) return
   const { topic, id, params } = event
+  const requestKey = `${event.topic}:${id}`
+  if (!id || handledRequestIds.has(requestKey)) return
+  handledRequestIds.add(requestKey)
+  setTimeout(() => handledRequestIds.delete(requestKey), 10_000)
   const method = params.request.method
   const requestParams = Array.isArray(params.request.params) ? params.request.params : []
   const session = client.getActiveSessions()[topic]
-  const origin = session?.peer.metadata.url || session?.peer.metadata.name || topic
+  console.log('[walletconnect] 收到 session_request', method, session?.peer.metadata.url || topic.slice(0, 16), id)
+  if (!session) {
+    console.log('[walletconnect] 请求对应的会话已不存在', topic.slice(0, 16))
+    try {
+      await client.respondSessionRequest({
+        topic,
+        response: { id, jsonrpc: '2.0', error: { code: 5900, message: 'session gone' } },
+      })
+    } catch {
+      /* 会话已经没了 */
+    }
+    void forgetSession(client, topic, 'missing')
+    return
+  }
+  const origin = session.peer.metadata.url || session.peer.metadata.name || topic
   try {
     if (!getStatus().unlocked) throw new Error('请先解锁钱包')
     if (READ.has(method)) {
@@ -945,15 +1141,17 @@ async function onRequest(event: WalletKitTypes.SessionRequest): Promise<void> {
     const approved = await confirm({
       kind: pendingKind(method),
       origin,
-      name: session?.peer.metadata.name || origin,
+      name: session.peer.metadata.name || origin,
       method,
       detail: describeWcRequest(method, requestParams),
+      verification: verificationStatus(event.verifyContext),
     })
     if (!approved) throw new Error('用户拒绝')
     const result = await handleWrite(method, requestParams, params.chainId)
     await client.respondSessionRequest({ topic, response: { id, jsonrpc: '2.0', result } })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    console.warn('[walletconnect] 处理 session_request 失败', method, message)
     await client.respondSessionRequest({
       topic,
       response: {
@@ -977,6 +1175,10 @@ async function handleRead(method: string, params: unknown[], caipChain: string):
       .map((item) => item.chainId)
     return walletCapabilities(params, [caipChain, ...catalog])
   }
+  if (method === 'wallet_getCallsStatus') {
+    return getCallsStatus(String(params[0] ?? ''))
+  }
+  if (method === 'wallet_showCallsStatus') return null
   if (method === 'eth_chainId' || method === 'net_version') {
     const network = networkFromCaip(caipChain) ?? currentNetwork()
     if (!network) throw new Error('请先选择 EVM 网络')
@@ -986,6 +1188,56 @@ async function handleRead(method: string, params: unknown[], caipChain: string):
   const network = networkFromCaip(caipChain) ?? currentNetwork()
   if (!network) throw new Error('当前链不在目录里')
   return evmRpc(network, method, params)
+}
+
+async function sendCallsBatch(params: unknown[], caipChain: string): Promise<{ id: string }> {
+  const input = (params[0] ?? {}) as {
+    chainId?: string
+    atomicRequired?: boolean
+    calls?: { to?: string; data?: string; value?: string }[]
+  }
+  const calls = Array.isArray(input.calls) ? input.calls : []
+  if (!calls.length) throw new Error('缺少交易')
+  if (input.atomicRequired && calls.length > 1) throw new Error('不支持原子批量交易')
+  const chain = input.chainId ? toCaipChain(input.chainId) : caipChain
+  const hashes: string[] = []
+  for (const call of calls) {
+    hashes.push(String(await handleWrite('eth_sendTransaction', [call], chain)))
+  }
+  const id = hashes[0]
+  sendCallRecords.set(id, { chainId: toHexChainId(chain), hashes })
+  return { id }
+}
+
+async function getCallsStatus(id: string): Promise<unknown> {
+  const row = sendCallRecords.get(id)
+  if (!row) throw new Error('找不到这笔批量交易')
+  const network = networkFromCaip(toCaipChain(row.chainId)) ?? currentNetwork()
+  const receipts: unknown[] = []
+  let pending = false
+  for (const hash of row.hashes) {
+    let receipt: { blockNumber?: string; transactionHash?: string } | null = null
+    if (network) {
+      try {
+        receipt = (await evmRpc(network, 'eth_getTransactionReceipt', [hash])) as {
+          blockNumber?: string
+          transactionHash?: string
+        } | null
+      } catch {
+        receipt = null
+      }
+    }
+    if (!receipt?.blockNumber) pending = true
+    receipts.push(receipt ?? { transactionHash: hash, status: '0x1' })
+  }
+  return {
+    version: '2.0.0',
+    id,
+    chainId: row.chainId,
+    atomic: false,
+    status: pending ? 100 : 200,
+    receipts,
+  }
 }
 
 async function handleWrite(method: string, params: unknown[], caipChain: string): Promise<unknown> {
@@ -1004,6 +1256,8 @@ async function handleWrite(method: string, params: unknown[], caipChain: string)
       return `${bytesToHex(sig.toBytes('compact'))}${(sig.recovery + 27).toString(16).padStart(2, '0')}`
     })
   }
+  if (method === 'wallet_sendCalls') return sendCallsBatch(params, caipChain)
+  if (method === 'wallet_watchAsset' || method === 'wallet_showCallsStatus') return true
   if (method === 'wallet_switchEthereumChain' || method === 'wallet_addEthereumChain') {
     const raw = (params[0] as { chainId?: string } | undefined)?.chainId
     if (!raw) throw new Error('缺少 chainId')
@@ -1058,12 +1312,9 @@ function personalMessage(params: unknown[]): string {
 function parseTyped(params: unknown[]): TypedDataDefinition {
   const raw = params.find((item) => typeof item === 'string' && item.trim().startsWith('{'))
   if (typeof raw !== 'string') throw new Error('缺少 typed data')
-  const parsed = JSON.parse(raw) as TypedDataDefinition & { types?: Record<string, unknown> }
-  if (parsed.types && 'EIP712Domain' in parsed.types) {
-    const { EIP712Domain: _drop, ...rest } = parsed.types
-    return { ...parsed, types: rest } as TypedDataDefinition
-  }
-  return parsed
+  // 必须保留网站提供的 EIP712Domain。JSON-RPC 的 chainId 常是字符串，
+  // 删除显式类型后 viem 自动推断会漏掉 chainId，导致 Permit2 签错摘要。
+  return JSON.parse(raw) as TypedDataDefinition
 }
 
 function currentEvmAccount(): AccountRecord | null {

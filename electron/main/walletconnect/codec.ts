@@ -161,6 +161,10 @@ export function describeWcRequest(method: string, params: unknown[]): string {
   if (method === 'eth_sendTransaction') {
     return JSON.stringify(params[0] ?? {}, null, 2)
   }
+  if (method === 'wallet_sendCalls') {
+    const calls = (params[0] as { calls?: unknown } | undefined)?.calls
+    return JSON.stringify(calls ?? params[0] ?? {}, null, 2)
+  }
   if (method === 'wallet_switchEthereumChain' || method === 'wallet_addEthereumChain') {
     return JSON.stringify(params[0] ?? {}, null, 2)
   }
@@ -190,7 +194,7 @@ export function describeSessionProposal(params: {
 }
 
 export function pendingKind(method: string): WalletConnectPending['kind'] {
-  if (method === 'eth_sendTransaction') return 'send'
+  if (method === 'eth_sendTransaction' || method === 'wallet_sendCalls') return 'send'
   if (method === 'wallet_switchEthereumChain' || method === 'wallet_addEthereumChain') return 'switch'
   return 'sign'
 }
