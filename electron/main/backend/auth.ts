@@ -1,5 +1,5 @@
 /**
- * 鉴权：用钱包内 EVM 账户签名换 JWT。
+ * 鉴权：用本机目录站专用 EVM 私钥签名换 JWT（见 catalogAuth.ts）。
  *
  * 签名口径必须与服务端 pinko_node/api/AuthTokenApi.js 完全一致：
  *   1. payload = {"address": <EIP-55 地址>, "time": <毫秒时间戳>}，key 顺序固定 address → time
@@ -8,11 +8,11 @@
  *   4. POST /auth/authenticate { address, time, sigMsg } → data 即 JWT
  * 服务端用 recovered === address 严格比较，所以地址必须是 checksum 形态。
  *
- * 生命周期（计划 R0.4 / R0.5）：
- *   token 有效期 30 天，按 address + baseUrl 加密缓存；
- *   并发请求合并去重，绝不同时发多次 authenticate；
- *   锁定后内存里的 token 保留，让目录/余额等只读请求继续可用，
- *   但换新 token 需要私钥，必须解锁 —— 这是刻意的取舍，JWT 不能动资产。
+ * 生命周期：
+ *   专用私钥第一次启动时生成，不跟主密码绑定；
+ *   token 有效期约 30 天，按 address + baseUrl 用设备密钥封装缓存；
+ *   启动时若没有或已过期则重签一次；
+ *   并发请求合并去重，绝不同时发多次 authenticate。
  */
 import { keccak_256 } from '@noble/hashes/sha3'
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils'
@@ -52,7 +52,7 @@ export function setAuthIdentityProvider(provider: AuthIdentityProvider | null): 
 
 export function resolveIdentity(): AuthIdentity {
   if (!identityProvider) {
-    throw new BackendError('NO_AUTH_WALLET', '还没有可用于鉴权的钱包，请先创建或导入钱包')
+    throw new BackendError('NO_AUTH_WALLET', '还没有目录站鉴权私钥')
   }
   const identity = identityProvider()
   return { ...identity, address: toChecksumAddress(identity.address) }
@@ -97,7 +97,7 @@ export function currentToken(): CachedAuthToken | null {
   return isTokenUsable(memoryToken) ? memoryToken : null
 }
 
-/** 解锁后调用：把落盘的密文 token 读进内存 */
+/** 把落盘的 token 读进内存，不需要解锁 */
 export function hydrateAuthToken(): CachedAuthToken | null {
   const address = peekAuthAddress()
   if (!address) return null

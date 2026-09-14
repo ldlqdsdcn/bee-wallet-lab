@@ -14,7 +14,7 @@ A local-first multi-chain lab wallet. Keys never leave your machine.
 
 Electron 桌面端。密钥只存在于主进程，渲染进程通过白名单 IPC 访问。第一版网络 / 代币目录打包在 `data/catalog/`，启动时写入本地 SQLite。链上请求由钱包进程直连节点，Infura 等密钥写在本机 `.env`。
 
-完整宣传用功能说明见 [docs/Bee_Wallet_Lab_门户功能清单.md](docs/Bee_Wallet_Lab_门户功能清单.md)。发币步骤见 [docs/发币说明.md](docs/发币说明.md)。
+完整功能说明见 [docs/功能清单.md](docs/功能清单.md)。发币步骤见 [docs/发币说明.md](docs/发币说明.md)。
 
 ### 支持的链
 
@@ -116,7 +116,7 @@ Windows 安装包计划用 SignPath Foundation 的证书签名（发布者显示
 
 A desktop Electron Web3 lab wallet. Mnemonics and private keys stay in the main process; the renderer talks over a whitelisted IPC. The first catalog of networks and tokens ships in `data/catalog/` and is loaded into local SQLite. Chain calls go from the wallet process to your RPCs. API keys live in a local `.env`.
 
-The marketing feature brief is [docs/Bee_Wallet_Lab_门户功能清单.md](docs/Bee_Wallet_Lab_门户功能清单.md) (Chinese). Token-issue steps: [docs/发币说明.md](docs/发币说明.md).
+Feature list (Chinese): [docs/功能清单.md](docs/功能清单.md). Token-issue steps: [docs/发币说明.md](docs/发币说明.md).
 
 ### Supported chains
 

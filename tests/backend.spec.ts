@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { AUTH_EXPIRED_CODES, BackendError, buildQuery, isAuthExpired, joinUrl, unwrap } from '../electron/main/backend/http'
 import { extractList } from '../electron/main/backend/list'
-import { buildAuthMessage } from '../electron/main/backend/auth'
+import { buildAuthMessage, buildAuthRequest } from '../electron/main/backend/auth'
+import { generateCatalogAuthSecret } from '../electron/main/backend/catalogAuth'
+import { decryptDeviceSecret, encryptDeviceSecret } from '../electron/main/backend/deviceWrap'
+import { personalSign } from '../electron/main/sign/evm'
+import { hexToBytes } from '@noble/hashes/utils'
 import { toChecksumAddress } from '../electron/main/derive/evm'
 
 describe('HTTP 解包', () => {
@@ -57,5 +61,26 @@ describe('鉴权消息', () => {
     expect(message).toHaveLength(66)
     expect(buildAuthMessage(address, 1_700_000_000_000)).toBe(message)
     expect(buildAuthMessage(address, 1_700_000_000_001)).not.toBe(message)
+  })
+
+  it('本机鉴权私钥能按目录站口径签名', () => {
+    const secret = generateCatalogAuthSecret()
+    expect(secret.address).toMatch(/^0x[0-9a-fA-F]{40}$/)
+    expect(secret.privateKeyHex.startsWith('0x')).toBe(true)
+    const key = hexToBytes(secret.privateKeyHex.slice(2))
+    const body = buildAuthRequest({
+      address: secret.address,
+      sign: (message) => personalSign(key, message),
+    })
+    expect(body.address).toBe(secret.address)
+    expect(body.sigMsg.startsWith('0x')).toBe(true)
+    expect(body.sigMsg.length).toBe(132)
+  })
+
+  it('设备封装不依赖主密码', () => {
+    const packed = encryptDeviceSecret('0xabc', 'catalog-auth:default')
+    expect(packed.startsWith('v1.')).toBe(true)
+    expect(decryptDeviceSecret(packed, 'catalog-auth:default')).toBe('0xabc')
+    expect(() => decryptDeviceSecret(packed, 'other')).toThrow()
   })
 })
