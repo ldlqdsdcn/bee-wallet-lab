@@ -154,7 +154,7 @@ Built-in networks include Ethereum, BSC, Base, Optimism, Polygon, Arbitrum, Line
 | Networks / RPC / tokens / faucets / proxy | Catalog, latency checks, testnet faucets, http/socks5 proxy |
 | Language | Instant Simplified Chinese / English, including the native menu |
 
-Not shipped — do not advertise as available: workspace import/export, in-app auto-update.
+Not shipped — do not advertise as available: in-app auto-update.
 
 ### Development
 
