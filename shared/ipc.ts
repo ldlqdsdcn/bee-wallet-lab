@@ -222,10 +222,8 @@ export interface IpcResult<T> {
   }
 }
 
-/** 原生菜单发给渲染进程的命令。工作区导入导出第一版只弹说明。 */
+/** 原生菜单发给渲染进程的命令。 */
 export type AppCommand =
   | { action: 'navigate'; path: string; state?: Record<string, unknown> }
   | { action: 'lock' }
-  | { action: 'workspace'; kind: 'new' | 'import' | 'export' }
   | { action: 'switchNetwork' }
-
