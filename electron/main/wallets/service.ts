@@ -4,8 +4,6 @@
  * 私钥与助记词只在本模块内短暂出现，用完即 wipe。
  */
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils'
-import type { AuthIdentity } from '../backend/auth'
-import { setAuthIdentityProvider } from '../backend/auth'
 import {
   BITCOIN_ADDRESS_TYPES,
   derive,
@@ -22,7 +20,6 @@ import {
   privateKeyToWif,
   encodeSolanaSecretKey,
 } from '../derive'
-import { personalSign } from '../sign/evm'
 import { newId, wipe } from '../security/crypto'
 import { verifyPassword } from '../security/vault'
 import { loadSettings, saveSettings } from '../db/repos/metaRepo'
@@ -614,26 +611,6 @@ export function withAccountPrivateKey<T>(account: AccountRow, fn: (privateKey: U
   }
 }
 
-function findAuthAccount(): AccountRow | null {
-  const wallets = listWalletRows()
-  const authWallet = wallets.find((row) => row.is_auth_wallet === 1) ?? wallets.find((row) => row.is_default === 1)
-  const pool = authWallet ? listAccountRows(authWallet.id) : listAccountRows()
-  return (
-    pool.find((row) => row.wallet_type === 'web3' && row.network_scope === 'mainnet') ??
-    pool.find((row) => row.wallet_type === 'web3') ??
-    null
-  )
-}
-
-function getAuthIdentity(): AuthIdentity {
-  const account = findAuthAccount()
-  if (!account) throw new IpcError('NO_AUTH_WALLET', '还没有可用于鉴权的钱包，请先创建或导入钱包')
-  return {
-    address: account.address,
-    sign: (message: string) => withAccountPrivateKey(account, (privateKey) => personalSign(privateKey, message)),
-  }
-}
-
 export function listHdKeyTable(query: HdKeyQuery): HdKeyRecord[] {
   requireWallet(query.walletId)
   return listHdKeys(query)
@@ -677,10 +654,6 @@ export function reencryptWalletSecrets(oldKek: Buffer, newKek: Buffer): void {
   reencryptWallets(oldKek, newKek)
   reencryptImportedAccounts(oldKek, newKek)
   reencryptHdKeys(oldKek, newKek)
-}
-
-export function initWalletAuth(): void {
-  setAuthIdentityProvider(() => getAuthIdentity())
 }
 
 export { BITCOIN_ADDRESS_TYPES }

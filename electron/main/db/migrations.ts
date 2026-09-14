@@ -510,6 +510,20 @@ const migrations: Migration[] = [
       `)
     },
   },
+  {
+    version: 15,
+    description: 'dedicated EVM key for catalog API authentication',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE catalog_auth_keys (
+          id                    TEXT PRIMARY KEY,
+          address               TEXT NOT NULL,
+          encrypted_private_key TEXT NOT NULL,
+          created_at            INTEGER NOT NULL
+        );
+      `)
+    },
+  },
 ]
 
 export const LATEST_SCHEMA_VERSION = migrations[migrations.length - 1].version

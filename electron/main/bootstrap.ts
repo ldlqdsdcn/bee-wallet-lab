@@ -11,6 +11,7 @@ import { applyActiveProxy } from './net/proxy'
 import { migrateLegacyProxy } from './net/proxies'
 import { ensureDefaultFiat } from './db/repos/metaRepo'
 import { disposeTransactionWatch } from './history/watch'
+import { refreshCatalogAuthToken } from './backend/catalogAuth'
 
 let started = false
 
@@ -32,6 +33,11 @@ export async function bootstrap(): Promise<void> {
     console.warn('[proxy] 应用代理失败', err instanceof Error ? err.message : err)
   }
   registerAllIpc()
+  try {
+    await refreshCatalogAuthToken()
+  } catch (err) {
+    console.warn('[catalog] 启动鉴权失败', err instanceof Error ? err.message : err)
+  }
   started = true
 }
 

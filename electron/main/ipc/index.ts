@@ -19,11 +19,10 @@ import {
   touchAddressBookEntry,
   upsertAddressBookEntry,
 } from '../db/repos/addressBookRepo'
-import { reencryptAuthTokens } from '../db/repos/authTokenRepo'
 import { authenticate, getBackendStatus, ping, resetBackend } from '../backend/client'
 import { resetPriceBackoff } from '../price'
-import { hydrateAuthToken } from '../backend/auth'
-import { reencryptWalletSecrets, initWalletAuth } from '../wallets/service'
+import { initCatalogAuth, refreshCatalogAuthToken } from '../backend/catalogAuth'
+import { reencryptWalletSecrets } from '../wallets/service'
 import { syncCatalog } from '../catalog/sync'
 import { isBitcoinAddress } from '../derive/bitcoin'
 import { isChecksumValid, isEvmAddress } from '../derive/evm'
@@ -85,7 +84,6 @@ function registerVaultIpc(): void {
         requireString(arg?.oldPassword, 'oldPassword'),
         requireString(arg?.newPassword, 'newPassword'),
         (oldKek, newKek) => {
-          reencryptAuthTokens(oldKek, newKek)
           reencryptWalletSecrets(oldKek, newKek)
         },
       ),
@@ -225,23 +223,31 @@ export function registerAllIpc(): void {
   registerWalletConnectIpc()
   registerDappProviderIpc()
   registerPlaceholders()
-  initWalletAuth()
+  initCatalogAuth()
   recoverInterruptedHdAirdrops()
 
   vault.onVaultEvent((event) => {
     if (event === 'unlocked') {
-      try {
-        hydrateAuthToken()
-      } catch {
-        /* 没有鉴权钱包或密文失效都不影响解锁本身 */
-      }
-      void syncCatalog().then((result) => {
-        broadcast(IPC_EVENT.catalogUpdated, result)
-        refreshAppMenu()
-      }).catch(() => undefined)
-      void loadDappCatalog()
-        .then(() => refreshAppMenu())
-        .catch(() => undefined)
+      void (async () => {
+        try {
+          await refreshCatalogAuthToken()
+        } catch (err) {
+          console.warn('[catalog] 鉴权准备失败', err instanceof Error ? err.message : err)
+        }
+        try {
+          const result = await syncCatalog()
+          broadcast(IPC_EVENT.catalogUpdated, result)
+          refreshAppMenu()
+        } catch {
+          /* 目录站不可达时用本地缓存 */
+        }
+        try {
+          await loadDappCatalog()
+          refreshAppMenu()
+        } catch {
+          /* 未配置目录站时跳过 */
+        }
+      })()
       void startWalletConnect()
         .then(() => flushQueuedWalletConnectDeepLink())
         .catch((err) => {
@@ -262,6 +268,9 @@ export function registerAllIpc(): void {
   })
 
   if (vault.getStatus().unlocked) {
+    void refreshCatalogAuthToken().catch((err) => {
+      console.warn('[catalog] 鉴权准备失败', err instanceof Error ? err.message : err)
+    })
     startTransactionWatch()
     startWalletConnectClipboardWatch()
     void startWalletConnect()
