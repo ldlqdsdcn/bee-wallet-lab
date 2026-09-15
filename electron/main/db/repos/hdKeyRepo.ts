@@ -65,6 +65,14 @@ function scopedWhere(query: HdKeyQuery): { sql: string; args: unknown[] } {
     clauses.push('account_index = ?')
     args.push(query.accountIndex)
   }
+  if (query.fromIndex != null && Number.isInteger(query.fromIndex)) {
+    clauses.push('address_index >= ?')
+    args.push(query.fromIndex)
+  }
+  if (query.toIndex != null && Number.isInteger(query.toIndex)) {
+    clauses.push('address_index <= ?')
+    args.push(query.toIndex)
+  }
   return { sql: clauses.join(' AND '), args }
 }
 
@@ -138,6 +146,18 @@ export function countHdKeys(walletId: string, walletType?: WalletType): number {
 
 export function getHdKeyRow(id: string): HdKeyRow | null {
   return getDatabase().prepare<[string], HdKeyRow>('SELECT * FROM hd_keys WHERE id = ?').get(id) ?? null
+}
+
+export function findHdKeyByAddress(walletId: string, address: string): HdKeyRow | null {
+  const needle = address.trim().toLowerCase()
+  if (!needle) return null
+  return (
+    getDatabase()
+      .prepare<[string, string], HdKeyRow>(
+        'SELECT * FROM hd_keys WHERE wallet_id = ? AND lower(address) = ? LIMIT 1',
+      )
+      .get(walletId, needle) ?? null
+  )
 }
 
 export function decryptHdPrivateKey(row: HdKeyRow): string {

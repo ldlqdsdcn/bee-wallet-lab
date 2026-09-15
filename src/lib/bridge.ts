@@ -45,6 +45,7 @@ import type {
   SignMessageInput,
   SignMessageResult,
   IssuedTokenRecord,
+  TokenBalanceRow,
   TokenIssueInput,
   TokenIssuePreview,
   TokenIssueResult,
@@ -220,6 +221,8 @@ export const portfolioApi = {
   refresh: (networkPk?: string) => call<PortfolioSnapshot>(IPC.portfolioRefresh, { networkPk }),
   account: (accountId: string, networkPk: string) =>
     call<AssetEntry[]>(IPC.portfolioAccount, { accountId, networkPk }),
+  tokenBalances: (input: { networkPk: string; tokenPk: string; addresses: string[] }) =>
+    call<TokenBalanceRow[]>(IPC.portfolioTokenBalances, input),
 }
 
 export const tokenApi = {

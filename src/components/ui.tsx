@@ -116,10 +116,10 @@ export function TextArea({
   hint,
   className = '',
   ...rest
-}: TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string; hint?: string }) {
+}: TextareaHTMLAttributes<HTMLTextAreaElement> & { label?: string; hint?: string }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-ink-400">{label}</span>
+      {label ? <span className="mb-1 block text-xs font-medium text-ink-400">{label}</span> : null}
       <textarea
         className={`min-h-24 w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-ink-200 outline-none placeholder:text-ink-600 focus:border-honey-500 ${className}`}
         {...rest}

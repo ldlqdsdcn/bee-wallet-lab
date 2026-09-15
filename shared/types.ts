@@ -141,6 +141,8 @@ export interface HdKeyQuery {
   walletType?: WalletType
   networkScope?: NetworkScope
   addressType?: BitcoinAddressType | null
+  fromIndex?: number
+  toIndex?: number
 }
 
 export interface HdKeyRecord {
@@ -179,14 +181,20 @@ export interface HdDeriveEvmResult {
 
 export type HdAirdropAmountMode = 'fixed' | 'range'
 
+export interface TokenBalanceRow {
+  address: string
+  balance: string | null
+}
+
 export interface HdAirdropInput {
   walletId: string
   accountId: string
+  /** 用分层地址付款时传入；不传则用主账户 */
+  hdKeyId?: string | null
   networkPk: string
   tokenPk: string
-  fromIndex: number
-  toIndex: number
-  accountIndex?: number
+  /** EVM 收款地址，逗号分隔文本解析后的列表 */
+  recipients: string[]
   amountMode: HdAirdropAmountMode
   /** 固定额度，人类可读 */
   amount?: string
@@ -464,6 +472,8 @@ export type FeeLevel = 'low' | 'medium' | 'high' | 'custom'
 
 export interface TransferDraftInput {
   accountId: string
+  /** 用分层地址付款时传入；不传则用所选账户 */
+  hdKeyId?: string | null
   networkPk: string
   tokenPk: string
   to: string

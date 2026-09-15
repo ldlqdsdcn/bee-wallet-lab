@@ -1,9 +1,8 @@
 /**
- * 把当前账户的主币或 ERC-20 按序号打给已生成的分层地址。
+ * 把当前账户的主币或 ERC-20 按地址列表逐笔打出。
  * 每笔写入 hd_airdrop_jobs / hd_airdrop_items，失败可单笔或批量重试。
  */
 import type {
-  AccountRecord,
   HdAirdropInput,
   HdAirdropItem,
   HdAirdropItemPage,
@@ -11,16 +10,15 @@ import type {
   HdAirdropJob,
   HdAirdropPreview,
   HdAirdropRetryInput,
-  HdKeyRecord,
   NetworkRecord,
   TokenRecord,
 } from '@shared/types'
+import { collectRecipientAddresses } from '../../../shared/airdropAddresses'
 import { IPC_EVENT } from '../../../shared/ipc'
 import { newId, wipe } from '../security/crypto'
 import { formatMinor, parseDecimalToMinor } from '../util/amount'
 import { getNetwork, getToken } from '../db/repos/catalogRepo'
 import { getAccountRow } from '../db/repos/accountRepo'
-import { listHdKeysInRange } from '../db/repos/hdKeyRepo'
 import { upsertTransaction } from '../db/repos/transactionRepo'
 import {
   getHdAirdropJob as getStoredJob,
@@ -36,8 +34,8 @@ import {
   updateHdAirdropJob,
 } from '../db/repos/hdAirdropRepo'
 import { broadcast, invalidArg, notFound } from '../ipc/registry'
-import { getAccount, withAccountPrivateKey } from '../wallets/service'
-import { normalizeEvmRange } from '../derive/evmRange'
+import { findHdKeyByAddress, getHdKeyRow } from '../db/repos/hdKeyRepo'
+import { getAccount, withAccountPrivateKey, withHdPrivateKey } from '../wallets/service'
 import {
   broadcastEvmTx,
   encodeErc20Transfer,
@@ -58,13 +56,20 @@ const MAX_RECIPIENTS = 20_000
 const DRAFT_TTL_MS = 10 * 60 * 1000
 const GAP_MS = 120
 
+interface Payer {
+  walletId: string
+  accountId: string
+  address: string
+  hdKeyId: string | null
+}
+
 interface Draft {
   input: HdAirdropInput
   preview: HdAirdropPreview
   network: NetworkRecord
   token: TokenRecord
-  account: AccountRecord
-  recipients: HdKeyRecord[]
+  payer: Payer
+  recipients: { address: string; addressIndex: number }[]
   minMinor: bigint
   maxMinor: bigint
   gasLimit: bigint
@@ -124,8 +129,37 @@ function hasRunning(): boolean {
   return runtimes.size > 0
 }
 
-async function withKey<T>(accountId: string, fn: (privateKey: Uint8Array) => Promise<T>): Promise<T> {
-  const row = getAccountRow(accountId)
+function resolvePayer(input: HdAirdropInput): Payer {
+  const account = getAccount(input.accountId)
+  if (account.walletType !== 'web3') throw invalidArg('请选择 EVM 付款账户')
+  if (account.walletId && account.walletId !== input.walletId) {
+    throw invalidArg('付款账户不属于当前钱包')
+  }
+  const hdKeyId = input.hdKeyId?.trim()
+  if (!hdKeyId) return { walletId: input.walletId, accountId: account.id, address: account.address, hdKeyId: null }
+  const row = getHdKeyRow(hdKeyId)
+  if (!row || row.wallet_id !== input.walletId) throw notFound('分层付款地址不存在')
+  if (row.wallet_type !== 'web3') throw invalidArg('请选择 EVM 分层地址')
+  return { walletId: input.walletId, accountId: account.id, address: row.address, hdKeyId: row.id }
+}
+
+function payerOfJob(job: HdAirdropJob): Payer {
+  const hd = findHdKeyByAddress(job.walletId, job.fromAddress)
+  if (hd && hd.wallet_type === 'web3') {
+    return { walletId: job.walletId, accountId: job.accountId, address: hd.address, hdKeyId: hd.id }
+  }
+  const account = getAccount(job.accountId)
+  return { walletId: job.walletId, accountId: account.id, address: job.fromAddress || account.address, hdKeyId: null }
+}
+
+async function withPayerKey<T>(payer: Payer, fn: (privateKey: Uint8Array) => Promise<T>): Promise<T> {
+  if (payer.hdKeyId) {
+    return withHdPrivateKey(payer.walletId, payer.hdKeyId, (privateKey) => {
+      const copy = Uint8Array.from(privateKey)
+      return fn(copy).finally(() => wipe(copy))
+    })
+  }
+  const row = getAccountRow(payer.accountId)
   if (!row) throw notFound('付款账户不存在')
   return withAccountPrivateKey(row, (privateKey) => {
     const copy = Uint8Array.from(privateKey)
@@ -154,26 +188,21 @@ export async function previewHdAirdrop(input: HdAirdropInput): Promise<HdAirdrop
   if (!token) throw notFound('代币不存在')
   if (token.networkPk !== network.id) throw invalidArg('代币不属于当前网络')
   const contract = contractOf(token)
-  const account = getAccount(input.accountId)
-  if (account.walletType !== 'web3') throw invalidArg('请选择 EVM 付款账户')
-  if (account.walletId && account.walletId !== input.walletId) {
-    throw invalidArg('付款账户不属于当前钱包')
+  const payer = resolvePayer(input)
+
+  const parsed = collectRecipientAddresses((input.recipients ?? []).join(','))
+  if (parsed.invalid.length > 0) {
+    const sample = parsed.invalid.slice(0, 3).join(', ')
+    throw invalidArg(`有 ${parsed.invalid.length} 个地址不合法，例如：${sample}`)
   }
+  if (parsed.addresses.length === 0) throw invalidArg('请至少填写一个收款地址')
+  if (parsed.addresses.length > MAX_RECIPIENTS) throw invalidArg(`一次最多转给 ${MAX_RECIPIENTS} 个地址`)
 
-  let range: { fromIndex: number; toIndex: number }
-  try {
-    range = normalizeEvmRange(input.fromIndex, input.toIndex)
-  } catch (err) {
-    throw invalidArg(err instanceof Error ? err.message : '分层序号范围不合法')
-  }
-
-  const accountIndex = input.accountIndex ?? 0
-  const requested = range.toIndex - range.fromIndex + 1
-  const recipients = listHdKeysInRange(input.walletId, 'web3', accountIndex, range.fromIndex, range.toIndex)
-  if (recipients.length === 0) throw invalidArg('该范围内没有分层地址，请先到「分层钱包」生成')
-  if (recipients.length > MAX_RECIPIENTS) throw invalidArg(`一次最多转给 ${MAX_RECIPIENTS} 个地址`)
-
-  const missingCount = requested - recipients.length
+  const recipients = parsed.addresses.map((address, index) => ({
+    address,
+    addressIndex: index + 1,
+  }))
+  const missingCount = 0
   let minMinor: bigint
   let maxMinor: bigint
   if (input.amountMode === 'range') {
@@ -192,7 +221,7 @@ export async function previewHdAirdrop(input: HdAirdropInput): Promise<HdAirdrop
   try {
     gasLimit = await estimateEvmGas({
       network,
-      from: account.address,
+      from: payer.address,
       ...sample,
     })
   } catch (err) {
@@ -207,8 +236,8 @@ export async function previewHdAirdrop(input: HdAirdropInput): Promise<HdAirdrop
   const gasSymbol = network.coinEasy ?? 'ETH'
 
   const warnings: string[] = []
-  if (missingCount > 0) {
-    warnings.push(`范围内有 ${missingCount} 个序号还没生成，将只转给已有的 ${recipients.length} 个地址。`)
+  if (parsed.duplicateCount > 0) {
+    warnings.push(`已去掉 ${parsed.duplicateCount} 个重复地址，将转给 ${recipients.length} 个地址。`)
   }
   if (input.amountMode === 'range') {
     warnings.push('每笔金额在上下限之间随机，实际打出总量通常低于预估上限。重试时沿用首次抽到的金额。')
@@ -218,7 +247,7 @@ export async function previewHdAirdrop(input: HdAirdropInput): Promise<HdAirdrop
 
   if (contract) {
     try {
-      const tokenBalance = await getErc20Balance(network, contract, account.address)
+      const tokenBalance = await getErc20Balance(network, contract, payer.address)
       if (tokenBalance < minTotal) {
         warnings.push(`代币余额可能不够：当前 ${formatMinor(tokenBalance, token.decimals)} ${token.symbol}。`)
       } else if (tokenBalance < maxTotal) {
@@ -228,7 +257,7 @@ export async function previewHdAirdrop(input: HdAirdropInput): Promise<HdAirdrop
       warnings.push('暂时读不到代币余额，请确认付款账户有足够额度。')
     }
     try {
-      const native = await getEvmBalance(network, account.address)
+      const native = await getEvmBalance(network, payer.address)
       if (native < feeAll) {
         warnings.push(`原生币可能不够付 Gas：预估 ${formatMinor(feeAll, 18)} ${gasSymbol}。`)
       }
@@ -237,7 +266,7 @@ export async function previewHdAirdrop(input: HdAirdropInput): Promise<HdAirdrop
     }
   } else {
     try {
-      const native = await getEvmBalance(network, account.address)
+      const native = await getEvmBalance(network, payer.address)
       if (native < minTotal + feeAll) {
         warnings.push(
           `主币余额可能不够：转账加 Gas 至少约 ${formatMinor(minTotal + feeAll, token.decimals)} ${token.symbol}，当前 ${formatMinor(native, token.decimals)}。`,
@@ -254,7 +283,7 @@ export async function previewHdAirdrop(input: HdAirdropInput): Promise<HdAirdrop
 
   const preview: HdAirdropPreview = {
     draftId: newId(),
-    from: account.address,
+    from: payer.address,
     symbol: token.symbol,
     decimals: token.decimals,
     recipientCount: recipients.length,
@@ -275,7 +304,7 @@ export async function previewHdAirdrop(input: HdAirdropInput): Promise<HdAirdrop
     preview,
     network,
     token,
-    account,
+    payer,
     recipients,
     minMinor,
     maxMinor,
@@ -296,7 +325,7 @@ export async function startHdAirdrop(draftId: string): Promise<HdAirdropJob> {
 
   const now = Date.now()
   const jobId = newId()
-  const sender = draft.account.address.toLowerCase()
+  const sender = draft.payer.address.toLowerCase()
   const items: HdAirdropItem[] = draft.recipients.map((dest) => {
     const amount =
       draft.minMinor === draft.maxMinor
@@ -325,17 +354,17 @@ export async function startHdAirdrop(draftId: string): Promise<HdAirdropJob> {
   insertHdAirdropJob({
     id: jobId,
     walletId: draft.input.walletId,
-    accountId: draft.account.id,
+    accountId: draft.payer.accountId,
     networkPk: draft.network.id,
     tokenPk: draft.token.id,
-    fromAddress: draft.account.address,
+    fromAddress: draft.payer.address,
     symbol: draft.token.symbol,
     decimals: draft.token.decimals,
     amountMode: draft.input.amountMode,
     amountText: draft.preview.amountText,
-    fromIndex: draft.input.fromIndex,
-    toIndex: draft.input.toIndex,
-    accountIndex: draft.input.accountIndex ?? 0,
+    fromIndex: 1,
+    toIndex: items.length,
+    accountIndex: 0,
     status: 'running',
     total: items.length,
     queued,
@@ -357,7 +386,7 @@ export async function startHdAirdrop(draftId: string): Promise<HdAirdropJob> {
   void executeJob(jobId, items.filter((item) => item.status === 'queued'), {
     network: draft.network,
     token: draft.token,
-    account: draft.account,
+    payer: draft.payer,
     gasLimit: draft.gasLimit,
     evmFee: draft.evmFee,
   }).catch((err) => {
@@ -423,7 +452,7 @@ export async function retryHdAirdrop(input: HdAirdropRetryInput): Promise<HdAird
   if (!network) throw notFound('网络不存在')
   const token = getToken(job.tokenPk)
   if (!token) throw notFound('代币不存在')
-  const account = getAccount(job.accountId)
+  const payer = payerOfJob(job)
   const quotes = await quoteEvmFees(network)
   const evmFee = quotes.medium
   const sample = transferCall(token, retryable[0]!.toAddress, BigInt(retryable[0]!.amountMinor))
@@ -431,7 +460,7 @@ export async function retryHdAirdrop(input: HdAirdropRetryInput): Promise<HdAird
   try {
     gasLimit = await estimateEvmGas({
       network,
-      from: account.address,
+      from: payer.address,
       ...sample,
     })
   } catch (err) {
@@ -447,7 +476,7 @@ export async function retryHdAirdrop(input: HdAirdropRetryInput): Promise<HdAird
   })
   const latest = getStoredJob(job.id)!
   emit(latest)
-  void executeJob(job.id, retryable, { network, token, account, gasLimit, evmFee }).catch((err) => {
+  void executeJob(job.id, retryable, { network, token, payer, gasLimit, evmFee }).catch((err) => {
     const next = updateHdAirdropJob(job.id, {
       status: 'failed',
       finishedAt: Date.now(),
@@ -464,7 +493,7 @@ async function executeJob(
   ctx: {
     network: NetworkRecord
     token: TokenRecord
-    account: AccountRecord
+    payer: Payer
     gasLimit: bigint
     evmFee: EvmFeeQuote
   },
@@ -472,10 +501,10 @@ async function executeJob(
   const runtime: Runtime = { stopRequested: false }
   runtimes.set(jobId, runtime)
   const releaseIdleLock = holdIdleLock()
-  let nonce = await getEvmNonce(ctx.network, ctx.account.address)
+  let nonce = await getEvmNonce(ctx.network, ctx.payer.address)
 
   try {
-    await withKey(ctx.account.id, async (privateKey) => {
+    await withPayerKey(ctx.payer, async (privateKey) => {
       for (const item of items) {
         if (runtime.stopRequested) {
           const next = updateHdAirdropJob(jobId, {
@@ -513,10 +542,10 @@ async function executeJob(
           const record = upsertTransaction({
             id: newId(),
             networkPk: ctx.network.id,
-            accountId: ctx.account.id,
+            accountId: ctx.payer.accountId,
             txid,
             direction: 'send',
-            fromAddress: ctx.account.address,
+            fromAddress: ctx.payer.address,
             toAddress: item.toAddress,
             tokenPk: ctx.token.id,
             symbol: ctx.token.symbol,
@@ -542,7 +571,7 @@ async function executeJob(
           const job = refreshHdAirdropJobCounts(jobId)
           if (job) emit(updateHdAirdropJob(jobId, { lastError: message }) ?? job)
           try {
-            nonce = await getEvmNonce(ctx.network, ctx.account.address)
+            nonce = await getEvmNonce(ctx.network, ctx.payer.address)
           } catch {
             /* 下一笔再试 */
           }

@@ -577,6 +577,23 @@ function defaultAccountLabel(walletType: WalletType, addressType: BitcoinAddress
   return 'EVM'
 }
 
+export function withHdPrivateKey<T>(walletId: string, keyId: string, fn: (privateKey: Uint8Array) => T): T {
+  const row = getHdKeyRow(keyId)
+  if (!row || row.wallet_id !== walletId) throw notFound('分层地址不存在')
+  const secret = decryptHdPrivateKey(row)
+  const derived = deriveFromPrivateKey({
+    walletType: row.wallet_type as WalletType,
+    networkScope: row.network_scope as NetworkScope,
+    addressType: (row.address_type as BitcoinAddressType | null) ?? undefined,
+    privateKey: secret,
+  })
+  try {
+    return fn(derived.privateKey)
+  } finally {
+    wipe(derived.privateKey)
+  }
+}
+
 export function withAccountPrivateKey<T>(account: AccountRow, fn: (privateKey: Uint8Array) => T): T {
   if (account.source === 'imported') {
     const hex = decryptImportedPrivateKey(account)
