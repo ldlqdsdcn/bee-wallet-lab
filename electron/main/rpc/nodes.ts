@@ -1,7 +1,16 @@
 /**
  * RPC 节点维护：内置候选入库、用户增删、测延迟、手动选当前节点。
  */
-import type { NetworkRecord, NetworkScope, RpcNodeCreateInput, RpcNodeRecord, RpcPingResult, WalletType } from '@shared/types'
+import type {
+  NetworkRecord,
+  NetworkScope,
+  RpcNodeCreateInput,
+  RpcNodeRecord,
+  RpcNodeUpdateInput,
+  RpcPingResult,
+  WalletType,
+} from '@shared/types'
+import { parseRpcHeaders } from '@shared/rpcHeaders'
 import { newId } from '../security/crypto'
 import { getNetwork, listNetworks } from '../db/repos/catalogRepo'
 import {
@@ -14,6 +23,7 @@ import {
   listRpcNodes,
   selectedRpcNode,
   setRpcSelected,
+  updateRpcNodeFields,
   updateRpcPing,
 } from '../db/repos/rpcNodeRepo'
 import { invalidArg, notFound } from '../ipc/registry'
@@ -78,9 +88,29 @@ export function addRpcNode(input: RpcNodeCreateInput): RpcNodeRecord {
     networkPk: network.id,
     url,
     label: input.label?.trim() || labelOfUrl(url),
+    headers: parseRpcHeaders(input.headersText ?? ''),
     source: 'custom',
     isSelected: false,
   })
+}
+
+export function updateRpcNode(input: RpcNodeUpdateInput): RpcNodeRecord {
+  const node = getRpcNode(input.id)
+  if (!node) throw notFound('节点不存在')
+  const url = input.url !== undefined ? parseUserUrl(input.url) : node.url
+  if (url !== node.url) {
+    const existing = findRpcNode(node.networkPk, url)
+    if (existing && existing.id !== node.id) throw invalidArg('该节点已经添加过')
+  }
+  const next = updateRpcNodeFields(input.id, {
+    url,
+    label: input.label !== undefined ? input.label.trim() || labelOfUrl(url) : undefined,
+    headers: input.headersText !== undefined ? parseRpcHeaders(input.headersText) : undefined,
+    clearPing: url !== node.url,
+  })
+  if (!next) throw notFound('节点不存在')
+  if (node.isSelected && url !== node.url) setPreferredRpc(node.networkPk, url)
+  return next
 }
 
 export function removeRpcNode(id: string): true {

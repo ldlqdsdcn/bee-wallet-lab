@@ -105,6 +105,7 @@ export const IPC = {
   /* RPC 节点 */
   rpcList: 'rpc:list',
   rpcAdd: 'rpc:add',
+  rpcUpdate: 'rpc:update',
   rpcRemove: 'rpc:remove',
   rpcSelect: 'rpc:select',
   rpcPing: 'rpc:ping',
@@ -122,7 +123,7 @@ export const IPC = {
   tokenIssueSubmit: 'token:issueSubmit',
   tokenIssueList: 'token:issueList',
 
-  /* 分层钱包批量转 ERC-20 */
+  /* 分层钱包批量转主币 / ERC-20 */
   hdAirdropPreview: 'hdAirdrop:preview',
   hdAirdropStart: 'hdAirdrop:start',
   hdAirdropStop: 'hdAirdrop:stop',

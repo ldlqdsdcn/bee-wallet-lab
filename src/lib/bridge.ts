@@ -97,6 +97,7 @@ import type {
   FaucetUpsertInput,
   RpcNodeCreateInput,
   RpcNodeRecord,
+  RpcNodeUpdateInput,
   RpcPingResult,
   WalletPickerPage,
   WalletPickerQuery,
@@ -350,6 +351,7 @@ export const faucetApi = {
 export const rpcApi = {
   list: (networkPk: string) => call<RpcNodeRecord[]>(IPC.rpcList, { networkPk }),
   add: (input: RpcNodeCreateInput) => call<RpcNodeRecord>(IPC.rpcAdd, input),
+  update: (input: RpcNodeUpdateInput) => call<RpcNodeRecord>(IPC.rpcUpdate, input),
   remove: (id: string) => call<true>(IPC.rpcRemove, { id }),
   select: (id: string) => call<RpcNodeRecord>(IPC.rpcSelect, { id }),
   useAuto: (networkPk: string) => call<RpcNodeRecord[]>(IPC.rpcSelect, { networkPk }),

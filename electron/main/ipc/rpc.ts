@@ -1,10 +1,11 @@
 import { IPC, IPC_EVENT } from '../../../shared/ipc'
-import type { RpcNodeCreateInput, RpcNodeRecord, RpcPingResult } from '../../../shared/types'
+import type { RpcNodeCreateInput, RpcNodeRecord, RpcNodeUpdateInput, RpcPingResult } from '../../../shared/types'
 import { broadcast, handle, requireObject, requireString } from './registry'
 import {
   addRpcNode,
   clearSelectedRpc,
   listRpcNodesForNetwork,
+  updateRpcNode,
   pingAllRpcNodes,
   pingRpcNode,
   removeRpcNode,
@@ -29,6 +30,19 @@ export function registerRpcIpc(): void {
         networkPk: requireString(input.networkPk, 'networkPk'),
         url: requireString(input.url, 'url'),
         label: input.label,
+        headersText: typeof input.headersText === 'string' ? input.headersText : undefined,
+      }),
+    )
+  })
+
+  handle<RpcNodeUpdateInput, RpcNodeRecord>(IPC.rpcUpdate, (arg) => {
+    const input = requireObject<RpcNodeUpdateInput>(arg)
+    return changed(
+      updateRpcNode({
+        id: requireString(input.id, 'id'),
+        url: typeof input.url === 'string' ? input.url : undefined,
+        label: input.label,
+        headersText: typeof input.headersText === 'string' ? input.headersText : undefined,
       }),
     )
   })

@@ -965,6 +965,7 @@ export interface RpcNodeRecord {
   networkPk: string
   url: string
   label: string | null
+  headers: Record<string, string> | null
   source: RpcNodeSource
   isSelected: boolean
   lastLatencyMs: number | null
@@ -977,6 +978,14 @@ export interface RpcNodeCreateInput {
   networkPk: string
   url: string
   label?: string
+  headersText?: string
+}
+
+export interface RpcNodeUpdateInput {
+  id: string
+  url?: string
+  label?: string
+  headersText?: string
 }
 
 /** 测试网水龙头。主网不应有记录。source 留给后续目录站同步。 */

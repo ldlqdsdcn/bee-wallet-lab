@@ -1,5 +1,5 @@
 /**
- * 把当前账户的 ERC-20 按序号打给已生成的分层地址。
+ * 把当前账户的主币或 ERC-20 按序号打给已生成的分层地址。
  * 每笔写入 hd_airdrop_jobs / hd_airdrop_items，失败可单笔或批量重试。
  */
 import type {
@@ -86,12 +86,20 @@ function prune(): void {
   }
 }
 
-function contractOf(token: TokenRecord): string {
+function contractOf(token: TokenRecord): string | null {
   const value = token.contractAddress?.trim() ?? ''
-  if (!token.isToken || !value || value === '0' || /^0x0+$/i.test(value)) {
-    throw invalidArg('批量转账只支持 ERC-20，请选择合约代币')
-  }
+  if (!token.isToken || !value || value === '0' || /^0x0+$/i.test(value)) return null
   return value
+}
+
+function transferCall(token: TokenRecord, to: string, amount: bigint): {
+  to: string
+  value: bigint
+  data?: ReturnType<typeof encodeErc20Transfer>
+} {
+  const contract = contractOf(token)
+  if (contract) return { to: contract, value: 0n, data: encodeErc20Transfer(to, amount) }
+  return { to, value: amount }
 }
 
 function parseAmount(raw: string | undefined, decimals: number, label: string): bigint {
@@ -177,20 +185,26 @@ export async function previewHdAirdrop(input: HdAirdropInput): Promise<HdAirdrop
     maxMinor = minMinor
   }
 
-  const sample = encodeErc20Transfer(recipients[0]!.address, minMinor)
+  const sample = transferCall(token, recipients[0]!.address, minMinor)
   const quotes = await quoteEvmFees(network)
   const evmFee = quotes.medium
-  const gasLimit = await estimateEvmGas({
-    network,
-    from: account.address,
-    to: contract,
-    value: 0n,
-    data: sample,
-  })
+  let gasLimit: bigint
+  try {
+    gasLimit = await estimateEvmGas({
+      network,
+      from: account.address,
+      ...sample,
+    })
+  } catch (err) {
+    if (contract) throw err
+    gasLimit = 21000n
+  }
   const feeEach = (evmFee.maxFeePerGas || evmFee.gasPrice || 0n) * gasLimit
   const feeAll = feeEach * BigInt(recipients.length)
   const maxTotal = maxMinor * BigInt(recipients.length)
+  const minTotal = minMinor * BigInt(recipients.length)
   const estimatedMs = estimateAirdropDurationMs(recipients.length)
+  const gasSymbol = network.coinEasy ?? 'ETH'
 
   const warnings: string[] = []
   if (missingCount > 0) {
@@ -202,24 +216,40 @@ export async function previewHdAirdrop(input: HdAirdropInput): Promise<HdAirdrop
   warnings.push(`按顺序逐笔广播，${recipients.length} 笔大约 ${formatDuration(estimatedMs)}。RPC 慢时可能到 ${formatDuration(estimatedMs * 2)}。`)
   warnings.push('每笔都会写入批量转账表。失败或中途停止后可以单笔重试，或一键重试。')
 
-  try {
-    const tokenBalance = await getErc20Balance(network, contract, account.address)
-    if (tokenBalance < minMinor * BigInt(recipients.length)) {
-      warnings.push(`代币余额可能不够：当前 ${formatMinor(tokenBalance, token.decimals)} ${token.symbol}。`)
-    } else if (tokenBalance < maxTotal) {
-      warnings.push(`代币余额低于随机上限合计 ${formatMinor(maxTotal, token.decimals)} ${token.symbol}。`)
+  if (contract) {
+    try {
+      const tokenBalance = await getErc20Balance(network, contract, account.address)
+      if (tokenBalance < minTotal) {
+        warnings.push(`代币余额可能不够：当前 ${formatMinor(tokenBalance, token.decimals)} ${token.symbol}。`)
+      } else if (tokenBalance < maxTotal) {
+        warnings.push(`代币余额低于随机上限合计 ${formatMinor(maxTotal, token.decimals)} ${token.symbol}。`)
+      }
+    } catch {
+      warnings.push('暂时读不到代币余额，请确认付款账户有足够额度。')
     }
-  } catch {
-    warnings.push('暂时读不到代币余额，请确认付款账户有足够额度。')
-  }
-
-  try {
-    const native = await getEvmBalance(network, account.address)
-    if (native < feeAll) {
-      warnings.push(`原生币可能不够付 Gas：预估 ${formatMinor(feeAll, 18)} ${network.coinEasy ?? 'ETH'}。`)
+    try {
+      const native = await getEvmBalance(network, account.address)
+      if (native < feeAll) {
+        warnings.push(`原生币可能不够付 Gas：预估 ${formatMinor(feeAll, 18)} ${gasSymbol}。`)
+      }
+    } catch {
+      warnings.push('暂时读不到 Gas 余额。')
     }
-  } catch {
-    warnings.push('暂时读不到 Gas 余额。')
+  } else {
+    try {
+      const native = await getEvmBalance(network, account.address)
+      if (native < minTotal + feeAll) {
+        warnings.push(
+          `主币余额可能不够：转账加 Gas 至少约 ${formatMinor(minTotal + feeAll, token.decimals)} ${token.symbol}，当前 ${formatMinor(native, token.decimals)}。`,
+        )
+      } else if (native < maxTotal + feeAll) {
+        warnings.push(
+          `主币余额低于随机上限加 Gas：约 ${formatMinor(maxTotal + feeAll, token.decimals)} ${token.symbol}。`,
+        )
+      }
+    } catch {
+      warnings.push('暂时读不到主币余额，请确认付款账户有足够额度付转账和 Gas。')
+    }
   }
 
   const preview: HdAirdropPreview = {
@@ -394,17 +424,20 @@ export async function retryHdAirdrop(input: HdAirdropRetryInput): Promise<HdAird
   const token = getToken(job.tokenPk)
   if (!token) throw notFound('代币不存在')
   const account = getAccount(job.accountId)
-  const contract = contractOf(token)
   const quotes = await quoteEvmFees(network)
   const evmFee = quotes.medium
-  const sample = encodeErc20Transfer(retryable[0]!.toAddress, BigInt(retryable[0]!.amountMinor))
-  const gasLimit = await estimateEvmGas({
-    network,
-    from: account.address,
-    to: contract,
-    value: 0n,
-    data: sample,
-  })
+  const sample = transferCall(token, retryable[0]!.toAddress, BigInt(retryable[0]!.amountMinor))
+  let gasLimit: bigint
+  try {
+    gasLimit = await estimateEvmGas({
+      network,
+      from: account.address,
+      ...sample,
+    })
+  } catch (err) {
+    if (contractOf(token)) throw err
+    gasLimit = 21000n
+  }
 
   updateHdAirdropJob(job.id, {
     status: 'running',
@@ -439,7 +472,6 @@ async function executeJob(
   const runtime: Runtime = { stopRequested: false }
   runtimes.set(jobId, runtime)
   const releaseIdleLock = holdIdleLock()
-  const contract = contractOf(ctx.token)
   let nonce = await getEvmNonce(ctx.network, ctx.account.address)
 
   try {
@@ -457,13 +489,14 @@ async function executeJob(
         }
         updateHdAirdropJob(jobId, { currentIndex: item.addressIndex })
         try {
+          const call = transferCall(ctx.token, item.toAddress, BigInt(item.amountMinor))
           const signed = await signAndSerializeEvmTx({
             privateKey,
             chainId: Number(ctx.network.chainId),
             nonce,
-            to: contract,
-            value: 0n,
-            data: encodeErc20Transfer(item.toAddress, BigInt(item.amountMinor)),
+            to: call.to,
+            value: call.value,
+            data: call.data,
             gasLimit: ctx.gasLimit,
             fee: ctx.evmFee,
           })

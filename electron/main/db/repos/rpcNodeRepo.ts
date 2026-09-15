@@ -1,5 +1,5 @@
 /**
- * 每个网络的 RPC 节点列表。URL 是公开节点地址，不加密。
+ * 每个网络的 RPC 节点列表。URL 明文；自定义请求头（如 x-api-key）也存在本机表里，不写日志。
  */
 import type { RpcNodeRecord, RpcNodeSource } from '../../../../shared/types'
 import { getDatabase } from '../sqlite'
@@ -9,6 +9,7 @@ interface RpcNodeRow {
   network_pk: string
   url: string
   label: string | null
+  headers: string | null
   source: string
   is_selected: number
   last_latency_ms: number | null
@@ -17,12 +18,28 @@ interface RpcNodeRow {
   created_at: number
 }
 
+function parseStoredHeaders(raw: string | null): Record<string, string> | null {
+  if (!raw?.trim()) return null
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+    const out: Record<string, string> = {}
+    for (const [name, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === 'string' && value) out[name] = value
+    }
+    return Object.keys(out).length ? out : null
+  } catch {
+    return null
+  }
+}
+
 export function toRpcNodeRecord(row: RpcNodeRow): RpcNodeRecord {
   return {
     id: row.id,
     networkPk: row.network_pk,
     url: row.url,
     label: row.label,
+    headers: parseStoredHeaders(row.headers),
     source: row.source as RpcNodeSource,
     isSelected: row.is_selected === 1,
     lastLatencyMs: row.last_latency_ms,
@@ -70,6 +87,7 @@ export function insertRpcNode(input: {
   networkPk: string
   url: string
   label: string | null
+  headers?: Record<string, string> | null
   source: RpcNodeSource
   isSelected: boolean
 }): RpcNodeRecord {
@@ -77,12 +95,67 @@ export function insertRpcNode(input: {
   getDatabase()
     .prepare(
       `INSERT INTO rpc_nodes (
-         id, network_pk, url, label, source, is_selected,
+         id, network_pk, url, label, headers, source, is_selected,
          last_latency_ms, last_error, last_checked_at, created_at
-       ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)`,
     )
-    .run(input.id, input.networkPk, input.url, input.label, input.source, input.isSelected ? 1 : 0, now)
+    .run(
+      input.id,
+      input.networkPk,
+      input.url,
+      input.label,
+      storeHeaders(input.headers),
+      input.source,
+      input.isSelected ? 1 : 0,
+      now,
+    )
   return getRpcNode(input.id) as RpcNodeRecord
+}
+
+export function updateRpcNodeFields(
+  id: string,
+  input: {
+    url?: string
+    label?: string | null
+    headers?: Record<string, string> | null
+    clearPing?: boolean
+  },
+): RpcNodeRecord | null {
+  const current = getRpcNode(id)
+  if (!current) return null
+  const url = input.url !== undefined ? input.url : current.url
+  const label = input.label !== undefined ? input.label : current.label
+  const headers = input.headers !== undefined ? input.headers : current.headers
+  if (input.clearPing) {
+    getDatabase()
+      .prepare(
+        `UPDATE rpc_nodes
+         SET url = ?, label = ?, headers = ?, last_latency_ms = NULL, last_error = NULL, last_checked_at = NULL
+         WHERE id = ?`,
+      )
+      .run(url, label, storeHeaders(headers), id)
+  } else {
+    getDatabase()
+      .prepare('UPDATE rpc_nodes SET url = ?, label = ?, headers = ? WHERE id = ?')
+      .run(url, label, storeHeaders(headers), id)
+  }
+  return getRpcNode(id)
+}
+
+export function listRpcHeaderBindings(): Array<{ url: string; headers: Record<string, string> }> {
+  return getDatabase()
+    .prepare<[], RpcNodeRow>(
+      `SELECT * FROM rpc_nodes WHERE headers IS NOT NULL AND trim(headers) != '' AND trim(headers) != '{}'`,
+    )
+    .all()
+    .map(toRpcNodeRecord)
+    .filter((item): item is RpcNodeRecord & { headers: Record<string, string> } => Boolean(item.headers))
+    .map((item) => ({ url: item.url, headers: item.headers }))
+}
+
+function storeHeaders(headers: Record<string, string> | null | undefined): string | null {
+  if (!headers || Object.keys(headers).length === 0) return null
+  return JSON.stringify(headers)
 }
 
 export function deleteRpcNode(id: string): void {

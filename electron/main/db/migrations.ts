@@ -524,6 +524,13 @@ const migrations: Migration[] = [
       `)
     },
   },
+  {
+    version: 16,
+    description: 'optional request headers on custom RPC nodes',
+    up: (db) => {
+      db.exec('ALTER TABLE rpc_nodes ADD COLUMN headers TEXT')
+    },
+  },
 ]
 
 export const LATEST_SCHEMA_VERSION = migrations[migrations.length - 1].version
