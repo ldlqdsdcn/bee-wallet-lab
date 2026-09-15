@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { NetworkRecord, RpcNodeRecord, WalletType } from '@shared/types'
 import { IPC_EVENT } from '@shared/ipc'
+import { rpcHeaderNames, serializeRpcHeaders } from '@shared/rpcHeaders'
 import { catalogApi, on, rpcApi, settingsApi } from '../lib/bridge'
-import { Alert, Button, Card, Field } from '../components/ui'
+import { Alert, Button, Card, Field, TextArea } from '../components/ui'
 import { NetworkIcon } from '../components/NetworkSelect'
 import { useT } from '../i18n'
 
@@ -53,6 +54,8 @@ export default function RpcNodesPage() {
   const [nodes, setNodes] = useState<RpcNodeRecord[]>([])
   const [url, setUrl] = useState('')
   const [label, setLabel] = useState('')
+  const [headersText, setHeadersText] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [pinging, setPinging] = useState<string | null>(null)
@@ -108,6 +111,10 @@ export default function RpcNodesPage() {
     if (!networkPk) return
     let alive = true
     setError(null)
+    setEditingId(null)
+    setUrl('')
+    setLabel('')
+    setHeadersText('')
     void rpcApi
       .list(networkPk)
       .then((list) => {
@@ -144,12 +151,34 @@ export default function RpcNodesPage() {
     }
   }
 
+  const resetForm = () => {
+    setEditingId(null)
+    setUrl('')
+    setLabel('')
+    setHeadersText('')
+  }
+
+  const startEdit = (node: RpcNodeRecord) => {
+    setEditingId(node.id)
+    setUrl(node.url)
+    setLabel(node.label ?? '')
+    setHeadersText(serializeRpcHeaders(node.headers))
+    setError(null)
+  }
+
   const add = () =>
     run(async () => {
-      await rpcApi.add({ networkPk, url, label })
-      setUrl('')
-      setLabel('')
+      await rpcApi.add({ networkPk, url, label, headersText })
+      resetForm()
     })
+
+  const saveEdit = () => {
+    if (!editingId) return
+    void run(async () => {
+      await rpcApi.update({ id: editingId, url, label, headersText })
+      resetForm()
+    })
+  }
 
   const pingOne = async (id: string) => {
     setPinging(id)
@@ -240,7 +269,7 @@ export default function RpcNodesPage() {
 
         {error ? <Alert>{error}</Alert> : null}
 
-        <Card title={t('nodes.add')}>
+        <Card title={editingId ? t('nodes.edit') : t('nodes.add')}>
           <div className="grid grid-cols-[1fr_160px_auto] items-end gap-3">
             <Field
               label={t('nodes.url')}
@@ -250,9 +279,30 @@ export default function RpcNodesPage() {
               onChange={(e) => setUrl(e.target.value)}
             />
             <Field label={t('common.optionalMemo')} value={label} placeholder={t('nodes.labelPh')} onChange={(e) => setLabel(e.target.value)} />
-            <Button disabled={busy || !url.trim() || !networkPk} onClick={() => void add()}>
-              {t('common.add')}
-            </Button>
+            {editingId ? (
+              <div className="flex gap-2">
+                <Button disabled={busy || !url.trim()} onClick={() => void saveEdit()}>
+                  {t('common.save')}
+                </Button>
+                <Button variant="ghost" disabled={busy} onClick={resetForm}>
+                  {t('common.cancel')}
+                </Button>
+              </div>
+            ) : (
+              <Button disabled={busy || !url.trim() || !networkPk} onClick={() => void add()}>
+                {t('common.add')}
+              </Button>
+            )}
+          </div>
+          <div className="mt-3">
+            <TextArea
+              label={t('nodes.headers')}
+              hint={t('nodes.headersHint')}
+              className="min-h-20 font-mono text-xs"
+              value={headersText}
+              placeholder={'x-api-key: your-token\n-H \'Authorization: Bearer …\''}
+              onChange={(e) => setHeadersText(e.target.value)}
+            />
           </div>
         </Card>
 
@@ -274,6 +324,11 @@ export default function RpcNodesPage() {
                       </span>
                     </div>
                     <p className="mt-0.5 truncate font-mono text-xs text-ink-500">{node.url}</p>
+                    {rpcHeaderNames(node.headers).length ? (
+                      <p className="mt-0.5 text-[11px] text-ink-500">
+                        {t('nodes.headersSet', { names: rpcHeaderNames(node.headers).join(', ') })}
+                      </p>
+                    ) : null}
                     <p className={`mt-1 text-xs ${latencyClass(node.lastLatencyMs, node.lastError)}`}>
                       {t('common.latency', { value: formatLatency(node, t) })}
                       {formatChecked(node.lastCheckedAt) ? ` · ${formatChecked(node.lastCheckedAt)}` : ''}
@@ -281,6 +336,14 @@ export default function RpcNodesPage() {
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                    <Button
+                      variant={editingId === node.id ? 'primary' : 'ghost'}
+                      className="px-2 py-1 text-xs"
+                      disabled={busy}
+                      onClick={() => startEdit(node)}
+                    >
+                      {t('common.edit')}
+                    </Button>
                     <Button
                       variant="ghost"
                       className="px-2 py-1 text-xs"
@@ -301,7 +364,12 @@ export default function RpcNodesPage() {
                       variant="ghost"
                       className="px-2 py-1 text-xs hover:border-red-500 hover:text-red-400"
                       disabled={busy}
-                      onClick={() => void run(() => rpcApi.remove(node.id).then(() => undefined))}
+                      onClick={() =>
+                        void run(async () => {
+                          await rpcApi.remove(node.id)
+                          if (editingId === node.id) resetForm()
+                        })
+                      }
                     >
                       {t('common.delete')}
                     </Button>

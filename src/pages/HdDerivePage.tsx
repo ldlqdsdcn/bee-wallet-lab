@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import type { BitcoinAddressType, HdDerivedEvmKey, HdKeyQuery, HdKeyRecord, NetworkRecord, WalletType } from '@shared/types'
 import { accountApi } from '../lib/bridge'
 import { Alert, Button, Card, Field, Modal, Select } from '../components/ui'
+import { downloadTextFile, hdAddressListText, hdExportFilename } from '../lib/hdExport'
 import { shorten } from '../lib/format'
 import { useT, type MessageKey } from '../i18n'
 import { useWalletStore } from '../store/walletStore'
@@ -70,15 +71,21 @@ function exportCsv(walletName: string, rows: HdDerivedEvmKey[]): void {
   const lines = rows.map(
     (row) => `${row.index},${row.path},${row.address},${row.publicKey},${row.privateKey ?? ''}`,
   )
-  const blob = new Blob([`${header}\n${lines.join('\n')}\n`], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
   const first = rows[0]?.index ?? 0
   const last = rows[rows.length - 1]?.index ?? 0
-  link.download = `${walletName}-hd-${first}-${last}.csv`
-  link.click()
-  URL.revokeObjectURL(url)
+  downloadTextFile(
+    hdExportFilename(walletName, `hd-${first}-${last}.csv`),
+    `${header}\n${lines.join('\n')}\n`,
+    'text/csv;charset=utf-8',
+  )
+}
+
+function exportAddresses(walletName: string, rows: HdDerivedEvmKey[]): void {
+  downloadTextFile(
+    hdExportFilename(walletName, 'hd-addresses.txt'),
+    `${hdAddressListText(rows.map((row) => row.address))}\n`,
+    'text/plain;charset=utf-8',
+  )
 }
 
 export default function HdDerivePage() {
@@ -328,6 +335,16 @@ export default function HdDerivePage() {
             }
           >
             {t('hd.unlockKeys')}
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={busy || saving || filtered.length === 0}
+            onClick={() => {
+              exportAddresses(current?.name ?? 'hd', filtered)
+              setMessage(t('hd.exportedAddresses', { count: filtered.length }))
+            }}
+          >
+            {t('hd.exportAddresses')}
           </Button>
           <Button
             variant="ghost"

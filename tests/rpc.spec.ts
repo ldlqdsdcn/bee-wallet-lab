@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { IPC, IPC_CHANNELS } from '../shared/ipc'
 import { builtinRpcUrls, evmRpcCandidates } from '../electron/main/rpc/endpoints'
 import { joinRpcPath, normalizeRpcUrl } from '../electron/main/rpc/url'
 import type { NetworkRecord } from '../shared/types'
@@ -25,6 +26,13 @@ function network(chainId: string, rpcUrl: string | null = null): NetworkRecord {
     syncedAt: 0,
   }
 }
+
+describe('RPC IPC', () => {
+  it('包含节点请求头更新通道', () => {
+    expect(IPC.rpcUpdate).toBe('rpc:update')
+    expect(IPC_CHANNELS).toContain(IPC.rpcUpdate)
+  })
+})
 
 describe('EVM RPC 候选', () => {
   it('以太坊主网在没有 Infura 时仍有公共节点', () => {

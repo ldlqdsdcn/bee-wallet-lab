@@ -31,6 +31,10 @@ function isErc20(token: TokenRecord): boolean {
   return Boolean(value && value !== '0' && !/^0x0+$/i.test(value))
 }
 
+function isAirdropAsset(token: TokenRecord): boolean {
+  return !token.isToken || isErc20(token)
+}
+
 function jobLabel(status: HdAirdropJob['status'], t: (key: MessageKey) => string): string {
   if (status === 'running') return t('airdrop.stRunning')
   if (status === 'done') return t('airdrop.stDone')
@@ -108,7 +112,7 @@ export default function HdAirdropPage() {
   const [busy, setBusy] = useState(false)
 
   const evm = network?.walletType === 'web3'
-  const erc20s = useMemo(() => tokens.filter(isErc20), [tokens])
+  const assets = useMemo(() => tokens.filter(isAirdropAsset), [tokens])
   const running = job?.status === 'running'
   const selectedId = job?.id
 
@@ -159,7 +163,7 @@ export default function HdAirdropPage() {
       .tokens(networkPk)
       .then((list) => {
         if (!alive) return
-        const next = list.filter(isErc20)
+        const next = list.filter(isAirdropAsset)
         setTokens(list)
         setTokenPk((pk) => (next.find((item) => item.id === pk) ? pk : next[0]?.id ?? ''))
       })
@@ -287,7 +291,7 @@ export default function HdAirdropPage() {
               )}
             </Select>
 
-            <TokenSelect label={t('airdrop.token')} tokens={erc20s} value={tokenPk} onChange={setTokenPk} />
+            <TokenSelect label={t('airdrop.token')} tokens={assets} value={tokenPk} onChange={setTokenPk} />
 
             <div className="grid gap-3 sm:grid-cols-3">
               <Field
@@ -369,7 +373,7 @@ export default function HdAirdropPage() {
               </p>
             ) : null}
 
-            {erc20s.length === 0 ? (
+            {assets.length === 0 ? (
               <p className="text-xs text-ink-500">{t('airdrop.noErc20')}</p>
             ) : null}
 
