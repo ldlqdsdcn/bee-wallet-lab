@@ -26,9 +26,11 @@ export function parseEvmReceipt(payload: unknown): TxChainStatus {
   if (!row) return { status: 'pending', blockHeight: null }
   const code = asString(row.status, String(row.status ?? '')).toLowerCase()
   const blockHeight = parseHexQuantity(row.blockNumber)
+  const mined = blockHeight != null && blockHeight > 0
   if (code === '0x0' || code === '0') return { status: 'failed', blockHeight }
-  if (code === '0x1' || code === '1' || blockHeight != null) return { status: 'confirmed', blockHeight }
-  return { status: 'pending', blockHeight: null }
+  if ((code === '0x1' || code === '1') && mined) return { status: 'confirmed', blockHeight }
+  if (!code && mined) return { status: 'confirmed', blockHeight }
+  return { status: 'pending', blockHeight: mined ? blockHeight : null }
 }
 
 export function parseEsploraTx(payload: unknown): TxChainStatus {

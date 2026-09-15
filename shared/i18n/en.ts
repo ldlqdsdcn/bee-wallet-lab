@@ -168,6 +168,8 @@ export const en = {
   'transfer.confirmed': 'Transaction confirmed',
   'transfer.failed': 'Transaction failed',
   'transfer.pending': 'Broadcasted, waiting for confirmation…',
+  'transfer.broadcasted': 'Broadcasted',
+  'transfer.broadcastedDetail': 'Sent {amount} {symbol} to {to}. Wait for confirmation before treating it as successful.',
   'transfer.openExplorer': 'Open in explorer',
   'transfer.customBtc': 'sat/vB',
   'transfer.customSol': 'Priority fee (lamports, display only)',

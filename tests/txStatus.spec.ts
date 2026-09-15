@@ -17,6 +17,18 @@ describe('交易确认解析', () => {
       status: 'failed',
       blockHeight: 18,
     })
+    expect(parseEvmReceipt({ status: '0x1', blockNumber: '0x0' })).toEqual({
+      status: 'pending',
+      blockHeight: null,
+    })
+    expect(parseEvmReceipt({ blockNumber: '0x0' })).toEqual({
+      status: 'pending',
+      blockHeight: null,
+    })
+    expect(parseEvmReceipt({ blockNumber: '0xa' })).toEqual({
+      status: 'confirmed',
+      blockHeight: 10,
+    })
   })
 
   it('Esplora status.confirmed', () => {

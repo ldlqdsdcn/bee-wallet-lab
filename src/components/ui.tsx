@@ -72,6 +72,7 @@ export function Card({
 const alertTones = {
   error: 'border-red-500/40 bg-red-500/10 text-red-300',
   success: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200',
+  pending: 'border-honey-500/40 bg-honey-500/10 text-honey-200',
 } as const
 
 export function Alert({
