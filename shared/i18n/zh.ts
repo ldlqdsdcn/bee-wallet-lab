@@ -168,6 +168,8 @@ export const zh = {
   'transfer.confirmed': '交易已确认',
   'transfer.failed': '交易失败',
   'transfer.pending': '已广播，正在确认…',
+  'transfer.broadcasted': '已广播',
+  'transfer.broadcastedDetail': '已向 {to} 发起 {amount} {symbol}，请等链上确认后再视为成功',
   'transfer.openExplorer': '在浏览器中查看',
   'transfer.customBtc': 'sat/vB',
   'transfer.customSol': '优先费（lamports，仅作展示）',

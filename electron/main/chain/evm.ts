@@ -24,6 +24,13 @@ interface JsonRpcResponse<T> {
 
 const workingRpcByNetwork = new Map<string, string>()
 
+/** 广播和回执不能 race：坏节点可能秒回假哈希 / 假 receipt，把未上链的交易标成成功。 */
+const SERIAL_METHODS = new Set([
+  'eth_sendRawTransaction',
+  'eth_sendTransaction',
+  'eth_getTransactionReceipt',
+])
+
 export async function evmRpc<T>(network: NetworkRecord, method: string, params: unknown[] = []): Promise<T> {
   const chainId = normalizeChainId(network.chainId)
   const payload = { jsonrpc: '2.0', id: Date.now(), method, params }
@@ -68,11 +75,25 @@ export async function evmRpc<T>(network: NetworkRecord, method: string, params: 
   }
 
   const rest = urls.filter((url) => url !== failedPrimary)
-  const racePool = rest.length > 0 ? rest : urls
+  const pool = rest.length > 0 ? rest : urls
+
+  if (SERIAL_METHODS.has(method)) {
+    let lastError: Error | null = null
+    for (const url of pool) {
+      try {
+        const result = await call(url)
+        remember(url)
+        return result
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(`RPC ${method} 失败`)
+      }
+    }
+    throw lastError ?? new Error(`RPC ${method} 失败`)
+  }
 
   try {
     const winner = await raceFirst(
-      racePool.map(async (url) => {
+      pool.map(async (url) => {
         const result = await call(url)
         return { url, result }
       }),
@@ -259,8 +280,15 @@ export async function waitForEvmReceipt(
 }
 
 export async function broadcastEvmTx(network: NetworkRecord, rawHex: string): Promise<string> {
-  const hash = await evmRpc<string>(network, 'eth_sendRawTransaction', [rawHex])
-  if (!hash) throw new Error('广播成功但未返回交易哈希')
+  const raw = (rawHex.startsWith('0x') ? rawHex : `0x${rawHex}`) as Hex
+  const expected = keccak256(raw)
+  const hash = await evmRpc<string>(network, 'eth_sendRawTransaction', [raw])
+  if (typeof hash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(hash)) {
+    throw new Error('节点未返回有效交易哈希，交易可能没有广播出去')
+  }
+  if (hash.toLowerCase() !== expected.toLowerCase()) {
+    throw new Error('节点返回的交易哈希与本地计算不一致，交易可能没有广播出去')
+  }
   return hash
 }
 

@@ -31,6 +31,34 @@ interface NavState {
   tab?: 'receive' | 'send'
 }
 
+function transferOutcome(status: BroadcastResult['transaction']['status'], t: ReturnType<typeof useT>) {
+  if (status === 'failed') {
+    return {
+      title: t('transfer.failed'),
+      detailKey: null,
+      tone: 'error' as const,
+      box: 'border-red-500/40 bg-red-500/10',
+      titleClass: 'text-red-300',
+    }
+  }
+  if (status === 'confirmed') {
+    return {
+      title: t('transfer.success'),
+      detailKey: 'transfer.successDetail' as const,
+      tone: 'success' as const,
+      box: 'border-emerald-500/40 bg-emerald-500/10',
+      titleClass: 'text-emerald-300',
+    }
+  }
+  return {
+    title: t('transfer.broadcasted'),
+    detailKey: 'transfer.broadcastedDetail' as const,
+    tone: 'pending' as const,
+    box: 'border-honey-500/40 bg-honey-500/10',
+    titleClass: 'text-honey-300',
+  }
+}
+
 export default function TransferPage() {
   const t = useT()
   const location = useLocation()
@@ -165,6 +193,8 @@ export default function TransferPage() {
     }
   }
 
+  const outcome = receipt ? transferOutcome(receipt.transaction.status, t) : null
+
   return (
     <div className="mx-auto max-w-3xl space-y-5">
       <div className="flex items-center justify-between">
@@ -208,25 +238,12 @@ export default function TransferPage() {
       ) : null}
 
       <Alert>{error}</Alert>
-      {tab === 'send' && receipt ? (
-        <div
-          ref={resultRef}
-          className={
-            receipt.transaction.status === 'failed'
-              ? 'rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3'
-              : 'rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3'
-          }
-        >
-          <p
-            className={`text-sm font-semibold ${
-              receipt.transaction.status === 'failed' ? 'text-red-300' : 'text-emerald-300'
-            }`}
-          >
-            {receipt.transaction.status === 'failed' ? t('transfer.failed') : t('transfer.success')}
-          </p>
-          {receipt.transaction.status !== 'failed' ? (
-            <p className="mt-1 text-xs text-emerald-200/90">
-              {t('transfer.successDetail', {
+      {tab === 'send' && receipt && outcome ? (
+        <div ref={resultRef} className={`rounded-xl border px-4 py-3 ${outcome.box}`}>
+          <p className={`text-sm font-semibold ${outcome.titleClass}`}>{outcome.title}</p>
+          {outcome.detailKey ? (
+            <p className="mt-1 text-xs text-ink-300">
+              {t(outcome.detailKey, {
                 amount: formatAmount(receipt.transaction.amount),
                 symbol: receipt.transaction.symbol,
                 to: shorten(receipt.transaction.toAddress, 8, 6),
@@ -491,14 +508,12 @@ export default function TransferPage() {
               </div>
             ) : null}
 
-            {receipt ? (
-              <Alert tone={receipt.transaction.status === 'failed' ? 'error' : 'success'}>
-                <p className="font-semibold">
-                  {receipt.transaction.status === 'failed' ? t('transfer.failed') : t('transfer.success')}
-                </p>
-                {receipt.transaction.status !== 'failed' ? (
+            {receipt && outcome ? (
+              <Alert tone={outcome.tone}>
+                <p className="font-semibold">{outcome.title}</p>
+                {outcome.detailKey ? (
                   <p className="mt-1">
-                    {t('transfer.successDetail', {
+                    {t(outcome.detailKey, {
                       amount: formatAmount(receipt.transaction.amount),
                       symbol: receipt.transaction.symbol,
                       to: shorten(receipt.transaction.toAddress, 8, 6),
