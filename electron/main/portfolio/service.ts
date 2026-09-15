@@ -9,7 +9,7 @@ import type {
   TokenRecord,
 } from '@shared/types'
 import { loadBalances, upsertBalance } from '../db/repos/balanceRepo'
-import { getNetwork, listTokens } from '../db/repos/catalogRepo'
+import { getNetwork, getToken, listTokens } from '../db/repos/catalogRepo'
 import { loadSettings } from '../db/repos/metaRepo'
 import { findMatchingAccount } from '../db/repos/accountRepo'
 import { getAccount } from '../wallets/service'
@@ -292,6 +292,56 @@ export async function getPortfolioSnapshot(networkPk?: string): Promise<Portfoli
     offline: entries.some((item) => item.stale),
     priceError,
   }
+}
+
+const BALANCE_CHUNK = 6
+const BALANCE_MAX = 200
+
+async function mapPool<T, R>(items: T[], concurrency: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length)
+  let next = 0
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+      while (next < items.length) {
+        const index = next
+        next += 1
+        out[index] = await fn(items[index]!)
+      }
+    }),
+  )
+  return out
+}
+
+/** 按地址批量读某个代币余额，供批量转账选付款账户。 */
+export async function getTokenBalances(input: {
+  networkPk: string
+  tokenPk: string
+  addresses: string[]
+}): Promise<Array<{ address: string; balance: string | null }>> {
+  const network = getNetwork(input.networkPk)
+  if (!network) throw notFound('网络不存在')
+  const token = getToken(input.tokenPk)
+  if (!token) throw notFound('代币不存在')
+  if (token.networkPk !== network.id) throw invalidArg('代币不属于当前网络')
+  const seen = new Set<string>()
+  const addresses: string[] = []
+  for (const raw of input.addresses ?? []) {
+    const address = raw.trim()
+    if (!address) continue
+    const key = address.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    addresses.push(address)
+    if (addresses.length >= BALANCE_MAX) break
+  }
+  return mapPool(addresses, BALANCE_CHUNK, async (address) => {
+    try {
+      const info = await fetchChainBalance(network, token, address)
+      return { address, balance: info.balance }
+    } catch {
+      return { address, balance: null }
+    }
+  })
 }
 
 /** 指定账户在某条网上的代币余额，供兑换 / 跨链桥展示。 */

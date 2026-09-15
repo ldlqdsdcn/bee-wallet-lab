@@ -10,12 +10,13 @@ import type {
   TransferPreview,
   TronEnergyFeeMode,
 } from '@shared/types'
-import { accountApi, catalogApi, on, transferApi } from '../lib/bridge'
+import { accountApi, catalogApi, on, portfolioApi, transferApi } from '../lib/bridge'
 import { useAccountBalances } from '../lib/accountBalances'
 import { useTronResources } from '../lib/tronResources'
 import { Alert, Button, Card, Field, Select } from '../components/ui'
 import { TronResourcesCard } from '../components/TronResourcesCard'
 import AddressBookPicker from '../components/AddressBookPicker'
+import { AirdropPayerPicker, type AirdropPayer } from '../components/AirdropPayerPicker'
 import { TokenSelect } from '../components/TokenSelect'
 import { explorerTabTitle } from '../lib/explorer'
 import { formatAmount, shorten } from '../lib/format'
@@ -73,6 +74,8 @@ export default function TransferPage() {
   const [accounts, setAccounts] = useState<AccountRecord[]>([])
   const [tokenPk, setTokenPk] = useState(nav.tokenPk ?? '')
   const [accountId, setAccountId] = useState(nav.accountId ?? '')
+  const [payer, setPayer] = useState<AirdropPayer | null>(null)
+  const [payerBalance, setPayerBalance] = useState<string | null>(null)
   const [to, setTo] = useState('')
   const [amount, setAmount] = useState('')
   const [feeLevel, setFeeLevel] = useState<FeeLevel>('medium')
@@ -89,10 +92,32 @@ export default function TransferPage() {
   const isTron = network?.walletType === 'tron'
   const tronResources = useTronResources(accountId, networkPk, Boolean(isTron && accountId))
   const resultRef = useRef<HTMLDivElement>(null)
+  const [copied, setCopied] = useState(false)
+  const copiedTimer = useRef(0)
 
   const account = accounts.find((item) => item.id === accountId)
   const token = tokens.find((item) => item.id === tokenPk)
-  const tokenBalance = balances.of(tokenPk)
+  const tokenBalance = payerBalance ?? balances.of(tokenPk)
+  const fromAddress = payer?.address ?? account?.address
+
+  useEffect(() => () => window.clearTimeout(copiedTimer.current), [])
+
+  useEffect(() => {
+    setCopied(false)
+    window.clearTimeout(copiedTimer.current)
+  }, [fromAddress])
+
+  const copyAddress = async () => {
+    if (!fromAddress) return
+    try {
+      await navigator.clipboard.writeText(fromAddress)
+      setCopied(true)
+      window.clearTimeout(copiedTimer.current)
+      copiedTimer.current = window.setTimeout(() => setCopied(false), 3000)
+    } catch {
+      setCopied(false)
+    }
+  }
 
   useEffect(() => {
     const state = (location.state ?? {}) as NavState
@@ -167,20 +192,58 @@ export default function TransferPage() {
   }, [accounts, network])
 
   useEffect(() => {
-    if (accountId && filteredAccounts.some((item) => item.id === accountId)) return
-    if (filteredAccounts[0]) setAccountId(filteredAccounts[0].id)
-    else setAccountId('')
-  }, [filteredAccounts, accountId])
+    const main = filteredAccounts[0]
+    if (!main) {
+      setAccountId('')
+      setPayer(null)
+      return
+    }
+    setAccountId((current) => current || main.id)
+    setPayer((current) => {
+      if (current?.hdKeyId) return { ...current, accountId: current.accountId || main.id }
+      if (current && filteredAccounts.some((item) => item.id === current.accountId)) return current
+      const preferred = filteredAccounts.find((item) => item.id === accountId) ?? main
+      return {
+        accountId: preferred.id,
+        hdKeyId: null,
+        address: preferred.address,
+        label: preferred.id === main.id ? t('airdrop.mainAccount') : preferred.label || preferred.addressType || 'EVM',
+      }
+    })
+  }, [filteredAccounts, accountId, t])
 
   useEffect(() => {
-    if (!account?.address) {
+    if (!fromAddress) {
       setQr(null)
       return
     }
-    void QRCode.toDataURL(account.address, { margin: 1, width: 220, color: { dark: '#11161f', light: '#fff7e6' } }).then(
+    void QRCode.toDataURL(fromAddress, { margin: 1, width: 220, color: { dark: '#11161f', light: '#fff7e6' } }).then(
       setQr,
     )
-  }, [account?.address])
+  }, [fromAddress])
+
+  useEffect(() => {
+    if (!fromAddress || !networkPk || !tokenPk) {
+      setPayerBalance(null)
+      return
+    }
+    let alive = true
+    void portfolioApi
+      .tokenBalances({ networkPk, tokenPk, addresses: [fromAddress] })
+      .then((rows) => {
+        if (alive) setPayerBalance(rows[0]?.balance ?? null)
+      })
+      .catch(() => {
+        if (alive) setPayerBalance(null)
+      })
+    return () => {
+      alive = false
+    }
+  }, [fromAddress, networkPk, tokenPk])
+
+  useEffect(() => {
+    setPreview(null)
+  }, [payer?.address, payer?.hdKeyId])
 
   const run = async (kind: 'preview' | 'submit', fn: () => Promise<void>) => {
     setPending(kind)
@@ -217,17 +280,25 @@ export default function TransferPage() {
         </div>
       </div>
 
-      <Select label={t('transfer.account')} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-        {filteredAccounts.length === 0 ? (
-          <option value="">{t('transfer.noAccount')}</option>
-        ) : (
-          filteredAccounts.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.label || item.addressType || item.walletType} · {shorten(item.address, 8, 6)}
-            </option>
-          ))
-        )}
-      </Select>
+      {currentWalletId && network ? (
+        <AirdropPayerPicker
+          walletId={currentWalletId}
+          accountId={accountId}
+          walletType={network.walletType}
+          networkScope={network.networkScope}
+          networkPk={networkPk}
+          tokenPk={tokenPk}
+          tokenSymbol={token?.symbol ?? ''}
+          label={t('transfer.account')}
+          payer={payer}
+          onSelect={(next) => {
+            setPayer(next)
+            setAccountId(next.accountId)
+          }}
+        />
+      ) : (
+        <p className="text-sm text-ink-400">{t('transfer.noAccount')}</p>
+      )}
 
       {isTron && accountId ? (
         <TronResourcesCard
@@ -271,11 +342,18 @@ export default function TransferPage() {
 
       {tab === 'receive' ? (
         <Card title={t('transfer.receive')}>
-          {!account ? (
+          {!fromAddress ? (
             <p className="text-sm text-ink-400">{t('transfer.noAccountHint')}</p>
           ) : (
             <div className="space-y-4">
-              <TokenSelect tokens={tokens} value={tokenPk} onChange={setTokenPk} balances={balances.byToken} />
+              <TokenSelect
+                tokens={tokens}
+                value={tokenPk}
+                onChange={setTokenPk}
+                balances={
+                  payerBalance != null && tokenPk ? { ...balances.byToken, [tokenPk]: payerBalance } : balances.byToken
+                }
+              />
               <p className="text-[11px] text-ink-500">
                 {balances.loading && tokenBalance == null
                   ? t('common.loading')
@@ -286,12 +364,9 @@ export default function TransferPage() {
               </p>
               <div className="flex flex-col items-center gap-4">
                 {qr ? <img src={qr} alt={t('transfer.qrAlt')} className="rounded-xl" /> : null}
-                <p className="sensitive break-all text-center text-sm text-ink-200">{account.address}</p>
-                <Button
-                  variant="ghost"
-                  onClick={() => void navigator.clipboard.writeText(account.address)}
-                >
-                  {t('transfer.copyAddress')}
+                <p className="sensitive break-all text-center text-sm text-ink-200">{fromAddress}</p>
+                <Button variant="ghost" onClick={() => void copyAddress()}>
+                  {copied ? t('common.copied') : t('transfer.copyAddress')}
                 </Button>
               </div>
             </div>
@@ -300,7 +375,14 @@ export default function TransferPage() {
       ) : (
         <Card title={t('transfer.send')}>
           <div className="space-y-3">
-            <TokenSelect tokens={tokens} value={tokenPk} onChange={setTokenPk} balances={balances.byToken} />
+            <TokenSelect
+              tokens={tokens}
+              value={tokenPk}
+              onChange={setTokenPk}
+              balances={
+                payerBalance != null && tokenPk ? { ...balances.byToken, [tokenPk]: payerBalance } : balances.byToken
+              }
+            />
             {tokens.length === 0 ? (
               <p className="text-xs text-ink-500">{t('transfer.noToken')}</p>
             ) : (
@@ -313,7 +395,6 @@ export default function TransferPage() {
                   <AddressBookPicker
                     walletType={network.walletType}
                     networkScope={network.networkScope}
-                    networkPk={network.id}
                     onSelect={(entry) => setTo(entry.address)}
                   />
                 ) : null}
@@ -434,7 +515,8 @@ export default function TransferPage() {
                             setEnergyFeeMode('rent')
                             setPreview(
                               await transferApi.preview({
-                                accountId,
+                                accountId: payer?.accountId || accountId,
+                                hdKeyId: payer?.hdKeyId ?? null,
                                 networkPk,
                                 tokenPk,
                                 to,
@@ -470,7 +552,8 @@ export default function TransferPage() {
                             setEnergyFeeMode('burn')
                             setPreview(
                               await transferApi.preview({
-                                accountId,
+                                accountId: payer?.accountId || accountId,
+                                hdKeyId: payer?.hdKeyId ?? null,
                                 networkPk,
                                 tokenPk,
                                 to,
@@ -517,7 +600,8 @@ export default function TransferPage() {
                   void run('preview', async () => {
                     setReceipt(null)
                     const next = await transferApi.preview({
-                      accountId,
+                      accountId: payer?.accountId || accountId,
+                      hdKeyId: payer?.hdKeyId ?? null,
                       networkPk,
                       tokenPk,
                       to,

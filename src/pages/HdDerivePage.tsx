@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import type { BitcoinAddressType, HdDerivedEvmKey, HdKeyQuery, HdKeyRecord, NetworkRecord, WalletType } from '@shared/types'
 import { accountApi } from '../lib/bridge'
 import { Alert, Button, Card, Field, Modal, Select } from '../components/ui'
-import { downloadTextFile, hdAddressListText, hdExportFilename } from '../lib/hdExport'
+import { downloadTextFile, hdAddressListText, hdExportFilename, parseHdIndexRange } from '../lib/hdExport'
 import { shorten } from '../lib/format'
 import { useT, type MessageKey } from '../i18n'
 import { useWalletStore } from '../store/walletStore'
@@ -46,12 +46,14 @@ function hdQuery(
   walletId: string,
   network: NetworkRecord,
   addressType: BitcoinAddressType,
-  accountIndex?: number,
+  extra?: { accountIndex?: number; fromIndex?: number; toIndex?: number },
 ): HdKeyQuery {
   return {
     walletId,
     walletType: network.walletType,
-    accountIndex,
+    accountIndex: extra?.accountIndex,
+    fromIndex: extra?.fromIndex,
+    toIndex: extra?.toIndex,
     ...(network.walletType === 'bitcoin' ? { networkScope: network.networkScope, addressType } : {}),
   }
 }
@@ -81,8 +83,10 @@ function exportCsv(walletName: string, rows: HdDerivedEvmKey[]): void {
 }
 
 function exportAddresses(walletName: string, rows: HdDerivedEvmKey[]): void {
+  const first = rows[0]?.index ?? 0
+  const last = rows[rows.length - 1]?.index ?? 0
   downloadTextFile(
-    hdExportFilename(walletName, 'hd-addresses.txt'),
+    hdExportFilename(walletName, `hd-addresses-${first}-${last}.txt`),
     `${hdAddressListText(rows.map((row) => row.address))}\n`,
     'text/plain;charset=utf-8',
   )
@@ -98,8 +102,12 @@ export default function HdDerivePage() {
   const network = currentNetworkOf({ networks, currentPk: networkPk })
   const evm = network?.walletType === 'web3'
   const [addressType, setAddressType] = useState<BitcoinAddressType>('p2wpkh')
-  const [toIndex, setToIndex] = useState('20000')
   const [fromIndex, setFromIndex] = useState('1')
+  const [toIndex, setToIndex] = useState('100')
+  const [appliedRange, setAppliedRange] = useState<{ fromIndex: number; toIndex: number } | null>(null)
+  const [deriveOpen, setDeriveOpen] = useState(false)
+  const [deriveFrom, setDeriveFrom] = useState('1')
+  const [deriveTo, setDeriveTo] = useState('20000')
   const [accountIndex, setAccountIndex] = useState('0')
   const [password, setPassword] = useState('')
   const [rows, setRows] = useState<HdDerivedEvmKey[]>([])
@@ -112,31 +120,13 @@ export default function HdDerivePage() {
   const [page, setPage] = useState(1)
   const [detail, setDetail] = useState<HdDerivedEvmKey | null>(null)
 
-  useEffect(() => {
-    setQuery('')
-    setPassword('')
-    setError(null)
-    setMessage(null)
-    setHideKeys(true)
-    setPage(1)
-    setDetail(null)
-    setRows([])
+  const loadList = async (range: { fromIndex: number; toIndex: number }) => {
     if (!currentId || !network) return
-    let alive = true
-    void accountApi
-      .hdKeyList(hdQuery(currentId, network, addressType))
-      .then((list) => {
-        if (!alive) return
-        setRows(list.map(asRow))
-      })
-      .catch((err) => {
-        if (!alive) return
-        setError(err instanceof Error ? err.message : String(err))
-      })
-    return () => {
-      alive = false
-    }
-  }, [currentId, networkPk, network?.walletType, network?.networkScope, addressType])
+    const list = await accountApi.hdKeyList(hdQuery(currentId, network, addressType, range))
+    setRows(list.map(asRow))
+    setAppliedRange(range)
+    setPage(1)
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -158,12 +148,35 @@ export default function HdDerivePage() {
     setPage(1)
   }, [query])
 
-  const count = useMemo(() => {
-    const from = Number(fromIndex)
-    const to = Number(toIndex)
-    if (!Number.isInteger(from) || !Number.isInteger(to) || to < from) return 0
-    return to - from + 1
-  }, [fromIndex, toIndex])
+  useEffect(() => {
+    setQuery('')
+    setPassword('')
+    setError(null)
+    setMessage(null)
+    setHideKeys(true)
+    setPage(1)
+    setDetail(null)
+    setRows([])
+    setAppliedRange(null)
+    setDeriveOpen(false)
+    if (!currentId || !network) return
+    const range = parseHdIndexRange(fromIndex, toIndex)
+    if (!range) return
+    let alive = true
+    void loadList(range).catch((err) => {
+      if (!alive) return
+      setError(err instanceof Error ? err.message : String(err))
+    })
+    return () => {
+      alive = false
+    }
+  }, [currentId, networkPk, network?.walletType, network?.networkScope, addressType])
+
+  const deriveCount = useMemo(() => {
+    const range = parseHdIndexRange(deriveFrom, deriveTo)
+    if (!range) return 0
+    return range.toIndex - range.fromIndex + 1
+  }, [deriveFrom, deriveTo])
 
   const unlocked = rows.length > 0 && rows.every((row) => row.privateKey)
 
@@ -180,6 +193,13 @@ export default function HdDerivePage() {
     }
   }
 
+  const searchRange = () =>
+    run(async () => {
+      const range = parseHdIndexRange(fromIndex, toIndex)
+      if (!range) throw new Error(t('hd.rangeInvalid'))
+      await loadList(range)
+    })
+
   const generate = async () => {
     if (!currentId || saving) return
     setSaving(true)
@@ -187,18 +207,19 @@ export default function HdDerivePage() {
     setMessage(null)
     try {
       if (!network) throw new Error(t('hd.needNetwork'))
-      const query = hdQuery(currentId, network, addressType, Number(accountIndex))
+      const derivedRange = parseHdIndexRange(deriveFrom, deriveTo)
+      if (!derivedRange) throw new Error(t('hd.rangeInvalid'))
       const next = await accountApi.hdDeriveEvm({
         walletId: currentId,
         password,
-        fromIndex: Number(fromIndex),
-        toIndex: Number(toIndex),
+        fromIndex: derivedRange.fromIndex,
+        toIndex: derivedRange.toIndex,
         accountIndex: Number(accountIndex),
         walletType: network.walletType,
         networkScope: network.networkScope,
         addressType: network.walletType === 'bitcoin' ? addressType : null,
       })
-      const list = await accountApi.hdKeyList(query)
+      const list = await accountApi.hdKeyList(hdQuery(currentId, network, addressType, derivedRange))
       const unlocked = new Map(next.rows.map((row) => [row.index, row.privateKey]))
       setRows(
         list.map((item) => ({
@@ -206,8 +227,12 @@ export default function HdDerivePage() {
           privateKey: unlocked.get(item.addressIndex),
         })),
       )
+      setAppliedRange(derivedRange)
+      setFromIndex(String(derivedRange.fromIndex))
+      setToIndex(String(derivedRange.toIndex))
       setPage(1)
       setPassword('')
+      setDeriveOpen(false)
       setMessage(
         next.skipped > 0
           ? t('hd.skipped', { skipped: next.skipped, saved: next.saved })
@@ -234,14 +259,28 @@ export default function HdDerivePage() {
               : ''}
           </p>
         </div>
-        {evm ? (
-          <Link
-            to="/hd-airdrop"
-            className="shrink-0 rounded-lg border border-ink-600 px-3 py-1.5 text-xs text-ink-200 hover:border-honey-500 hover:text-honey-400"
-          >
-            {t('nav.airdrop')}
-          </Link>
-        ) : null}
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {evm ? (
+            <Link
+              to="/hd-airdrop"
+              className="rounded-lg border border-ink-600 px-3 py-1.5 text-xs text-ink-200 hover:border-honey-500 hover:text-honey-400"
+            >
+              {t('nav.airdrop')}
+            </Link>
+          ) : null}
+          {network ? (
+            <Button
+              className="px-3 py-1.5 text-xs"
+              onClick={() => {
+                setDeriveFrom(fromIndex)
+                setDeriveTo(toIndex)
+                setDeriveOpen(true)
+              }}
+            >
+              {t('hd.openDerive')}
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <Alert>{error}</Alert>
@@ -256,15 +295,18 @@ export default function HdDerivePage() {
         </Card>
       ) : (
         <>
-      <Card title={t('hd.batch')}>
+      <Card title={t('hd.queryRange')}>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field
             label={t('hd.fromIndex')}
             type="number"
             min={0}
             value={fromIndex}
-            hint={t('hd.fromHint', { chain: chainLabel(network.walletType, t) })}
+            hint={t('hd.queryFromHint')}
             onChange={(e) => setFromIndex(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void searchRange()
+            }}
           />
           <Field
             label={t('hd.toIndex')}
@@ -272,8 +314,11 @@ export default function HdDerivePage() {
             min={0}
             max={20_000}
             value={toIndex}
-            hint={t('hd.toHint')}
+            hint={t('hd.queryToHint')}
             onChange={(e) => setToIndex(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void searchRange()
+            }}
           />
           {network.walletType === 'bitcoin' ? (
             <Select
@@ -289,59 +334,24 @@ export default function HdDerivePage() {
               ))}
             </Select>
           ) : null}
-          <Field
-            label={t('hd.account')}
-            type="number"
-            min={0}
-            value={accountIndex}
-            hint={t('hd.accountHint')}
-            onChange={(e) => setAccountIndex(e.target.value)}
-          />
-          <Field
-            label={t('common.password')}
-            type="password"
-            value={password}
-            hint={t('hd.passwordHint')}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && password && currentId && !busy && !saving) {
-                void generate()
-              }
-            }}
-          />
         </div>
-        <p className="mt-3 text-xs text-honey-400">
-          {t('hd.willWrite', { count: count || 0 })}
-        </p>
+        <p className="mt-3 text-xs text-ink-500">{t('hd.queryHint')}</p>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button disabled={busy || saving || !currentId || !password || count <= 0} onClick={() => void generate()}>
-            {saving ? t('hd.generating') : t('hd.generate')}
-          </Button>
-          <Button
-            variant="ghost"
-            disabled={busy || saving || !currentId || !password || rows.length === 0}
-            onClick={() =>
-              void run(async () => {
-                if (!currentId) return
-                if (!network) return
-                const unlockedRows = await accountApi.hdKeyUnlock({
-                  ...hdQuery(currentId, network, addressType),
-                  password,
-                })
-                setRows(unlockedRows)
-                setHideKeys(false)
-                setPassword('')
-              })
-            }
-          >
-            {t('hd.unlockKeys')}
+          <Button disabled={busy || saving || !currentId || !parseHdIndexRange(fromIndex, toIndex)} onClick={() => void searchRange()}>
+            {t('hd.query')}
           </Button>
           <Button
             variant="ghost"
             disabled={busy || saving || filtered.length === 0}
             onClick={() => {
               exportAddresses(current?.name ?? 'hd', filtered)
-              setMessage(t('hd.exportedAddresses', { count: filtered.length }))
+              setMessage(
+                t('hd.exportedAddresses', {
+                  count: filtered.length,
+                  from: filtered[0]?.index ?? appliedRange?.fromIndex ?? 0,
+                  to: filtered[filtered.length - 1]?.index ?? appliedRange?.toIndex ?? 0,
+                }),
+              )
             }}
           >
             {t('hd.exportAddresses')}
@@ -349,42 +359,12 @@ export default function HdDerivePage() {
           <Button
             variant="ghost"
             disabled={busy || saving || rows.length === 0 || !unlocked}
-            onClick={() => exportCsv(current?.name ?? 'hd', rows)}
+            onClick={() => exportCsv(current?.name ?? 'hd', filtered)}
           >
             {t('hd.exportCsv')}
           </Button>
           <Button variant="ghost" disabled={saving || rows.length === 0} onClick={() => setHideKeys((value) => !value)}>
             {hideKeys ? t('hd.showKeys') : t('hd.hideKeys')}
-          </Button>
-          <Button
-            variant="ghost"
-            className="hover:border-red-500 hover:text-red-400"
-            disabled={busy || saving || !currentId || !password || rows.length === 0}
-            onClick={() =>
-              void run(async () => {
-                if (!currentId) return
-                if (!network) return
-                if (
-                  !window.confirm(
-                    t('hd.clearConfirm', {
-                      wallet: current?.name ?? t('wallet.current'),
-                      network: network.networkName,
-                      count: rows.length,
-                    }),
-                  )
-                )
-                  return
-                await accountApi.hdKeyClear({
-                  ...hdQuery(currentId, network, addressType),
-                  password,
-                })
-                setRows([])
-                setPage(1)
-                setPassword('')
-              })
-            }
-          >
-            {t('hd.clear')}
           </Button>
         </div>
       </Card>
@@ -407,9 +387,16 @@ export default function HdDerivePage() {
       >
         {rows.length === 0 ? (
           <p className="text-sm text-ink-400">
-            {current
-              ? t('hd.emptyWallet', { wallet: current.name, network: network.networkName })
-              : t('hd.emptyNoWallet')}
+            {!current
+              ? t('hd.emptyNoWallet')
+              : appliedRange
+                ? t('hd.emptyRange', {
+                    from: appliedRange.fromIndex,
+                    to: appliedRange.toIndex,
+                    wallet: current.name,
+                    network: network.networkName,
+                  })
+                : t('hd.emptyWallet', { wallet: current.name, network: network.networkName })}
           </p>
         ) : (
           <>
@@ -420,6 +407,119 @@ export default function HdDerivePage() {
       </Card>
         </>
       )}
+      {deriveOpen && network ? (
+        <Modal title={t('hd.batch')} onClose={() => !saving && setDeriveOpen(false)} wide className="max-w-2xl">
+          <p className="mt-1 text-xs text-ink-500">{t('hd.passwordHint')}</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <Field
+              label={t('hd.fromIndex')}
+              type="number"
+              min={0}
+              value={deriveFrom}
+              hint={t('hd.fromHint', { chain: chainLabel(network.walletType, t) })}
+              onChange={(e) => setDeriveFrom(e.target.value)}
+            />
+            <Field
+              label={t('hd.toIndex')}
+              type="number"
+              min={0}
+              max={20_000}
+              value={deriveTo}
+              hint={t('hd.toHint')}
+              onChange={(e) => setDeriveTo(e.target.value)}
+            />
+            {network.walletType === 'bitcoin' ? (
+              <Select
+                label={t('hd.addrType')}
+                value={addressType}
+                hint={t('hd.addrTypeHint')}
+                onChange={(e) => setAddressType(e.target.value as BitcoinAddressType)}
+              >
+                {BTC_TYPES.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </Select>
+            ) : null}
+            <Field
+              label={t('hd.account')}
+              type="number"
+              min={0}
+              value={accountIndex}
+              hint={t('hd.accountHint')}
+              onChange={(e) => setAccountIndex(e.target.value)}
+            />
+            <Field
+              label={t('common.password')}
+              type="password"
+              value={password}
+              hint={t('hd.passwordHint')}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && password && currentId && !busy && !saving) void generate()
+              }}
+            />
+          </div>
+          <p className="mt-3 text-xs text-honey-400">{t('hd.willWrite', { count: deriveCount || 0 })}</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button disabled={busy || saving || !currentId || !password || deriveCount <= 0} onClick={() => void generate()}>
+              {saving ? t('hd.generating') : t('hd.generate')}
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={busy || saving || !currentId || !password || !appliedRange || rows.length === 0}
+              onClick={() =>
+                void run(async () => {
+                  if (!currentId || !network || !appliedRange) return
+                  const unlockedRows = await accountApi.hdKeyUnlock({
+                    ...hdQuery(currentId, network, addressType, appliedRange),
+                    password,
+                  })
+                  setRows(unlockedRows)
+                  setHideKeys(false)
+                  setPassword('')
+                })
+              }
+            >
+              {t('hd.unlockKeys')}
+            </Button>
+            <Button
+              variant="ghost"
+              className="hover:border-red-500 hover:text-red-400"
+              disabled={busy || saving || !currentId || !password}
+              onClick={() =>
+                void run(async () => {
+                  if (!currentId || !network) return
+                  if (
+                    !window.confirm(
+                      t('hd.clearConfirm', {
+                        wallet: current?.name ?? t('wallet.current'),
+                        network: network.networkName,
+                        count: rows.length,
+                      }),
+                    )
+                  )
+                    return
+                  await accountApi.hdKeyClear({
+                    ...hdQuery(currentId, network, addressType),
+                    password,
+                  })
+                  setRows([])
+                  setPage(1)
+                  setPassword('')
+                  setDeriveOpen(false)
+                })
+              }
+            >
+              {t('hd.clear')}
+            </Button>
+            <Button variant="ghost" disabled={saving} onClick={() => setDeriveOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+          </div>
+        </Modal>
+      ) : null}
       {detail ? (
         <HdKeyDetailDialog
           row={detail}
@@ -431,7 +531,7 @@ export default function HdDerivePage() {
           }}
         />
       ) : null}
-      {saving ? <SavingOverlay count={count} /> : null}
+      {saving ? <SavingOverlay count={deriveCount} /> : null}
     </div>
   )
 }
@@ -439,7 +539,7 @@ export default function HdDerivePage() {
 function SavingOverlay({ count }: { count: number }) {
   const t = useT()
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
       <div className="w-full max-w-sm rounded-xl border border-ink-600 bg-ink-900 px-6 py-8 text-center shadow-2xl">
         <span className="mx-auto block h-8 w-8 animate-spin rounded-full border-2 border-ink-600 border-t-honey-400" />
         <p className="mt-4 text-sm font-medium text-ink-100">{t('hd.progressTitle')}</p>

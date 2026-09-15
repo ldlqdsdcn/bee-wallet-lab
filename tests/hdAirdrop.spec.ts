@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { collectRecipientAddresses, mergeRecipientText, parseRecipientTokens } from '../shared/airdropAddresses'
+import { matchAddressKeyword, matchBalanceRange, uniquePayersByAddress } from '../src/lib/airdropPayer'
 import { IPC, IPC_CHANNELS, IPC_EVENT, IPC_EVENTS } from '../shared/ipc'
 import { parseDecimalToMinor } from '../electron/main/util/amount'
 import {
@@ -6,6 +8,53 @@ import {
   formatDuration,
   randomBigIntInclusive,
 } from '../electron/main/hdAirdrop/amount'
+
+describe('批量转账收款地址', () => {
+  const a = '0x1111111111111111111111111111111111111111'
+  const b = '0x2222222222222222222222222222222222222222'
+
+  it('按逗号、中文逗号和换行拆分', () => {
+    expect(parseRecipientTokens(`${a},${b}`)).toEqual([a, b])
+    expect(parseRecipientTokens(`${a}，${b}`)).toEqual([a, b])
+    expect(parseRecipientTokens(`${a}\n${b}`)).toEqual([a, b])
+  })
+
+  it('去掉重复并标出非法项', () => {
+    const result = collectRecipientAddresses(`${a},0x${a.slice(2).toUpperCase()},not-an-address,${b}`)
+    expect(result.addresses).toEqual([a, b])
+    expect(result.invalid).toEqual(['not-an-address'])
+    expect(result.duplicateCount).toBe(1)
+  })
+
+  it('合并文本时按小写去重并保持原有顺序', () => {
+    expect(mergeRecipientText(a, `${a},${b}`)).toBe(`${a},${b}`)
+  })
+})
+
+describe('批量转账付款筛选', () => {
+  it('相同地址只保留第一条', () => {
+    const a = '0x1111111111111111111111111111111111111111'
+    expect(
+      uniquePayersByAddress([
+        { address: a, label: '主账户' },
+        { address: a.toUpperCase(), label: 'EVM' },
+        { address: '0x2222222222222222222222222222222222222222', label: 'HD #1' },
+      ]).map((item) => item.label),
+    ).toEqual(['主账户', 'HD #1'])
+  })
+
+  it('按地址片段模糊匹配', () => {
+    expect(matchAddressKeyword('0xAbcDef', 'bcd')).toBe(true)
+    expect(matchAddressKeyword('0xAbcDef', 'zzz')).toBe(false)
+  })
+
+  it('按余额范围筛选，未读到余额时不进入范围条件', () => {
+    expect(matchBalanceRange('1.5', '1', '2')).toBe(true)
+    expect(matchBalanceRange('0.2', '1', '')).toBe(false)
+    expect(matchBalanceRange(null, '1', '2')).toBe(false)
+    expect(matchBalanceRange(null, '', '')).toBe(true)
+  })
+})
 
 describe('批量转账金额', () => {
   it('固定额度按代币精度换成最小单位', () => {
@@ -49,6 +98,8 @@ describe('批量转账通道', () => {
     expect(IPC.hdAirdropRetry).toBe('hdAirdrop:retry')
     expect(IPC_CHANNELS).toContain(IPC.hdAirdropPreview)
     expect(IPC_CHANNELS).toContain(IPC.hdAirdropRetry)
+    expect(IPC.portfolioTokenBalances).toBe('portfolio:tokenBalances')
+    expect(IPC_CHANNELS).toContain(IPC.portfolioTokenBalances)
     expect(IPC_EVENT.hdAirdropProgress).toBe('event:hdAirdropProgress')
     expect(IPC_EVENTS).toContain(IPC_EVENT.hdAirdropProgress)
   })

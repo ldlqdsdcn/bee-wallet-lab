@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { collectRecipientAddresses, mergeRecipientText } from '@shared/airdropAddresses'
 import { IPC_EVENT } from '@shared/ipc'
 import type {
   AccountRecord,
@@ -12,8 +13,11 @@ import type {
   HdAirdropPreview,
   TokenRecord,
 } from '@shared/types'
-import { accountApi, catalogApi, hdAirdropApi, on } from '../lib/bridge'
-import { Alert, Button, Card, Field, Select } from '../components/ui'
+import { useAccountBalances } from '../lib/accountBalances'
+import { accountApi, catalogApi, hdAirdropApi, on, portfolioApi } from '../lib/bridge'
+import AddressBookPicker from '../components/AddressBookPicker'
+import { AirdropPayerPicker, type AirdropPayer } from '../components/AirdropPayerPicker'
+import { Alert, Button, Card, Field, TextArea } from '../components/ui'
 import { TokenSelect } from '../components/TokenSelect'
 import { AccountAddress } from '../components/AccountAddress'
 import { explorerTabTitle, txExplorerUrl } from '../lib/explorer'
@@ -93,16 +97,16 @@ export default function HdAirdropPage() {
   const [accounts, setAccounts] = useState<AccountRecord[]>([])
   const [tokens, setTokens] = useState<TokenRecord[]>([])
   const [accountId, setAccountId] = useState('')
+  const [payer, setPayer] = useState<AirdropPayer | null>(null)
+  const [payerBalance, setPayerBalance] = useState<string | null>(null)
   const [tokenPk, setTokenPk] = useState('')
-  const [fromIndex, setFromIndex] = useState('1')
-  const [toIndex, setToIndex] = useState('20000')
-  const [accountIndex, setAccountIndex] = useState('0')
+  const [recipientText, setRecipientText] = useState('')
   const [amountMode, setAmountMode] = useState<HdAirdropAmountMode>('fixed')
   const [amount, setAmount] = useState('1000')
   const [amountMin, setAmountMin] = useState('1000')
   const [amountMax, setAmountMax] = useState('2000')
-  const [hdCount, setHdCount] = useState(0)
   const [preview, setPreview] = useState<HdAirdropPreview | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
   const [jobs, setJobs] = useState<HdAirdropJob[]>([])
   const [job, setJob] = useState<HdAirdropJob | null>(null)
   const [itemPage, setItemPage] = useState<HdAirdropItemPage | null>(null)
@@ -110,10 +114,15 @@ export default function HdAirdropPage() {
   const [page, setPage] = useState(1)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [starting, setStarting] = useState(false)
 
   const evm = network?.walletType === 'web3'
   const assets = useMemo(() => tokens.filter(isAirdropAsset), [tokens])
+  const balances = useAccountBalances(accountId, networkPk)
+  const token = tokens.find((item) => item.id === tokenPk)
+  const tokenBalance = payerBalance ?? balances.of(tokenPk)
   const running = job?.status === 'running'
+  const transferring = running || starting
   const selectedId = job?.id
 
   const reloadJobs = async (preferId?: string) => {
@@ -142,14 +151,9 @@ export default function HdAirdropPage() {
   useEffect(() => {
     if (!currentWalletId) {
       setAccounts([])
-      setHdCount(0)
       return
     }
     void accountApi.list(currentWalletId).then(setAccounts)
-    void accountApi
-      .hdKeyList({ walletId: currentWalletId, walletType: 'web3' })
-      .then((rows) => setHdCount(rows.length))
-      .catch(() => setHdCount(0))
   }, [currentWalletId])
 
   useEffect(() => {
@@ -180,7 +184,7 @@ export default function HdAirdropPage() {
 
   useEffect(() => {
     setPreview(null)
-  }, [networkPk, currentWalletId, accountId, tokenPk, fromIndex, toIndex, accountIndex, amountMode, amount, amountMin, amountMax])
+  }, [networkPk, currentWalletId, accountId, payer?.hdKeyId, tokenPk, recipientText, amountMode, amount, amountMin, amountMax])
 
   useEffect(() => {
     setPage(1)
@@ -213,23 +217,65 @@ export default function HdAirdropPage() {
   }, [accounts, evm])
 
   useEffect(() => {
-    if (accountId && filteredAccounts.some((item) => item.id === accountId)) return
-    setAccountId(filteredAccounts[0]?.id ?? '')
-  }, [filteredAccounts, accountId])
+    const main = filteredAccounts[0]
+    if (!main) {
+      setAccountId('')
+      setPayer(null)
+      return
+    }
+    setAccountId(main.id)
+    setPayer((current) => {
+      if (current?.hdKeyId) return { ...current, accountId: main.id }
+      if (current && filteredAccounts.some((item) => item.id === current.accountId)) return current
+      return {
+        accountId: main.id,
+        hdKeyId: null,
+        address: main.address,
+        label: t('airdrop.mainAccount'),
+      }
+    })
+  }, [filteredAccounts, t])
+
+  useEffect(() => {
+    if (!payer?.address || !networkPk || !tokenPk) {
+      setPayerBalance(null)
+      return
+    }
+    let alive = true
+    void portfolioApi
+      .tokenBalances({ networkPk, tokenPk, addresses: [payer.address] })
+      .then((rows) => {
+        if (alive) setPayerBalance(rows[0]?.balance ?? null)
+      })
+      .catch(() => {
+        if (alive) setPayerBalance(null)
+      })
+    return () => {
+      alive = false
+    }
+  }, [payer?.address, networkPk, tokenPk])
+
+  const parsedRecipients = useMemo(() => collectRecipientAddresses(recipientText), [recipientText])
 
   const buildInput = (): HdAirdropInput => ({
     walletId: currentWalletId ?? '',
-    accountId,
+    accountId: payer?.accountId || accountId,
+    hdKeyId: payer?.hdKeyId ?? null,
     networkPk,
     tokenPk,
-    fromIndex: Number(fromIndex),
-    toIndex: Number(toIndex),
-    accountIndex: Number(accountIndex),
+    recipients: parsedRecipients.addresses,
     amountMode,
     amount: amountMode === 'fixed' ? amount : undefined,
     amountMin: amountMode === 'range' ? amountMin : undefined,
     amountMax: amountMode === 'range' ? amountMax : undefined,
   })
+
+  const onPickFile = (file: File | undefined) => {
+    if (!file) return
+    void file.text().then((text) => {
+      setRecipientText((current) => mergeRecipientText(current, text))
+    })
+  }
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true)
@@ -274,50 +320,95 @@ export default function HdAirdropPage() {
       ) : (
         <Card title={t('airdrop.params')}>
           <div className="space-y-3">
-            <Select
-              label={t('airdrop.fromAccount')}
-              hint={t('airdrop.fromHint')}
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-            >
-              {filteredAccounts.length === 0 ? (
-                <option value="">{t('airdrop.noEvm')}</option>
-              ) : (
-                filteredAccounts.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label || 'EVM'} · {shorten(item.address, 8, 6)}
-                  </option>
-                ))
-              )}
-            </Select>
+            {currentWalletId && evm ? (
+              <AirdropPayerPicker
+                walletId={currentWalletId}
+                accountId={accountId}
+                walletType="web3"
+                networkPk={networkPk}
+                tokenPk={tokenPk}
+                tokenSymbol={token?.symbol ?? ''}
+                payer={payer}
+                onSelect={setPayer}
+              />
+            ) : (
+              <p className="text-sm text-ink-400">{t('airdrop.noEvm')}</p>
+            )}
 
-            <TokenSelect label={t('airdrop.token')} tokens={assets} value={tokenPk} onChange={setTokenPk} />
+            <TokenSelect
+              label={t('airdrop.token')}
+              tokens={assets}
+              value={tokenPk}
+              onChange={setTokenPk}
+              balances={
+                payerBalance != null && tokenPk
+                  ? { ...balances.byToken, [tokenPk]: payerBalance }
+                  : balances.byToken
+              }
+            />
+            <p className="text-[11px] text-ink-500">
+              {balances.loading && tokenBalance == null
+                ? t('common.loading')
+                : t('common.balance', {
+                    amount: tokenBalance != null ? formatAmount(tokenBalance) : '—',
+                    symbol: token?.symbol ?? '',
+                  })}
+            </p>
 
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Field
-                label={t('hd.fromIndex')}
-                type="number"
-                min={0}
-                value={fromIndex}
-                hint={t('airdrop.fromIndexHint')}
-                onChange={(e) => setFromIndex(e.target.value)}
+            <div>
+              <div className="mb-1 flex items-center justify-between gap-3">
+                <span className="text-xs font-medium text-ink-400">{t('airdrop.recipients')}</span>
+                <div className="flex items-center gap-3">
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept=".txt,.csv,text/plain"
+                    className="hidden"
+                    onChange={(e) => {
+                      onPickFile(e.target.files?.[0])
+                      e.target.value = ''
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="text-xs text-honey-400 hover:text-honey-500"
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    {t('airdrop.upload')}
+                  </button>
+                  {network ? (
+                    <AddressBookPicker
+                      multiple
+                      walletType={network.walletType}
+                      onSelectMany={(entries) =>
+                        setRecipientText((current) =>
+                          mergeRecipientText(current, entries.map((entry) => entry.address).join(',')),
+                        )
+                      }
+                    />
+                  ) : null}
+                </div>
+              </div>
+              <TextArea
+                className="sensitive min-h-28 font-mono text-xs"
+                value={recipientText}
+                placeholder={t('airdrop.recipientsPlaceholder')}
+                onChange={(e) => setRecipientText(e.target.value)}
               />
-              <Field
-                label={t('hd.toIndex')}
-                type="number"
-                min={0}
-                value={toIndex}
-                hint={t('airdrop.toHint', { count: hdCount })}
-                onChange={(e) => setToIndex(e.target.value)}
-              />
-              <Field
-                label={t('airdrop.accountIndex')}
-                type="number"
-                min={0}
-                value={accountIndex}
-                hint={t('airdrop.accountHint')}
-                onChange={(e) => setAccountIndex(e.target.value)}
-              />
+              <p className="mt-1 text-xs text-ink-600">
+                {t('airdrop.recipientsHint')}
+                {recipientText.trim()
+                  ? ` · ${t('airdrop.parsed', { count: parsedRecipients.addresses.length })}${
+                      parsedRecipients.invalid.length
+                        ? t('airdrop.parsedInvalid', { count: parsedRecipients.invalid.length })
+                        : ''
+                    }${
+                      parsedRecipients.duplicateCount
+                        ? t('airdrop.parsedDup', { count: parsedRecipients.duplicateCount })
+                        : ''
+                    }`
+                  : ''}
+              </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -363,16 +454,6 @@ export default function HdAirdropPage() {
               </div>
             )}
 
-            {hdCount === 0 ? (
-              <p className="text-xs text-ink-500">
-                {t('airdrop.needHd')}
-                <Link className="mx-1 text-honey-400 hover:underline" to="/hd">
-                  {t('nav.hd')}
-                </Link>
-                {t('airdrop.needHd2')}
-              </p>
-            ) : null}
-
             {assets.length === 0 ? (
               <p className="text-xs text-ink-500">{t('airdrop.noErc20')}</p>
             ) : null}
@@ -389,9 +470,6 @@ export default function HdAirdropPage() {
                 <p>{t('airdrop.estTotal', { total: preview.estimatedTotal })}</p>
                 <p>{t('airdrop.estGas', { fee: preview.feeText })}</p>
                 <p className="text-honey-400">{t('airdrop.estTime', { time: preview.estimatedText })}</p>
-                {preview.missingCount > 0 ? (
-                  <p className="text-honey-400">{t('airdrop.missing', { count: preview.missingCount })}</p>
-                ) : null}
                 {preview.warnings.map((item) => (
                   <p key={item} className="text-honey-400">
                     {item}
@@ -403,9 +481,20 @@ export default function HdAirdropPage() {
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="ghost"
-                disabled={busy || running || !accountId || !tokenPk || !currentWalletId}
+                disabled={busy || running || !payer || !tokenPk || !currentWalletId}
                 onClick={() =>
                   void run(async () => {
+                    if (parsedRecipients.invalid.length > 0) {
+                      throw new Error(
+                        t('airdrop.invalidAddresses', {
+                          count: parsedRecipients.invalid.length,
+                          sample: parsedRecipients.invalid.slice(0, 3).join(', '),
+                        }),
+                      )
+                    }
+                    if (parsedRecipients.addresses.length === 0) {
+                      throw new Error(t('airdrop.needAddresses'))
+                    }
                     setPreview(await hdAirdropApi.preview(buildInput()))
                   })
                 }
@@ -413,20 +502,26 @@ export default function HdAirdropPage() {
                 {t('common.preview')}
               </Button>
               <Button
-                disabled={busy || running || !preview}
+                loading={transferring}
+                disabled={busy || transferring || !preview}
                 onClick={() =>
                   void run(async () => {
                     if (!preview) return
-                    const next = await hdAirdropApi.start(preview.draftId)
-                    setJob(next)
-                    setPreview(null)
-                    setItemFilter('all')
-                    setPage(1)
-                    await reloadJobs(next.id)
+                    setStarting(true)
+                    try {
+                      const next = await hdAirdropApi.start(preview.draftId)
+                      setJob(next)
+                      setPreview(null)
+                      setItemFilter('all')
+                      setPage(1)
+                      await reloadJobs(next.id)
+                    } finally {
+                      setStarting(false)
+                    }
                   })
                 }
               >
-                {t('airdrop.start')}
+                {transferring ? t('airdrop.transferring') : t('airdrop.start')}
               </Button>
               <Button
                 variant="danger"
@@ -444,44 +539,6 @@ export default function HdAirdropPage() {
           </div>
         </Card>
       )}
-
-      {jobs.length > 0 ? (
-        <Card title={t('airdrop.history', { count: jobs.length })}>
-          <ul className="divide-y divide-ink-700">
-            {jobs.map((item) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  className={`flex w-full items-start justify-between gap-3 py-3 text-left ${
-                    item.id === selectedId ? 'text-honey-400' : 'text-ink-200'
-                  }`}
-                  onClick={() => {
-                    setJob(item)
-                    setPage(1)
-                  }}
-                >
-                  <span>
-                    <span className="text-sm">
-                      {item.symbol} · {item.fromIndex}–{item.toIndex} · {item.amountText}
-                    </span>
-                    <span className="mt-0.5 block text-[11px] text-ink-500">
-                      {t('airdrop.jobMeta', {
-                        ok: item.confirmed,
-                        pending: item.pending,
-                        failed: item.failed,
-                        queued: item.queued,
-                        total: item.total,
-                      })}
-                      {item.startedAt ? ` · ${formatTime(item.startedAt)}` : ''}
-                    </span>
-                  </span>
-                  <span className={`shrink-0 text-[11px] ${jobClass(item.status)}`}>{jobLabel(item.status, t)}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
 
       {job ? (
         <Card
@@ -613,6 +670,44 @@ export default function HdAirdropPage() {
               <p className="text-sm text-ink-400">{t('airdrop.noRows')}</p>
             )}
           </div>
+        </Card>
+      ) : null}
+
+      {jobs.length > 0 ? (
+        <Card title={t('airdrop.history', { count: jobs.length })}>
+          <ul className="divide-y divide-ink-700">
+            {jobs.map((item) => (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  className={`flex w-full items-start justify-between gap-3 py-3 text-left ${
+                    item.id === selectedId ? 'text-honey-400' : 'text-ink-200'
+                  }`}
+                  onClick={() => {
+                    setJob(item)
+                    setPage(1)
+                  }}
+                >
+                  <span>
+                    <span className="text-sm">
+                      {item.symbol} · {t('airdrop.jobCount', { count: item.total })} · {item.amountText}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] text-ink-500">
+                      {t('airdrop.jobMeta', {
+                        ok: item.confirmed,
+                        pending: item.pending,
+                        failed: item.failed,
+                        queued: item.queued,
+                        total: item.total,
+                      })}
+                      {item.startedAt ? ` · ${formatTime(item.startedAt)}` : ''}
+                    </span>
+                  </span>
+                  <span className={`shrink-0 text-[11px] ${jobClass(item.status)}`}>{jobLabel(item.status, t)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
         </Card>
       ) : null}
     </div>

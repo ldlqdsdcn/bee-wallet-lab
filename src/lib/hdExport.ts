@@ -1,4 +1,13 @@
-/** 分层地址导出：逗号分隔，不含私钥。 */
+/** 分层地址导出与序号范围：逗号分隔，不含私钥。 */
+
+export function parseHdIndexRange(fromRaw: string, toRaw: string): { fromIndex: number; toIndex: number } | null {
+  const fromIndex = Number(fromRaw)
+  const toIndex = Number(toRaw)
+  if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex) || fromIndex < 0 || toIndex < fromIndex) {
+    return null
+  }
+  return { fromIndex, toIndex }
+}
 
 export function hdAddressListText(addresses: string[]): string {
   return addresses.map((item) => item.trim()).filter(Boolean).join(',')

@@ -206,7 +206,6 @@ export default function TxLabPage() {
                   <AddressBookPicker
                     walletType={network.walletType}
                     networkScope={network.networkScope}
-                    networkPk={network.id}
                     onSelect={(entry) => setTo(entry.address)}
                   />
                 ) : null}

@@ -3,6 +3,7 @@
  */
 import type {
   AccountRecord,
+  BitcoinAddressType,
   BroadcastResult,
   FeeLevel,
   NetworkRecord,
@@ -18,7 +19,8 @@ import { parseDecimalToMinor, formatMinor } from '../util/amount'
 import { getNetwork, getToken } from '../db/repos/catalogRepo'
 import { getAccountRow, listMatchingAccounts } from '../db/repos/accountRepo'
 import { invalidArg, notFound } from '../ipc/registry'
-import { getAccount, withAccountPrivateKey } from '../wallets/service'
+import { getHdKeyRow } from '../db/repos/hdKeyRepo'
+import { getAccount, withAccountPrivateKey, withHdPrivateKey } from '../wallets/service'
 import {
   bitcoinTxidFromHex,
   buildAndSignBitcoinTx,
@@ -62,6 +64,10 @@ interface StoredDraft {
   network: NetworkRecord
   token: TokenRecord
   account: AccountRecord
+  fromAddress: string
+  fromPublicKey: string
+  fromAddressType: BitcoinAddressType | null
+  hdKeyId: string | null
   amountMinor: bigint
   feeMinor: bigint
   feeRate?: number
@@ -136,6 +142,30 @@ function feeRateOf(level: FeeLevel, rates: { low: number; medium: number; high: 
   return rates[level]
 }
 
+function resolveTransferPayer(input: TransferDraftInput, network: NetworkRecord, account: AccountRecord) {
+  const hdKeyId = input.hdKeyId?.trim() || null
+  if (!hdKeyId) {
+    return {
+      fromAddress: account.address,
+      fromPublicKey: account.publicKey,
+      fromAddressType: account.addressType,
+      hdKeyId: null as string | null,
+    }
+  }
+  const row = getHdKeyRow(hdKeyId)
+  if (!row || (account.walletId && row.wallet_id !== account.walletId)) throw notFound('分层付款地址不存在')
+  if (row.wallet_type !== network.walletType) throw invalidArg('分层地址与所选网络不匹配')
+  if (network.walletType === 'bitcoin' && row.network_scope !== network.networkScope) {
+    throw invalidArg('分层地址与网络环境不匹配')
+  }
+  return {
+    fromAddress: row.address,
+    fromPublicKey: row.public_key,
+    fromAddressType: (row.address_type as BitcoinAddressType | null) ?? account.addressType,
+    hdKeyId: row.id,
+  }
+}
+
 export async function previewTransfer(input: TransferDraftInput): Promise<TransferPreview> {
   pruneDrafts()
   const network = requireNetwork(input.networkPk)
@@ -145,30 +175,32 @@ export async function previewTransfer(input: TransferDraftInput): Promise<Transf
   if (network.walletType === 'bitcoin' && account.networkScope !== network.networkScope) {
     throw invalidArg('付款账户与网络环境不匹配')
   }
+  const payer = resolveTransferPayer(input, network, account)
   const to = validateAddress(network, input.to)
   const amountMinor = input.sendMax ? 0n : parseDecimalToMinor(input.amount, token.decimals)
   if (!input.sendMax && amountMinor <= 0n) throw invalidArg('转账金额必须大于 0')
 
   if (network.walletType === 'bitcoin') {
     if (token.isToken) throw invalidArg('Bitcoin 网络仅支持原生 BTC 转账')
-    if (!account.addressType) throw invalidArg('Bitcoin 账户缺少地址格式')
+    if (!payer.fromAddressType) throw invalidArg('Bitcoin 账户缺少地址格式')
     const rates = await fetchFeeRates(network.networkScope)
     const feeRate = feeRateOf(input.feeLevel, rates, input.customFeeRate)
-    const utxos = await fetchUtxos(account.address, network.networkScope)
+    const utxos = await fetchUtxos(payer.fromAddress, network.networkScope)
     const total = utxos.reduce((sum, item) => sum + BigInt(item.valueSats), 0n)
-    const vsize = estimateVsize(account.addressType, Math.max(utxos.length, 1), input.sendMax ? 1 : 2)
+    const vsize = estimateVsize(payer.fromAddressType, Math.max(utxos.length, 1), input.sendMax ? 1 : 2)
     const feeMinor = BigInt(Math.ceil(vsize * feeRate * 1.2))
     const sendAmount = input.sendMax ? total - feeMinor : amountMinor
     if (sendAmount <= 0n) throw invalidArg('余额不足以支付矿工费')
     const preview = buildPreview({
       account,
+      from: payer.fromAddress,
       to,
       token,
       amountMinor: sendAmount,
       feeMinor,
       feeText: `${formatMinor(feeMinor, 8)} BTC @ ${feeRate.toFixed(1)} sat/vB`,
       detail: {
-        addressType: account.addressType,
+        addressType: payer.fromAddressType,
         feeRate: String(feeRate),
         utxoCount: String(utxos.length),
         vsize: String(vsize),
@@ -181,6 +213,10 @@ export async function previewTransfer(input: TransferDraftInput): Promise<Transf
       network,
       token,
       account,
+      fromAddress: payer.fromAddress,
+      fromPublicKey: payer.fromPublicKey,
+      fromAddressType: payer.fromAddressType,
+      hdKeyId: payer.hdKeyId,
       amountMinor: sendAmount,
       feeMinor,
       feeRate,
@@ -198,10 +234,11 @@ export async function previewTransfer(input: TransferDraftInput): Promise<Transf
     const quote = resolveEvmFeeQuote(quotes, input)
     const gasLimit = input.gasLimit
       ? BigInt(input.gasLimit)
-      : await estimateEvmGas({ network, from: account.address, to: contract ?? to, value, data })
+      : await estimateEvmGas({ network, from: payer.fromAddress, to: contract ?? to, value, data })
     const feeMinor = (quote.maxFeePerGas || quote.gasPrice || 0n) * gasLimit
     const preview = buildPreview({
       account,
+      from: payer.fromAddress,
       to,
       token,
       amountMinor,
@@ -222,6 +259,10 @@ export async function previewTransfer(input: TransferDraftInput): Promise<Transf
       network,
       token,
       account,
+      fromAddress: payer.fromAddress,
+      fromPublicKey: payer.fromPublicKey,
+      fromAddressType: payer.fromAddressType,
+      hdKeyId: payer.hdKeyId,
       amountMinor,
       feeMinor,
       evmFee: quote,
@@ -238,6 +279,7 @@ export async function previewTransfer(input: TransferDraftInput): Promise<Transf
     const quote = await quoteSolanaFee(network, to, mint)
     const preview = buildPreview({
       account,
+      from: payer.fromAddress,
       to,
       token,
       amountMinor,
@@ -255,6 +297,10 @@ export async function previewTransfer(input: TransferDraftInput): Promise<Transf
       network,
       token,
       account,
+      fromAddress: payer.fromAddress,
+      fromPublicKey: payer.fromPublicKey,
+      fromAddressType: payer.fromAddressType,
+      hdKeyId: payer.hdKeyId,
       amountMinor,
       feeMinor: quote.feeLamports,
       to,
@@ -272,7 +318,7 @@ export async function previewTransfer(input: TransferDraftInput): Promise<Transf
     ? await resolveTrc20Energy({
         accountId: account.id,
         network,
-        from: account.address,
+        from: payer.fromAddress,
         to,
         contract,
         amount: amountMinor,
@@ -282,6 +328,7 @@ export async function previewTransfer(input: TransferDraftInput): Promise<Transf
     : undefined
   const preview = buildPreview({
     account,
+    from: payer.fromAddress,
     to,
     token,
     amountMinor,
@@ -307,6 +354,10 @@ export async function previewTransfer(input: TransferDraftInput): Promise<Transf
     network,
     token,
     account,
+    fromAddress: payer.fromAddress,
+    fromPublicKey: payer.fromPublicKey,
+    fromAddressType: payer.fromAddressType,
+    hdKeyId: payer.hdKeyId,
     amountMinor,
     feeMinor: energyFeeMinor(energy, feeMinor),
     feeLimitSun,
@@ -409,6 +460,7 @@ function energyFeeText(energy: TransferEnergyInfo): string {
 
 function buildPreview(input: {
   account: AccountRecord
+  from: string
   to: string
   token: TokenRecord
   amountMinor: bigint
@@ -420,7 +472,7 @@ function buildPreview(input: {
 }): TransferPreview {
   return {
     draftId: newId(),
-    from: input.account.address,
+    from: input.from,
     to: input.to,
     amount: formatMinor(input.amountMinor, input.token.decimals),
     amountMinor: input.amountMinor.toString(),
@@ -465,18 +517,26 @@ interface SignedDraftRaw {
   rawFormat: TxLabSigned['rawFormat']
 }
 
-async function signStoredDraft(draft: StoredDraft): Promise<SignedDraftRaw> {
-  const accountRow = requireAccountRow(draft.account.id)
+async function withDraftPrivateKey<T>(draft: StoredDraft, fn: (privateKey: Uint8Array) => Promise<T>): Promise<T> {
+  if (draft.hdKeyId && draft.account.walletId) {
+    return withHdPrivateKey(draft.account.walletId, draft.hdKeyId, (privateKey) => {
+      const copy = Uint8Array.from(privateKey)
+      return fn(copy).finally(() => copy.fill(0))
+    })
+  }
+  return withAccountPrivateKeyAsync(requireAccountRow(draft.account.id), fn)
+}
 
+async function signStoredDraft(draft: StoredDraft): Promise<SignedDraftRaw> {
   if (draft.network.walletType === 'bitcoin') {
-    if (!draft.account.addressType || draft.feeRate == null) throw invalidArg('Bitcoin 预览数据不完整')
-    const result = await withAccountPrivateKeyAsync(accountRow, (privateKey) =>
+    if (!draft.fromAddressType || draft.feeRate == null) throw invalidArg('Bitcoin 预览数据不完整')
+    const result = await withDraftPrivateKey(draft, (privateKey) =>
       buildAndSignBitcoinTx({
         networkScope: draft.network.networkScope,
-        addressType: draft.account.addressType!,
-        fromAddress: draft.account.address,
+        addressType: draft.fromAddressType!,
+        fromAddress: draft.fromAddress,
         toAddress: draft.to,
-        publicKeyHex: draft.account.publicKey,
+        publicKeyHex: draft.fromPublicKey,
         privateKey,
         amountSats: draft.amountMinor,
         feeRate: draft.feeRate!,
@@ -488,8 +548,8 @@ async function signStoredDraft(draft: StoredDraft): Promise<SignedDraftRaw> {
 
   if (draft.network.walletType === 'web3') {
     const contract = contractOf(draft.token)
-    const nonce = draft.input.nonce ?? (await getEvmNonce(draft.network, draft.account.address))
-    const signed = await withAccountPrivateKeyAsync(accountRow, (privateKey) =>
+    const nonce = draft.input.nonce ?? (await getEvmNonce(draft.network, draft.fromAddress))
+    const signed = await withDraftPrivateKey(draft, (privateKey) =>
       signAndSerializeEvmTx({
         privateKey,
         chainId: Number(draft.network.chainId),
@@ -506,11 +566,11 @@ async function signStoredDraft(draft: StoredDraft): Promise<SignedDraftRaw> {
 
   if (draft.network.walletType === 'solana') {
     const mint = contractOf(draft.token)
-    const signed = await withAccountPrivateKeyAsync(accountRow, (privateKey) =>
+    const signed = await withDraftPrivateKey(draft, (privateKey) =>
       buildAndSignSolanaTx({
         network: draft.network,
         privateKey,
-        from: draft.account.address,
+        from: draft.fromAddress,
         to: draft.to,
         mint,
         amount: draft.amountMinor,
@@ -522,7 +582,7 @@ async function signStoredDraft(draft: StoredDraft): Promise<SignedDraftRaw> {
   const contract = contractOf(draft.token)
   const unsigned = contract
     ? await createTrc20Tx({
-        from: draft.account.address,
+        from: draft.fromAddress,
         to: draft.to,
         contract,
         amount: draft.amountMinor,
@@ -530,12 +590,12 @@ async function signStoredDraft(draft: StoredDraft): Promise<SignedDraftRaw> {
         networkScope: draft.network.networkScope,
       })
     : await createTronNativeTx({
-        from: draft.account.address,
+        from: draft.fromAddress,
         to: draft.to,
         amountSun: draft.amountMinor,
         networkScope: draft.network.networkScope,
       })
-  const signed = withAccountPrivateKey(accountRow, (privateKey) => signTronTx(unsigned, privateKey))
+  const signed = await withDraftPrivateKey(draft, async (privateKey) => signTronTx(unsigned, privateKey))
   return { txid: signed.txID, raw: JSON.stringify(signed), rawFormat: 'json' }
 }
 
@@ -550,7 +610,7 @@ export async function signTransferDraft(draftId: string): Promise<TxLabSigned> {
     walletType: draft.network.walletType,
     networkPk: draft.network.id,
     accountId: draft.account.id,
-    from: draft.account.address,
+    from: draft.fromAddress,
     to: draft.to,
     amount: draft.preview.amount,
     symbol: draft.preview.symbol,
@@ -586,7 +646,7 @@ export async function submitTransfer(draftId: string, energyFeeMode?: TronEnergy
   return persistBroadcastedTx({
     network: draft.network,
     accountId: draft.account.id,
-    from: draft.account.address,
+    from: draft.fromAddress,
     to: draft.to,
     tokenPk: draft.token.id,
     symbol: draft.token.symbol,
