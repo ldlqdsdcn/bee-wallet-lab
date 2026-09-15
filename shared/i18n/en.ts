@@ -163,6 +163,7 @@ export const en = {
   'transfer.pay': 'Pay {amount} {symbol} → {to}',
   'transfer.feeText': 'Fee {fee}',
   'transfer.signBroadcast': 'Sign and broadcast',
+  'transfer.submitting': 'Signing and broadcasting…',
   'transfer.success': 'Transfer succeeded',
   'transfer.successDetail': 'Sent {amount} {symbol} to {to}',
   'transfer.confirmed': 'Transaction confirmed',

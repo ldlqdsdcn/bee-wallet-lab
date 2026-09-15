@@ -163,6 +163,7 @@ export const zh = {
   'transfer.pay': '支付 {amount} {symbol} → {to}',
   'transfer.feeText': '手续费 {fee}',
   'transfer.signBroadcast': '签名并广播',
+  'transfer.submitting': '正在签名并广播…',
   'transfer.success': '转账成功',
   'transfer.successDetail': '已向 {to} 支付 {amount} {symbol}',
   'transfer.confirmed': '交易已确认',

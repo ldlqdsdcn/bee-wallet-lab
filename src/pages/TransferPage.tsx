@@ -82,7 +82,8 @@ export default function TransferPage() {
   const [receipt, setReceipt] = useState<BroadcastResult | null>(null)
   const [qr, setQr] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [pending, setPending] = useState<'preview' | 'submit' | null>(null)
+  const busy = pending != null
   const openExplorer = useBrowserStore((s) => s.open)
   const balances = useAccountBalances(accountId, networkPk)
   const isTron = network?.walletType === 'tron'
@@ -181,15 +182,15 @@ export default function TransferPage() {
     )
   }, [account?.address])
 
-  const run = async (fn: () => Promise<void>) => {
-    setBusy(true)
+  const run = async (kind: 'preview' | 'submit', fn: () => Promise<void>) => {
+    setPending(kind)
     setError(null)
     try {
       await fn()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
-      setBusy(false)
+      setPending(null)
     }
   }
 
@@ -429,7 +430,7 @@ export default function TransferPage() {
                         checked={energyFeeMode === 'rent'}
                         disabled={!preview.energy.canRent || busy}
                         onChange={() =>
-                          void run(async () => {
+                          void run('preview', async () => {
                             setEnergyFeeMode('rent')
                             setPreview(
                               await transferApi.preview({
@@ -465,7 +466,7 @@ export default function TransferPage() {
                         checked={energyFeeMode === 'burn'}
                         disabled={busy}
                         onChange={() =>
-                          void run(async () => {
+                          void run('preview', async () => {
                             setEnergyFeeMode('burn')
                             setPreview(
                               await transferApi.preview({
@@ -508,28 +509,12 @@ export default function TransferPage() {
               </div>
             ) : null}
 
-            {receipt && outcome ? (
-              <Alert tone={outcome.tone}>
-                <p className="font-semibold">{outcome.title}</p>
-                {outcome.detailKey ? (
-                  <p className="mt-1">
-                    {t(outcome.detailKey, {
-                      amount: formatAmount(receipt.transaction.amount),
-                      symbol: receipt.transaction.symbol,
-                      to: shorten(receipt.transaction.toAddress, 8, 6),
-                    })}
-                  </p>
-                ) : null}
-                <p className="sensitive mt-1 break-all font-mono text-[11px]">{receipt.txid}</p>
-              </Alert>
-            ) : null}
-
             <div className="flex gap-2">
               <Button
                 variant="ghost"
                 disabled={busy || !accountId || !tokenPk || !to || !amount}
                 onClick={() =>
-                  void run(async () => {
+                  void run('preview', async () => {
                     setReceipt(null)
                     const next = await transferApi.preview({
                       accountId,
@@ -549,9 +534,10 @@ export default function TransferPage() {
                 {t('common.preview')}
               </Button>
               <Button
+                loading={pending === 'submit'}
                 disabled={busy || !preview}
                 onClick={() =>
-                  void run(async () => {
+                  void run('submit', async () => {
                     if (!preview) return
                     const result = await transferApi.submit(
                       preview.draftId,
@@ -564,8 +550,10 @@ export default function TransferPage() {
                   })
                 }
               >
-                {busy && preview?.energy?.short && energyFeeMode === 'rent'
-                  ? t('transfer.energyWaiting')
+                {pending === 'submit'
+                  ? preview?.energy?.short && energyFeeMode === 'rent'
+                    ? t('transfer.energyWaiting')
+                    : t('transfer.submitting')
                   : t('transfer.signBroadcast')}
               </Button>
             </div>
