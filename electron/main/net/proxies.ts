@@ -21,7 +21,14 @@ import { resetPriceBackoff } from '../price'
 import { reconnectWalletConnectRelay } from '../walletconnect/service'
 
 async function applyProxyAndRelay(): Promise<void> {
-  await applyActiveProxy()
+  const error = await applyActiveProxy()
+  const current = selectedProxy()
+  if (current && loadSettings().proxyEnabled) {
+    updateProxyPing(current.id, {
+      latencyMs: error ? null : current.lastLatencyMs,
+      error,
+    })
+  }
   resetPriceBackoff()
   void reconnectWalletConnectRelay()
 }
@@ -143,6 +150,9 @@ export async function pingStoredProxy(id: string): Promise<ProxyTestResult> {
     latencyMs: result.ok ? result.latencyMs : null,
     error: result.ok ? null : result.message,
   })
+  if (result.ok && current.isSelected && loadSettings().proxyEnabled) {
+    await applyActiveProxy()
+  }
   return result
 }
 

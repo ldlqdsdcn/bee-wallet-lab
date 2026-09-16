@@ -4,9 +4,11 @@
 import type { ProxyTestResult } from '@shared/types'
 import { loadSettings } from '../db/repos/metaRepo'
 import { selectedProxy } from '../db/repos/proxyRepo'
+import { describeTunnelError, probeProxyTunnel } from './tunnel'
 
 const BYPASS = 'localhost,127.0.0.1,[::1],<local>'
 const ALLOWED = new Set(['http:', 'https:', 'socks:', 'socks4:', 'socks5:'])
+const TUNNEL_TIMEOUT_MS = 3_000
 
 export interface ParsedProxy {
   href: string
@@ -19,6 +21,8 @@ export interface ParsedProxy {
 
 let proxyAuth: { username: string; password: string } | null = null
 let loginHooked = false
+/** 真正套到 session / WalletConnect 上的代理；隧道空转时为 null，避免把整站流量送进死端口。 */
+let runtimeProxy: ParsedProxy | null = null
 
 export function parseProxyUrl(raw: string): ParsedProxy | null {
   const trimmed = raw.trim()
@@ -92,6 +96,14 @@ function ensureLoginHook(electron: typeof import('electron')): void {
   })
 }
 
+export function electronProxyRules(parsed: ParsedProxy): string {
+  const server = `${parsed.hostname}:${parsed.port}`
+  if (parsed.protocol === 'https:') return `https://${server}`
+  if (parsed.protocol.startsWith('socks4')) return `socks4://${server}`
+  if (parsed.protocol.startsWith('socks')) return `socks5://${server}`
+  return `http=${server};https=${server}`
+}
+
 function applyNodeProxyEnv(parsed: ParsedProxy | null): void {
   const keys = ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']
   for (const key of keys) delete process.env[key]
@@ -110,24 +122,47 @@ function applyNodeProxyEnv(parsed: ParsedProxy | null): void {
   process.env.all_proxy = href
 }
 
-export async function applyAppProxy(proxyUrl: string): Promise<void> {
+async function setSessionProxy(parsed: ParsedProxy | null): Promise<void> {
   const electron = await loadElectron()
-  if (!electron?.session) return
-  const parsed = parseProxyUrl(proxyUrl)
-  proxyAuth = parsed?.username ? { username: parsed.username, password: parsed.password } : null
+  if (!electron?.session) {
+    runtimeProxy = parsed
+    applyNodeProxyEnv(parsed)
+    return
+  }
   ensureLoginHook(electron)
   const ses = electron.session.defaultSession
   applyNodeProxyEnv(parsed)
+  runtimeProxy = parsed
   if (!parsed) {
     await ses.setProxy({ mode: 'direct', proxyBypassRules: BYPASS })
   } else {
     await ses.setProxy({
       mode: 'fixed_servers',
-      proxyRules: parsed.href,
+      proxyRules: electronProxyRules(parsed),
       proxyBypassRules: BYPASS,
     })
   }
   await ses.closeAllConnections()
+}
+
+export async function applyAppProxy(proxyUrl: string): Promise<string | null> {
+  const parsed = parseProxyUrl(proxyUrl)
+  proxyAuth = parsed?.username ? { username: parsed.username, password: parsed.password } : null
+  if (!parsed) {
+    await setSessionProxy(null)
+    return null
+  }
+  try {
+    await probeProxyTunnel(parsed, TUNNEL_TIMEOUT_MS)
+  } catch (err) {
+    const { message } = describeTunnelError(err)
+    console.warn('[proxy] 隧道失败，已回退直连', displayProxyUrl(parsed.href), message)
+    await setSessionProxy(null)
+    return message
+  }
+  await setSessionProxy(parsed)
+  console.log('[proxy] 已启用', displayProxyUrl(parsed.href))
+  return null
 }
 
 export function activeProxyUrl(): string {
@@ -135,8 +170,12 @@ export function activeProxyUrl(): string {
   return selectedProxy()?.url ?? ''
 }
 
-export async function applyActiveProxy(): Promise<void> {
-  await applyAppProxy(activeProxyUrl())
+export function runtimeProxyUrl(): string {
+  return runtimeProxy ? serializeProxy(runtimeProxy) : ''
+}
+
+export async function applyActiveProxy(): Promise<string | null> {
+  return applyAppProxy(activeProxyUrl())
 }
 
 export async function proxiedFetch(url: string, init: RequestInit): Promise<Response> {
@@ -147,49 +186,16 @@ export async function proxiedFetch(url: string, init: RequestInit): Promise<Resp
   return fetch(url, init)
 }
 
-async function probe(url: string, timeoutMs: number): Promise<{ ok: boolean; ms: number }> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  const started = Date.now()
-  try {
-    const response = await proxiedFetch(url, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      signal: controller.signal,
-    })
-    return { ok: response.ok, ms: Date.now() - started }
-  } finally {
-    clearTimeout(timer)
-  }
-}
-
 export async function probeProxy(proxyUrl: string): Promise<ProxyTestResult> {
   const normalized = normalizeProxyUrl(proxyUrl)
   if (!normalized) throw new Error('代理地址不能为空')
-  await applyAppProxy(normalized)
+  const parsed = parseProxyUrl(normalized)
+  if (!parsed) throw new Error('代理地址不能为空')
   try {
-    try {
-      const gecko = await probe('https://api.coingecko.com/api/v3/ping', 8_000)
-      if (gecko.ok) {
-        return { ok: true, latencyMs: gecko.ms, message: `CoinGecko 可达（${gecko.ms} ms）` }
-      }
-    } catch {
-      /* 再试 Gate */
-    }
-    try {
-      const gate = await probe('https://api.gateio.ws/api/v4/spot/tickers?currency_pair=ETH_USDT', 6_000)
-      if (gate.ok) {
-        return {
-          ok: true,
-          latencyMs: gate.ms,
-          message: `代理可用（Gate.io ${gate.ms} ms），CoinGecko 仍不可达`,
-        }
-      }
-    } catch {
-      /* 两边都失败 */
-    }
-    return { ok: false, latencyMs: null, message: '代理不可达或探测超时' }
-  } finally {
-    await applyActiveProxy()
+    const tunnel = await probeProxyTunnel(parsed, TUNNEL_TIMEOUT_MS)
+    return { ok: true, latencyMs: tunnel.ms, message: `代理可用（${tunnel.ms} ms）` }
+  } catch (err) {
+    const { message } = describeTunnelError(err)
+    return { ok: false, latencyMs: null, message }
   }
 }

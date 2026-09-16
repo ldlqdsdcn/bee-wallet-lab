@@ -180,10 +180,17 @@ export interface HdDeriveEvmResult {
 }
 
 export type HdAirdropAmountMode = 'fixed' | 'range'
+export type HdAirdropJobKind = 'uniform' | 'itemized'
 
 export interface TokenBalanceRow {
   address: string
   balance: string | null
+}
+
+export interface HdAirdropEntry {
+  address: string
+  name?: string
+  amount: string
 }
 
 export interface HdAirdropInput {
@@ -193,8 +200,12 @@ export interface HdAirdropInput {
   hdKeyId?: string | null
   networkPk: string
   tokenPk: string
+  /** 同额批量用地址列表；明细批量用 entries */
+  jobKind?: HdAirdropJobKind
   /** EVM 收款地址，逗号分隔文本解析后的列表 */
-  recipients: string[]
+  recipients?: string[]
+  /** 明细批量：每笔地址、名称、金额都可以不同 */
+  entries?: HdAirdropEntry[]
   amountMode: HdAirdropAmountMode
   /** 固定额度，人类可读 */
   amount?: string
@@ -230,6 +241,7 @@ export interface HdAirdropJob {
   fromAddress: string
   symbol: string
   decimals: number
+  jobKind: HdAirdropJobKind
   amountMode: HdAirdropAmountMode
   amountText: string
   fromIndex: number
@@ -258,6 +270,7 @@ export interface HdAirdropItem {
   jobId: string
   addressIndex: number
   toAddress: string
+  toName: string | null
   amount: string
   amountMinor: string
   status: HdAirdropItemStatus

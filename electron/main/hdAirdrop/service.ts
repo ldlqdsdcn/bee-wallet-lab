@@ -8,6 +8,7 @@ import type {
   HdAirdropItemPage,
   HdAirdropItemQuery,
   HdAirdropJob,
+  HdAirdropJobKind,
   HdAirdropPreview,
   HdAirdropRetryInput,
   NetworkRecord,
@@ -69,9 +70,10 @@ interface Draft {
   network: NetworkRecord
   token: TokenRecord
   payer: Payer
-  recipients: { address: string; addressIndex: number }[]
+  recipients: { address: string; addressIndex: number; name: string; amountMinor: bigint | null }[]
   minMinor: bigint
   maxMinor: bigint
+  totalMinor: bigint
   gasLimit: bigint
   evmFee: EvmFeeQuote
   createdAt: number
@@ -190,29 +192,74 @@ export async function previewHdAirdrop(input: HdAirdropInput): Promise<HdAirdrop
   const contract = contractOf(token)
   const payer = resolvePayer(input)
 
+  const jobKind: HdAirdropJobKind = input.jobKind === 'itemized' ? 'itemized' : 'uniform'
   const parsed = collectRecipientAddresses((input.recipients ?? []).join(','))
-  if (parsed.invalid.length > 0) {
-    const sample = parsed.invalid.slice(0, 3).join(', ')
-    throw invalidArg(`有 ${parsed.invalid.length} 个地址不合法，例如：${sample}`)
-  }
-  if (parsed.addresses.length === 0) throw invalidArg('请至少填写一个收款地址')
-  if (parsed.addresses.length > MAX_RECIPIENTS) throw invalidArg(`一次最多转给 ${MAX_RECIPIENTS} 个地址`)
-
-  const recipients = parsed.addresses.map((address, index) => ({
-    address,
-    addressIndex: index + 1,
-  }))
-  const missingCount = 0
+  let recipients: Draft['recipients']
+  let duplicateCount = parsed.duplicateCount
   let minMinor: bigint
   let maxMinor: bigint
-  if (input.amountMode === 'range') {
-    minMinor = parseAmount(input.amountMin, token.decimals, '下限')
-    maxMinor = parseAmount(input.amountMax, token.decimals, '上限')
-    if (maxMinor < minMinor) throw invalidArg('随机上限不能小于下限')
+  let totalMinor: bigint
+
+  if (jobKind === 'itemized') {
+    const entries = input.entries ?? []
+    if (entries.length === 0) throw invalidArg('请至少填写一笔收款明细')
+    if (entries.length > MAX_RECIPIENTS) throw invalidArg(`一次最多转给 ${MAX_RECIPIENTS} 个地址`)
+    const seen = new Set<string>()
+    recipients = []
+    duplicateCount = 0
+    const invalid: string[] = []
+    for (const entry of entries) {
+      const address = entry.address.trim()
+      if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
+        invalid.push(address || '(空)')
+        continue
+      }
+      const key = address.toLowerCase()
+      if (seen.has(key)) {
+        duplicateCount += 1
+        continue
+      }
+      seen.add(key)
+      recipients.push({
+        address,
+        addressIndex: recipients.length + 1,
+        name: entry.name?.trim() ?? '',
+        amountMinor: parseAmount(entry.amount, token.decimals, '转账金额'),
+      })
+    }
+    if (invalid.length > 0) {
+      const sample = invalid.slice(0, 3).join(', ')
+      throw invalidArg(`有 ${invalid.length} 个地址不合法，例如：${sample}`)
+    }
+    if (recipients.length === 0) throw invalidArg('请至少填写一笔收款明细')
+    const amounts = recipients.map((item) => item.amountMinor ?? 0n)
+    minMinor = amounts.reduce((a, b) => (a < b ? a : b))
+    maxMinor = amounts.reduce((a, b) => (a > b ? a : b))
+    totalMinor = amounts.reduce((a, b) => a + b, 0n)
   } else {
-    minMinor = parseAmount(input.amount, token.decimals, '额度')
-    maxMinor = minMinor
+    if (parsed.invalid.length > 0) {
+      const sample = parsed.invalid.slice(0, 3).join(', ')
+      throw invalidArg(`有 ${parsed.invalid.length} 个地址不合法，例如：${sample}`)
+    }
+    if (parsed.addresses.length === 0) throw invalidArg('请至少填写一个收款地址')
+    if (parsed.addresses.length > MAX_RECIPIENTS) throw invalidArg(`一次最多转给 ${MAX_RECIPIENTS} 个地址`)
+    recipients = parsed.addresses.map((address, index) => ({
+      address,
+      addressIndex: index + 1,
+      name: '',
+      amountMinor: null,
+    }))
+    if (input.amountMode === 'range') {
+      minMinor = parseAmount(input.amountMin, token.decimals, '下限')
+      maxMinor = parseAmount(input.amountMax, token.decimals, '上限')
+      if (maxMinor < minMinor) throw invalidArg('随机上限不能小于下限')
+    } else {
+      minMinor = parseAmount(input.amount, token.decimals, '额度')
+      maxMinor = minMinor
+    }
+    totalMinor = maxMinor * BigInt(recipients.length)
   }
+  const missingCount = 0
 
   const sample = transferCall(token, recipients[0]!.address, minMinor)
   const quotes = await quoteEvmFees(network)
@@ -230,16 +277,18 @@ export async function previewHdAirdrop(input: HdAirdropInput): Promise<HdAirdrop
   }
   const feeEach = (evmFee.maxFeePerGas || evmFee.gasPrice || 0n) * gasLimit
   const feeAll = feeEach * BigInt(recipients.length)
-  const maxTotal = maxMinor * BigInt(recipients.length)
-  const minTotal = minMinor * BigInt(recipients.length)
+  const maxTotal = jobKind === 'itemized' ? totalMinor : maxMinor * BigInt(recipients.length)
+  const minTotal = jobKind === 'itemized' ? totalMinor : minMinor * BigInt(recipients.length)
   const estimatedMs = estimateAirdropDurationMs(recipients.length)
   const gasSymbol = network.coinEasy ?? 'ETH'
 
   const warnings: string[] = []
-  if (parsed.duplicateCount > 0) {
-    warnings.push(`已去掉 ${parsed.duplicateCount} 个重复地址，将转给 ${recipients.length} 个地址。`)
+  if (duplicateCount > 0) {
+    warnings.push(`已去掉 ${duplicateCount} 个重复地址，将转给 ${recipients.length} 个地址。`)
   }
-  if (input.amountMode === 'range') {
+  if (jobKind === 'itemized') {
+    warnings.push('明细批量按每行填写的金额打出，重试时沿用首次确认的金额。')
+  } else if (input.amountMode === 'range') {
     warnings.push('每笔金额在上下限之间随机，实际打出总量通常低于预估上限。重试时沿用首次抽到的金额。')
   }
   warnings.push(`按顺序逐笔广播，${recipients.length} 笔大约 ${formatDuration(estimatedMs)}。RPC 慢时可能到 ${formatDuration(estimatedMs * 2)}。`)
@@ -288,11 +337,13 @@ export async function previewHdAirdrop(input: HdAirdropInput): Promise<HdAirdrop
     decimals: token.decimals,
     recipientCount: recipients.length,
     missingCount,
-    amountMode: input.amountMode,
+    amountMode: jobKind === 'itemized' ? 'fixed' : input.amountMode,
     amountText:
-      input.amountMode === 'range'
-        ? `${formatMinor(minMinor, token.decimals)}–${formatMinor(maxMinor, token.decimals)} ${token.symbol}`
-        : `${formatMinor(minMinor, token.decimals)} ${token.symbol}`,
+      jobKind === 'itemized'
+        ? `${recipients.length} 笔各不相同`
+        : input.amountMode === 'range'
+          ? `${formatMinor(minMinor, token.decimals)}–${formatMinor(maxMinor, token.decimals)} ${token.symbol}`
+          : `${formatMinor(minMinor, token.decimals)} ${token.symbol}`,
     estimatedTotal: `${formatMinor(maxTotal, token.decimals)} ${token.symbol}`,
     feeText: `${formatMinor(feeAll, 18)} ${network.coinEasy ?? 'ETH'}`,
     estimatedMs,
@@ -308,6 +359,7 @@ export async function previewHdAirdrop(input: HdAirdropInput): Promise<HdAirdrop
     recipients,
     minMinor,
     maxMinor,
+    totalMinor,
     gasLimit,
     evmFee,
     createdAt: Date.now(),
@@ -328,15 +380,17 @@ export async function startHdAirdrop(draftId: string): Promise<HdAirdropJob> {
   const sender = draft.payer.address.toLowerCase()
   const items: HdAirdropItem[] = draft.recipients.map((dest) => {
     const amount =
-      draft.minMinor === draft.maxMinor
+      dest.amountMinor ??
+      (draft.minMinor === draft.maxMinor
         ? draft.minMinor
-        : randomBigIntInclusive(draft.minMinor, draft.maxMinor)
+        : randomBigIntInclusive(draft.minMinor, draft.maxMinor))
     const self = dest.address.toLowerCase() === sender
     return {
       id: newId(),
       jobId,
       addressIndex: dest.addressIndex,
       toAddress: dest.address,
+      toName: dest.name || null,
       amount: formatMinor(amount, draft.token.decimals),
       amountMinor: amount.toString(),
       status: self ? 'skipped' : 'queued',
@@ -360,7 +414,8 @@ export async function startHdAirdrop(draftId: string): Promise<HdAirdropJob> {
     fromAddress: draft.payer.address,
     symbol: draft.token.symbol,
     decimals: draft.token.decimals,
-    amountMode: draft.input.amountMode,
+    jobKind: draft.input.jobKind === 'itemized' ? 'itemized' : 'uniform',
+    amountMode: draft.input.jobKind === 'itemized' ? 'fixed' : draft.input.amountMode,
     amountText: draft.preview.amountText,
     fromIndex: 1,
     toIndex: items.length,
@@ -423,9 +478,13 @@ export function getHdAirdropJob(jobId?: string): HdAirdropJob | null {
   return listHdAirdropJobs()[0] ?? null
 }
 
-export function listHdAirdropJobRecords(walletId?: string, networkPk?: string): HdAirdropJob[] {
+export function listHdAirdropJobRecords(
+  walletId?: string,
+  networkPk?: string,
+  jobKind?: HdAirdropJobKind,
+): HdAirdropJob[] {
   recoverInterruptedHdAirdrops()
-  return listHdAirdropJobs(walletId, networkPk)
+  return listHdAirdropJobs(walletId, networkPk, jobKind)
 }
 
 export function listHdAirdropItemRecords(query: HdAirdropItemQuery): HdAirdropItemPage {

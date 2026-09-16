@@ -7,6 +7,7 @@ import type {
   HdAirdropItemPage,
   HdAirdropItemStatus,
   HdAirdropJob,
+  HdAirdropJobKind,
   HdAirdropJobStatus,
 } from '../../../../shared/types'
 import { getDatabase } from '../sqlite'
@@ -20,6 +21,7 @@ interface JobRow {
   from_address: string
   symbol: string
   decimals: number
+  job_kind?: string | null
   amount_mode: string
   amount_text: string
   from_index: number
@@ -47,6 +49,7 @@ interface ItemRow {
   job_id: string
   address_index: number
   to_address: string
+  to_name?: string | null
   amount: string
   amount_minor: string
   status: string
@@ -68,6 +71,7 @@ export function toJob(row: JobRow): HdAirdropJob {
     fromAddress: row.from_address,
     symbol: row.symbol,
     decimals: row.decimals,
+    jobKind: row.job_kind === 'itemized' ? 'itemized' : 'uniform',
     amountMode: row.amount_mode as HdAirdropJob['amountMode'],
     amountText: row.amount_text,
     fromIndex: row.from_index,
@@ -97,6 +101,7 @@ export function toItem(row: ItemRow): HdAirdropItem {
     jobId: row.job_id,
     addressIndex: row.address_index,
     toAddress: row.to_address,
+    toName: row.to_name ?? null,
     amount: row.amount,
     amountMinor: row.amount_minor,
     status: row.status as HdAirdropItemStatus,
@@ -116,11 +121,11 @@ export function insertHdAirdropJob(
     .prepare(
       `INSERT INTO hd_airdrop_jobs (
          id, wallet_id, account_id, network_pk, token_pk, from_address, symbol, decimals,
-         amount_mode, amount_text, from_index, to_index, account_index, status,
+         job_kind, amount_mode, amount_text, from_index, to_index, account_index, status,
          total, queued, pending, confirmed, failed, skipped,
          current_index, last_txid, last_error, estimated_ms,
          started_at, finished_at, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       input.id,
@@ -131,6 +136,7 @@ export function insertHdAirdropJob(
       input.fromAddress,
       input.symbol,
       input.decimals,
+      input.jobKind ?? 'uniform',
       input.amountMode,
       input.amountText,
       input.fromIndex,
@@ -167,9 +173,9 @@ export function insertHdAirdropItems(
   const db = getDatabase()
   const stmt = db.prepare(
     `INSERT INTO hd_airdrop_items (
-       id, job_id, address_index, to_address, amount, amount_minor, status,
+       id, job_id, address_index, to_address, to_name, amount, amount_minor, status,
        txid, explorer_url, error, attempt_count, created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   const now = Date.now()
   const apply = db.transaction(() => {
@@ -180,6 +186,7 @@ export function insertHdAirdropItems(
         item.jobId,
         item.addressIndex,
         item.toAddress,
+        item.toName ?? null,
         item.amount,
         item.amountMinor,
         item.status,
@@ -201,8 +208,23 @@ export function getHdAirdropJob(id: string): HdAirdropJob | null {
   return row ? toJob(row) : null
 }
 
-export function listHdAirdropJobs(walletId?: string, networkPk?: string): HdAirdropJob[] {
+export function listHdAirdropJobs(
+  walletId?: string,
+  networkPk?: string,
+  jobKind?: HdAirdropJobKind,
+): HdAirdropJob[] {
   const db = getDatabase()
+  const kind = jobKind === 'itemized' || jobKind === 'uniform' ? jobKind : undefined
+  if (walletId && networkPk && kind) {
+    return db
+      .prepare<[string, string, string], JobRow>(
+        `SELECT * FROM hd_airdrop_jobs
+         WHERE wallet_id = ? AND network_pk = ? AND job_kind = ?
+         ORDER BY created_at DESC LIMIT 50`,
+      )
+      .all(walletId, networkPk, kind)
+      .map(toJob)
+  }
   if (walletId && networkPk) {
     return db
       .prepare<[string, string], JobRow>(
@@ -211,6 +233,14 @@ export function listHdAirdropJobs(walletId?: string, networkPk?: string): HdAird
          ORDER BY created_at DESC LIMIT 50`,
       )
       .all(walletId, networkPk)
+      .map(toJob)
+  }
+  if (walletId && kind) {
+    return db
+      .prepare<[string, string], JobRow>(
+        `SELECT * FROM hd_airdrop_jobs WHERE wallet_id = ? AND job_kind = ? ORDER BY created_at DESC LIMIT 50`,
+      )
+      .all(walletId, kind)
       .map(toJob)
   }
   if (walletId) {

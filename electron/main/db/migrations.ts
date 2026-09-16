@@ -531,6 +531,18 @@ const migrations: Migration[] = [
       db.exec('ALTER TABLE rpc_nodes ADD COLUMN headers TEXT')
     },
   },
+  {
+    version: 17,
+    description: 'itemized batch transfer: job kind and recipient name',
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE hd_airdrop_jobs ADD COLUMN job_kind TEXT NOT NULL DEFAULT 'uniform';
+        ALTER TABLE hd_airdrop_items ADD COLUMN to_name TEXT;
+        CREATE INDEX IF NOT EXISTS idx_hd_airdrop_jobs_kind
+          ON hd_airdrop_jobs(wallet_id, network_pk, job_kind, created_at DESC);
+      `)
+    },
+  },
 ]
 
 export const LATEST_SCHEMA_VERSION = migrations[migrations.length - 1].version

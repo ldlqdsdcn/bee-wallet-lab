@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { displayProxyUrl, normalizeProxyUrl, parseProxyUrl, serializeProxy } from '../electron/main/net/proxy'
+import { displayProxyUrl, electronProxyRules, normalizeProxyUrl, parseProxyUrl, serializeProxy } from '../electron/main/net/proxy'
+import { tunnelMessage } from '../electron/main/net/tunnel'
 
 describe('代理地址解析', () => {
   it('空字符串表示直连', () => {
@@ -38,5 +39,16 @@ describe('代理地址解析', () => {
   it('展示地址时隐藏密码', () => {
     expect(displayProxyUrl('http://user:secret@127.0.0.1:7890')).toBe('http://user:***@127.0.0.1:7890')
     expect(displayProxyUrl('socks5://127.0.0.1:7891')).toBe('socks5://127.0.0.1:7891')
+  })
+
+  it('Electron 规则把 http 代理同时用于 https CONNECT', () => {
+    const parsed = parseProxyUrl('http://127.0.0.1:7892')
+    expect(electronProxyRules(parsed!)).toBe('http=127.0.0.1:7892;https=127.0.0.1:7892')
+    expect(electronProxyRules(parseProxyUrl('socks5://127.0.0.1:7891')!)).toBe('socks5://127.0.0.1:7891')
+  })
+
+  it('隧道失败说明端口空转', () => {
+    expect(tunnelMessage('tls', '代理隧道超时')).toMatch(/没有转发 HTTPS/)
+    expect(tunnelMessage('tcp', 'ECONNREFUSED')).toMatch(/无法连接代理端口/)
   })
 })

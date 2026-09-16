@@ -31,11 +31,14 @@ export function registerHdAirdropIpc(): void {
   handle<{ jobId?: string } | undefined, HdAirdropJob | null>(IPC.hdAirdropStatus, (arg) =>
     getHdAirdropJob(typeof arg?.jobId === 'string' && arg.jobId ? arg.jobId : undefined),
   )
-  handle<{ walletId?: string; networkPk?: string } | undefined, HdAirdropJob[]>(IPC.hdAirdropJobs, (arg) =>
-    listHdAirdropJobRecords(
-      typeof arg?.walletId === 'string' && arg.walletId ? arg.walletId : undefined,
-      typeof arg?.networkPk === 'string' && arg.networkPk ? arg.networkPk : undefined,
-    ),
+  handle<{ walletId?: string; networkPk?: string; jobKind?: string } | undefined, HdAirdropJob[]>(
+    IPC.hdAirdropJobs,
+    (arg) =>
+      listHdAirdropJobRecords(
+        typeof arg?.walletId === 'string' && arg.walletId ? arg.walletId : undefined,
+        typeof arg?.networkPk === 'string' && arg.networkPk ? arg.networkPk : undefined,
+        arg?.jobKind === 'itemized' || arg?.jobKind === 'uniform' ? arg.jobKind : undefined,
+      ),
   )
   handle<HdAirdropItemQuery, HdAirdropItemPage>(IPC.hdAirdropItems, (arg) =>
     listHdAirdropItemRecords(requireObject<HdAirdropItemQuery>(arg)),

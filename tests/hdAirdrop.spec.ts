@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { collectRecipientAddresses, mergeRecipientText, parseRecipientTokens } from '../shared/airdropAddresses'
+import {
+  collectItemizedEntries,
+  mergeItemizedRows,
+  newItemizedRow,
+  parseItemizedCsv,
+} from '../shared/airdropEntries'
 import { matchAddressKeyword, matchBalanceRange, uniquePayersByAddress } from '../src/lib/airdropPayer'
 import { IPC, IPC_CHANNELS, IPC_EVENT, IPC_EVENTS } from '../shared/ipc'
 import { parseDecimalToMinor } from '../electron/main/util/amount'
@@ -28,6 +34,45 @@ describe('批量转账收款地址', () => {
 
   it('合并文本时按小写去重并保持原有顺序', () => {
     expect(mergeRecipientText(a, `${a},${b}`)).toBe(`${a},${b}`)
+  })
+})
+
+describe('明细批量 CSV', () => {
+  const a = '0x1111111111111111111111111111111111111111'
+  const b = '0x2222222222222222222222222222222222222222'
+
+  it('识别表头并读出地址、名称、金额', () => {
+    const result = parseItemizedCsv(`收款地址,名称,转账金额\n${a},Alice,1.5\n${b},Bob,2`)
+    expect(result.skippedHeader).toBe(true)
+    expect(result.rows).toEqual([
+      { address: a, name: 'Alice', amount: '1.5' },
+      { address: b, name: 'Bob', amount: '2' },
+    ])
+  })
+
+  it('两列且第二列是数字时当作金额', () => {
+    const result = parseItemizedCsv(`${a},3.2`)
+    expect(result.rows).toEqual([{ address: a, name: '', amount: '3.2' }])
+  })
+
+  it('合并时按地址去重，空名称和金额可补上', () => {
+    const current = [newItemizedRow({ address: a, name: '', amount: '' })]
+    const merged = mergeItemizedRows(current, [{ address: a, name: 'Alice', amount: '1' }, { address: b, name: 'Bob' }])
+    expect(merged.map((row) => ({ address: row.address, name: row.name, amount: row.amount }))).toEqual([
+      { address: a, name: 'Alice', amount: '1' },
+      { address: b, name: 'Bob', amount: '' },
+    ])
+  })
+
+  it('收集明细时丢掉非法地址和空金额', () => {
+    const result = collectItemizedEntries([
+      newItemizedRow({ address: a, name: 'Alice', amount: '1' }),
+      newItemizedRow({ address: 'not-an-address', name: 'X', amount: '1' }),
+      newItemizedRow({ address: b, name: 'Bob', amount: '' }),
+    ])
+    expect(result.entries).toEqual([{ address: a, name: 'Alice', amount: '1' }])
+    expect(result.invalid).toEqual(['not-an-address'])
+    expect(result.missingAmount).toBe(1)
   })
 })
 

@@ -2,6 +2,10 @@
 
 const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/
 
+export function isEvmAddress(value: string): boolean {
+  return EVM_ADDRESS.test(value.trim())
+}
+
 export function parseRecipientTokens(text: string): string[] {
   return text
     .split(/[,，;；\s]+/)
@@ -19,7 +23,7 @@ export function collectRecipientAddresses(text: string): {
   const invalid: string[] = []
   let duplicateCount = 0
   for (const token of parseRecipientTokens(text)) {
-    if (!EVM_ADDRESS.test(token)) {
+    if (!isEvmAddress(token)) {
       invalid.push(token)
       continue
     }
