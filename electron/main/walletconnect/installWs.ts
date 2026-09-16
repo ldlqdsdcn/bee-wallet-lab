@@ -3,7 +3,7 @@
  * Electron 主进程自带的 WebSocket 不走代理；ws 的 agent 选项也会被自带的 createConnection 盖掉。
  */
 import WS from 'ws'
-import { activeProxyUrl, displayProxyUrl } from '../net/proxy'
+import { runtimeProxyUrl, displayProxyUrl } from '../net/proxy'
 import { createWalletConnectConnection } from '../net/wsAgent'
 
 const Base = (WS as unknown as { default?: typeof WS }).default ?? WS
@@ -21,7 +21,7 @@ export function installWalletConnectWebSocket(): typeof globalThis.WebSocket {
   process.env.NODE_USE_ENV_PROXY = '1'
   globalThis.WebSocket = BeeWebSocket as unknown as typeof globalThis.WebSocket
   try {
-    const proxy = activeProxyUrl()
+    const proxy = runtimeProxyUrl()
     console.log(
       '[walletconnect] WebSocket 已接管',
       proxy ? `代理 ${displayProxyUrl(proxy)}` : '直连（未开代理）',

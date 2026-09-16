@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { collectRecipientAddresses, mergeRecipientText } from '@shared/airdropAddresses'
+import { collectItemizedEntries, newItemizedRow } from '@shared/airdropEntries'
 import { IPC_EVENT } from '@shared/ipc'
 import type {
   AccountRecord,
@@ -10,12 +11,14 @@ import type {
   HdAirdropItemPage,
   HdAirdropItemStatus,
   HdAirdropJob,
+  HdAirdropJobKind,
   HdAirdropPreview,
   TokenRecord,
 } from '@shared/types'
 import { useAccountBalances } from '../lib/accountBalances'
 import { accountApi, catalogApi, hdAirdropApi, on, portfolioApi } from '../lib/bridge'
 import AddressBookPicker from '../components/AddressBookPicker'
+import { AirdropItemizedEditor, type ItemizedRow } from '../components/AirdropItemizedEditor'
 import { AirdropPayerPicker, type AirdropPayer } from '../components/AirdropPayerPicker'
 import { Alert, Button, Card, Field, TextArea } from '../components/ui'
 import { TokenSelect } from '../components/TokenSelect'
@@ -100,7 +103,9 @@ export default function HdAirdropPage() {
   const [payer, setPayer] = useState<AirdropPayer | null>(null)
   const [payerBalance, setPayerBalance] = useState<string | null>(null)
   const [tokenPk, setTokenPk] = useState('')
+  const [tab, setTab] = useState<HdAirdropJobKind>('uniform')
   const [recipientText, setRecipientText] = useState('')
+  const [itemizedRows, setItemizedRows] = useState<ItemizedRow[]>(() => [newItemizedRow()])
   const [amountMode, setAmountMode] = useState<HdAirdropAmountMode>('fixed')
   const [amount, setAmount] = useState('1000')
   const [amountMin, setAmountMin] = useState('1000')
@@ -115,6 +120,7 @@ export default function HdAirdropPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [starting, setStarting] = useState(false)
+  const [foreignRunning, setForeignRunning] = useState(false)
 
   const evm = network?.walletType === 'web3'
   const assets = useMemo(() => tokens.filter(isAirdropAsset), [tokens])
@@ -130,7 +136,7 @@ export default function HdAirdropPage() {
       setJobs([])
       return
     }
-    const list = await hdAirdropApi.jobs(currentWalletId, networkPk || undefined)
+    const list = await hdAirdropApi.jobs(currentWalletId, networkPk || undefined, tab)
     setJobs(list)
     setJob((current) => {
       const want = preferId ?? current?.id
@@ -184,24 +190,36 @@ export default function HdAirdropPage() {
 
   useEffect(() => {
     setPreview(null)
-  }, [networkPk, currentWalletId, accountId, payer?.hdKeyId, tokenPk, recipientText, amountMode, amount, amountMin, amountMax])
+  }, [tab, networkPk, currentWalletId, accountId, payer?.hdKeyId, tokenPk, recipientText, itemizedRows, amountMode, amount, amountMin, amountMax])
 
   useEffect(() => {
     setPage(1)
     setItemFilter('all')
     void reloadJobs().catch((err) => setError(err instanceof Error ? err.message : String(err)))
-  }, [currentWalletId, networkPk])
+    void hdAirdropApi
+      .status()
+      .then((current) => {
+        setForeignRunning(Boolean(current && current.status === 'running' && (current.jobKind ?? 'uniform') !== tab))
+      })
+      .catch(() => undefined)
+  }, [currentWalletId, networkPk, tab])
 
   useEffect(() => {
     return on(IPC_EVENT.hdAirdropProgress, (payload) => {
       const next = payload as HdAirdropJob
+      const kind = next.jobKind ?? 'uniform'
+      if (kind !== tab) {
+        setForeignRunning(next.status === 'running')
+        return
+      }
+      setForeignRunning(false)
       setJob((current) => (current && current.id !== next.id ? current : next))
       setJobs((list) => {
         const others = list.filter((item) => item.id !== next.id)
         return [next, ...others].slice(0, 50)
       })
     })
-  }, [])
+  }, [tab])
 
   useEffect(() => {
     if (!selectedId) {
@@ -256,6 +274,7 @@ export default function HdAirdropPage() {
   }, [payer?.address, networkPk, tokenPk])
 
   const parsedRecipients = useMemo(() => collectRecipientAddresses(recipientText), [recipientText])
+  const parsedEntries = useMemo(() => collectItemizedEntries(itemizedRows), [itemizedRows])
 
   const buildInput = (): HdAirdropInput => ({
     walletId: currentWalletId ?? '',
@@ -263,9 +282,11 @@ export default function HdAirdropPage() {
     hdKeyId: payer?.hdKeyId ?? null,
     networkPk,
     tokenPk,
-    recipients: parsedRecipients.addresses,
-    amountMode,
-    amount: amountMode === 'fixed' ? amount : undefined,
+    jobKind: tab,
+    recipients: tab === 'uniform' ? parsedRecipients.addresses : [],
+    entries: tab === 'itemized' ? parsedEntries.entries : undefined,
+    amountMode: tab === 'itemized' ? 'fixed' : amountMode,
+    amount: tab === 'itemized' || amountMode === 'fixed' ? amount : undefined,
     amountMin: amountMode === 'range' ? amountMin : undefined,
     amountMax: amountMode === 'range' ? amountMax : undefined,
   })
@@ -309,6 +330,27 @@ export default function HdAirdropPage() {
       </div>
 
       <Alert>{error}</Alert>
+      {foreignRunning ? <Alert tone="pending">{t('airdrop.otherRunning')}</Alert> : null}
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant={tab === 'uniform' ? 'primary' : 'ghost'}
+          className="px-3 py-1 text-xs"
+          onClick={() => setTab('uniform')}
+        >
+          {t('airdrop.tabUniform')}
+        </Button>
+        <Button
+          type="button"
+          variant={tab === 'itemized' ? 'primary' : 'ghost'}
+          className="px-3 py-1 text-xs"
+          onClick={() => setTab('itemized')}
+        >
+          {t('airdrop.tabItemized')}
+        </Button>
+      </div>
+      <p className="text-xs text-ink-500">{tab === 'itemized' ? t('airdrop.tabItemizedHint') : t('airdrop.tabUniformHint')}</p>
 
       {!evm ? (
         <Card title={t('airdrop.unsupported')}>
@@ -355,103 +397,109 @@ export default function HdAirdropPage() {
                   })}
             </p>
 
-            <div>
-              <div className="mb-1 flex items-center justify-between gap-3">
-                <span className="text-xs font-medium text-ink-400">{t('airdrop.recipients')}</span>
-                <div className="flex items-center gap-3">
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept=".txt,.csv,text/plain"
-                    className="hidden"
-                    onChange={(e) => {
-                      onPickFile(e.target.files?.[0])
-                      e.target.value = ''
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="text-xs text-honey-400 hover:text-honey-500"
-                    onClick={() => fileRef.current?.click()}
-                  >
-                    {t('airdrop.upload')}
-                  </button>
-                  {network ? (
-                    <AddressBookPicker
-                      multiple
-                      walletType={network.walletType}
-                      onSelectMany={(entries) =>
-                        setRecipientText((current) =>
-                          mergeRecipientText(current, entries.map((entry) => entry.address).join(',')),
-                        )
-                      }
-                    />
-                  ) : null}
-                </div>
-              </div>
-              <TextArea
-                className="sensitive min-h-28 font-mono text-xs"
-                value={recipientText}
-                placeholder={t('airdrop.recipientsPlaceholder')}
-                onChange={(e) => setRecipientText(e.target.value)}
-              />
-              <p className="mt-1 text-xs text-ink-600">
-                {t('airdrop.recipientsHint')}
-                {recipientText.trim()
-                  ? ` · ${t('airdrop.parsed', { count: parsedRecipients.addresses.length })}${
-                      parsedRecipients.invalid.length
-                        ? t('airdrop.parsedInvalid', { count: parsedRecipients.invalid.length })
-                        : ''
-                    }${
-                      parsedRecipients.duplicateCount
-                        ? t('airdrop.parsedDup', { count: parsedRecipients.duplicateCount })
-                        : ''
-                    }`
-                  : ''}
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant={amountMode === 'fixed' ? 'primary' : 'ghost'}
-                className="px-3 py-1 text-xs"
-                onClick={() => setAmountMode('fixed')}
-              >
-                {t('airdrop.fixed')}
-              </Button>
-              <Button
-                type="button"
-                variant={amountMode === 'range' ? 'primary' : 'ghost'}
-                className="px-3 py-1 text-xs"
-                onClick={() => setAmountMode('range')}
-              >
-                {t('airdrop.random')}
-              </Button>
-            </div>
-
-            {amountMode === 'fixed' ? (
-              <Field
-                label={t('airdrop.each')}
-                value={amount}
-                hint={t('airdrop.eachHint')}
-                onChange={(e) => setAmount(e.target.value)}
-              />
+            {tab === 'itemized' ? (
+              <AirdropItemizedEditor rows={itemizedRows} onChange={setItemizedRows} walletType="web3" />
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field
-                  label={t('airdrop.minAmount')}
-                  value={amountMin}
-                  hint={t('airdrop.minHint')}
-                  onChange={(e) => setAmountMin(e.target.value)}
-                />
-                <Field
-                  label={t('airdrop.max')}
-                  value={amountMax}
-                  hint={t('airdrop.maxHint')}
-                  onChange={(e) => setAmountMax(e.target.value)}
-                />
-              </div>
+              <>
+                <div>
+                  <div className="mb-1 flex items-center justify-between gap-3">
+                    <span className="text-xs font-medium text-ink-400">{t('airdrop.recipients')}</span>
+                    <div className="flex items-center gap-3">
+                      <input
+                        ref={fileRef}
+                        type="file"
+                        accept=".txt,.csv,text/plain"
+                        className="hidden"
+                        onChange={(e) => {
+                          onPickFile(e.target.files?.[0])
+                          e.target.value = ''
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="text-xs text-honey-400 hover:text-honey-500"
+                        onClick={() => fileRef.current?.click()}
+                      >
+                        {t('airdrop.upload')}
+                      </button>
+                      {network ? (
+                        <AddressBookPicker
+                          multiple
+                          walletType={network.walletType}
+                          onSelectMany={(entries) =>
+                            setRecipientText((current) =>
+                              mergeRecipientText(current, entries.map((entry) => entry.address).join(',')),
+                            )
+                          }
+                        />
+                      ) : null}
+                    </div>
+                  </div>
+                  <TextArea
+                    className="sensitive min-h-28 font-mono text-xs"
+                    value={recipientText}
+                    placeholder={t('airdrop.recipientsPlaceholder')}
+                    onChange={(e) => setRecipientText(e.target.value)}
+                  />
+                  <p className="mt-1 text-xs text-ink-600">
+                    {t('airdrop.recipientsHint')}
+                    {recipientText.trim()
+                      ? ` · ${t('airdrop.parsed', { count: parsedRecipients.addresses.length })}${
+                          parsedRecipients.invalid.length
+                            ? t('airdrop.parsedInvalid', { count: parsedRecipients.invalid.length })
+                            : ''
+                        }${
+                          parsedRecipients.duplicateCount
+                            ? t('airdrop.parsedDup', { count: parsedRecipients.duplicateCount })
+                            : ''
+                        }`
+                      : ''}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant={amountMode === 'fixed' ? 'primary' : 'ghost'}
+                    className="px-3 py-1 text-xs"
+                    onClick={() => setAmountMode('fixed')}
+                  >
+                    {t('airdrop.fixed')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={amountMode === 'range' ? 'primary' : 'ghost'}
+                    className="px-3 py-1 text-xs"
+                    onClick={() => setAmountMode('range')}
+                  >
+                    {t('airdrop.random')}
+                  </Button>
+                </div>
+
+                {amountMode === 'fixed' ? (
+                  <Field
+                    label={t('airdrop.each')}
+                    value={amount}
+                    hint={t('airdrop.eachHint')}
+                    onChange={(e) => setAmount(e.target.value)}
+                  />
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field
+                      label={t('airdrop.minAmount')}
+                      value={amountMin}
+                      hint={t('airdrop.minHint')}
+                      onChange={(e) => setAmountMin(e.target.value)}
+                    />
+                    <Field
+                      label={t('airdrop.max')}
+                      value={amountMax}
+                      hint={t('airdrop.maxHint')}
+                      onChange={(e) => setAmountMax(e.target.value)}
+                    />
+                  </div>
+                )}
+              </>
             )}
 
             {assets.length === 0 ? (
@@ -461,11 +509,17 @@ export default function HdAirdropPage() {
             {preview ? (
               <div className="space-y-1 rounded-lg bg-ink-900 px-3 py-2 text-xs text-ink-400">
                 <p>
-                  {t('airdrop.previewLine', {
-                    from: shorten(preview.from),
-                    count: preview.recipientCount,
-                    amount: preview.amountText,
-                  })}
+                  {tab === 'itemized'
+                    ? t('airdrop.previewItemized', {
+                        from: shorten(preview.from),
+                        count: preview.recipientCount,
+                        total: preview.estimatedTotal,
+                      })
+                    : t('airdrop.previewLine', {
+                        from: shorten(preview.from),
+                        count: preview.recipientCount,
+                        amount: preview.amountText,
+                      })}
                 </p>
                 <p>{t('airdrop.estTotal', { total: preview.estimatedTotal })}</p>
                 <p>{t('airdrop.estGas', { fee: preview.feeText })}</p>
@@ -481,19 +535,36 @@ export default function HdAirdropPage() {
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="ghost"
-                disabled={busy || running || !payer || !tokenPk || !currentWalletId}
+                disabled={busy || running || foreignRunning || !payer || !tokenPk || !currentWalletId}
                 onClick={() =>
                   void run(async () => {
-                    if (parsedRecipients.invalid.length > 0) {
-                      throw new Error(
-                        t('airdrop.invalidAddresses', {
-                          count: parsedRecipients.invalid.length,
-                          sample: parsedRecipients.invalid.slice(0, 3).join(', '),
-                        }),
-                      )
-                    }
-                    if (parsedRecipients.addresses.length === 0) {
-                      throw new Error(t('airdrop.needAddresses'))
+                    if (tab === 'itemized') {
+                      if (parsedEntries.invalid.length > 0) {
+                        throw new Error(
+                          t('airdrop.invalidAddresses', {
+                            count: parsedEntries.invalid.length,
+                            sample: parsedEntries.invalid.slice(0, 3).join(', '),
+                          }),
+                        )
+                      }
+                      if (parsedEntries.entries.length === 0) {
+                        throw new Error(parsedEntries.missingAmount ? t('airdrop.needAmounts') : t('airdrop.needRows'))
+                      }
+                      if (parsedEntries.missingAmount > 0) {
+                        throw new Error(t('airdrop.needAmounts'))
+                      }
+                    } else {
+                      if (parsedRecipients.invalid.length > 0) {
+                        throw new Error(
+                          t('airdrop.invalidAddresses', {
+                            count: parsedRecipients.invalid.length,
+                            sample: parsedRecipients.invalid.slice(0, 3).join(', '),
+                          }),
+                        )
+                      }
+                      if (parsedRecipients.addresses.length === 0) {
+                        throw new Error(t('airdrop.needAddresses'))
+                      }
                     }
                     setPreview(await hdAirdropApi.preview(buildInput()))
                   })
@@ -503,7 +574,7 @@ export default function HdAirdropPage() {
               </Button>
               <Button
                 loading={transferring}
-                disabled={busy || transferring || !preview}
+                disabled={busy || transferring || foreignRunning || !preview}
                 onClick={() =>
                   void run(async () => {
                     if (!preview) return
@@ -735,6 +806,7 @@ function ItemTable({
           <tr>
             <th className="py-2 pr-3 font-medium">{t('hd.colIndex')}</th>
             <th className="py-2 pr-3 font-medium">{t('hd.colAddress')}</th>
+            <th className="py-2 pr-3 font-medium">{t('airdrop.colName')}</th>
             <th className="py-2 pr-3 font-medium">{t('airdrop.colAmount')}</th>
             <th className="py-2 pr-3 font-medium">{t('airdrop.colStatus')}</th>
             <th className="py-2 pr-3 font-medium">{t('airdrop.colTx')}</th>
@@ -751,6 +823,7 @@ function ItemTable({
                 <td className="py-2 pr-3">
                   <span className="sensitive font-mono text-ink-200">{shorten(item.toAddress, 8, 6)}</span>
                 </td>
+                <td className="py-2 pr-3 text-ink-300">{item.toName || '—'}</td>
                 <td className="py-2 pr-3 text-ink-200">
                   {formatAmount(item.amount)} {symbol}
                 </td>

@@ -236,8 +236,8 @@ export const hdAirdropApi = {
   start: (draftId: string) => call<HdAirdropJob>(IPC.hdAirdropStart, { draftId }),
   stop: (jobId?: string) => call<HdAirdropJob | null>(IPC.hdAirdropStop, { jobId }),
   status: (jobId?: string) => call<HdAirdropJob | null>(IPC.hdAirdropStatus, { jobId }),
-  jobs: (walletId?: string, networkPk?: string) =>
-    call<HdAirdropJob[]>(IPC.hdAirdropJobs, { walletId, networkPk }),
+  jobs: (walletId?: string, networkPk?: string, jobKind?: 'uniform' | 'itemized') =>
+    call<HdAirdropJob[]>(IPC.hdAirdropJobs, { walletId, networkPk, jobKind }),
   items: (query: HdAirdropItemQuery) => call<HdAirdropItemPage>(IPC.hdAirdropItems, query),
   retry: (input: HdAirdropRetryInput) => call<HdAirdropJob>(IPC.hdAirdropRetry, input),
 }
