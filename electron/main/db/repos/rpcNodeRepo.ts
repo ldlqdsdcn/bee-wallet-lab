@@ -53,7 +53,7 @@ export function listRpcNodes(networkPk: string): RpcNodeRecord[] {
   return getDatabase()
     .prepare<[string], RpcNodeRow>(
       `SELECT * FROM rpc_nodes WHERE network_pk = ?
-       ORDER BY is_selected DESC, source ASC, created_at ASC`,
+       ORDER BY source ASC, created_at ASC, id ASC`,
     )
     .all(networkPk)
     .map(toRpcNodeRecord)

@@ -20,10 +20,10 @@ import { accountApi, catalogApi, hdAirdropApi, on, portfolioApi } from '../lib/b
 import AddressBookPicker from '../components/AddressBookPicker'
 import { AirdropItemizedEditor, type ItemizedRow } from '../components/AirdropItemizedEditor'
 import { AirdropPayerPicker, type AirdropPayer } from '../components/AirdropPayerPicker'
-import { Alert, Button, Card, Field, TextArea } from '../components/ui'
+import { Alert, Button, Card, Field, Modal, TextArea } from '../components/ui'
 import { TokenSelect } from '../components/TokenSelect'
 import { AccountAddress } from '../components/AccountAddress'
-import { explorerTabTitle, txExplorerUrl } from '../lib/explorer'
+import { addressExplorerUrl, explorerTabTitle, txExplorerUrl } from '../lib/explorer'
 import { formatAmount, shorten } from '../lib/format'
 import { useT, type MessageKey } from '../i18n'
 import { useBrowserStore } from '../store/browserStore'
@@ -121,6 +121,8 @@ export default function HdAirdropPage() {
   const [busy, setBusy] = useState(false)
   const [starting, setStarting] = useState(false)
   const [foreignRunning, setForeignRunning] = useState(false)
+  const [detailOpen, setDetailOpen] = useState(false)
+  const detailRef = useRef<HTMLDivElement>(null)
 
   const evm = network?.walletType === 'web3'
   const assets = useMemo(() => tokens.filter(isAirdropAsset), [tokens])
@@ -275,6 +277,20 @@ export default function HdAirdropPage() {
 
   const parsedRecipients = useMemo(() => collectRecipientAddresses(recipientText), [recipientText])
   const parsedEntries = useMemo(() => collectItemizedEntries(itemizedRows), [itemizedRows])
+
+  const openJob = (item: HdAirdropJob, showModal = true) => {
+    if (item.id !== job?.id) setItemPage(null)
+    setJob(item)
+    setPage(1)
+    setItemFilter('all')
+    if (showModal) {
+      setDetailOpen(true)
+      return
+    }
+    requestAnimationFrame(() => {
+      detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
 
   const buildInput = (): HdAirdropInput => ({
     walletId: currentWalletId ?? '',
@@ -612,8 +628,9 @@ export default function HdAirdropPage() {
       )}
 
       {job ? (
+        <div ref={detailRef}>
         <Card
-          title={t('airdrop.progress')}
+          title={job.status === 'running' ? t('airdrop.progress') : t('airdrop.detail')}
           action={<span className={`text-xs ${jobClass(job.status)}`}>{jobLabel(job.status, t)}</span>}
         >
           <div className="space-y-3">
@@ -636,11 +653,16 @@ export default function HdAirdropPage() {
                 skipped: job.skipped,
               })}
             </p>
-            <p className="text-xs text-ink-500">
-              {job.status === 'running'
-                ? t('airdrop.remain', { queued: job.queued, eta: formatEta(remainMs, t) })
-                : t('airdrop.eta', { total: job.total, eta: formatEta(job.estimatedMs, t) })}
-            </p>
+            {job.status === 'running' ? (
+              <p className="text-xs text-ink-500">
+                {t('airdrop.remain', { queued: job.queued, eta: formatEta(remainMs, t) })}
+              </p>
+            ) : (
+              <p className="text-xs text-ink-500">
+                {t('airdrop.detailFrom', { from: shorten(job.fromAddress) })}
+                {job.startedAt ? ` · ${formatTime(job.startedAt)}` : ''}
+              </p>
+            )}
             {job.lastTxid ? (
               <p className="sensitive break-all font-mono text-[11px] text-ink-400">{job.lastTxid}</p>
             ) : null}
@@ -742,6 +764,7 @@ export default function HdAirdropPage() {
             )}
           </div>
         </Card>
+        </div>
       ) : null}
 
       {jobs.length > 0 ? (
@@ -754,10 +777,7 @@ export default function HdAirdropPage() {
                   className={`flex w-full items-start justify-between gap-3 py-3 text-left ${
                     item.id === selectedId ? 'text-honey-400' : 'text-ink-200'
                   }`}
-                  onClick={() => {
-                    setJob(item)
-                    setPage(1)
-                  }}
+                  onClick={() => openJob(item)}
                 >
                   <span>
                     <span className="text-sm">
@@ -774,12 +794,54 @@ export default function HdAirdropPage() {
                       {item.startedAt ? ` · ${formatTime(item.startedAt)}` : ''}
                     </span>
                   </span>
-                  <span className={`shrink-0 text-[11px] ${jobClass(item.status)}`}>{jobLabel(item.status, t)}</span>
+                  <span className="flex shrink-0 flex-col items-end gap-1">
+                    <span className={`text-[11px] ${jobClass(item.status)}`}>{jobLabel(item.status, t)}</span>
+                    <span className="text-[11px] text-honey-400">{t('airdrop.viewDetail')}</span>
+                  </span>
                 </button>
               </li>
             ))}
           </ul>
         </Card>
+      ) : null}
+
+      {detailOpen && job ? (
+        <Modal
+          title={t('airdrop.detail')}
+          onClose={() => setDetailOpen(false)}
+          className="max-h-[85vh] max-w-5xl overflow-y-auto"
+        >
+          <div className="mt-3 space-y-3">
+            <p className="text-xs text-ink-400">
+              {job.symbol} · {t('airdrop.jobCount', { count: job.total })} · {job.amountText}
+              {' · '}
+              {t('airdrop.detailFrom', { from: shorten(job.fromAddress) })}
+              {job.startedAt ? ` · ${formatTime(job.startedAt)}` : ''}
+            </p>
+            <p className={`text-xs ${jobClass(job.status)}`}>{jobLabel(job.status, t)}</p>
+            {!itemPage || itemPage.jobId !== job.id ? (
+              <p className="text-sm text-ink-400">{t('common.loading')}</p>
+            ) : itemPage.items.length > 0 ? (
+              <>
+                <ItemTable
+                  items={itemPage.items}
+                  symbol={job.symbol}
+                  network={network}
+                  running={running || busy}
+                  onRetry={(item) =>
+                    void run(async () => {
+                      const next = await hdAirdropApi.retry({ jobId: job.id, itemIds: [item.id] })
+                      setJob(next)
+                    })
+                  }
+                />
+                <Pager page={page} pageCount={pageCount} total={itemPage.total} onPage={setPage} />
+              </>
+            ) : (
+              <p className="text-sm text-ink-400">{t('airdrop.noRows')}</p>
+            )}
+          </div>
+        </Modal>
       ) : null}
     </div>
   )
@@ -821,7 +883,10 @@ function ItemTable({
               <tr key={item.id} className="border-t border-ink-800 align-top">
                 <td className="py-2 pr-3 text-ink-300">{item.addressIndex}</td>
                 <td className="py-2 pr-3">
-                  <span className="sensitive font-mono text-ink-200">{shorten(item.toAddress, 8, 6)}</span>
+                  <AccountAddress
+                    address={item.toAddress}
+                    explorerUrl={network ? addressExplorerUrl(network, item.toAddress) : null}
+                  />
                 </td>
                 <td className="py-2 pr-3 text-ink-300">{item.toName || '—'}</td>
                 <td className="py-2 pr-3 text-ink-200">
