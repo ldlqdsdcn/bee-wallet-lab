@@ -99,17 +99,6 @@ sudo apt install ./bee-wallet-*-linux-x64.deb
 
 图形界面若提示未认证，选仍要安装即可。打 `v*` tag 会由 Actions 自动打包并上传 Release。
 
-#### Code signing policy
-
-Free code signing provided by SignPath.io, certificate by SignPath Foundation.
-
-- Committers and reviewers: [@ldlqdsdcn](https://github.com/ldlqdsdcn)
-- Approvers: [@ldlqdsdcn](https://github.com/ldlqdsdcn)
-
-This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
-
-Windows 安装包计划用 SignPath Foundation 的证书签名（发布者显示为 SignPath Foundation）。Linux 包另用项目 GPG 做校验，见 [docs/linux-signing.md](docs/linux-signing.md)。
-
 ---
 
 ## English
@@ -201,14 +190,3 @@ sudo apt install ./bee-wallet-*-linux-x64.deb
 ```
 
 If the GUI installer says the package is unauthenticated, install anyway — it came from GitHub, not the distro archive. Pushing a `v*` tag builds and uploads a Release via Actions.
-
-### Code signing policy
-
-Free code signing provided by SignPath.io, certificate by SignPath Foundation.
-
-- Committers and reviewers: [@ldlqdsdcn](https://github.com/ldlqdsdcn)
-- Approvers: [@ldlqdsdcn](https://github.com/ldlqdsdcn)
-
-This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
-
-Windows installers are signed (or will be signed) with a certificate issued to SignPath Foundation. Linux checksums use the project GPG key; see [docs/linux-signing.md](docs/linux-signing.md).
