@@ -171,6 +171,17 @@ export function updateTransactionStatus(
   return next
 }
 
+/** 该账户在该网络已落库的最高区块。没有已确认记录时返回 null，同步只拉最近一页。 */
+export function latestSyncedBlock(networkPk: string, accountId: string): number | null {
+  const row = getDatabase()
+    .prepare<[string, string], { n: number | null }>(
+      `SELECT MAX(block_height) AS n FROM transactions
+       WHERE network_pk = ? AND account_id = ? AND block_height IS NOT NULL AND block_height > 0`,
+    )
+    .get(networkPk, accountId)
+  return typeof row?.n === 'number' && row.n > 0 ? row.n : null
+}
+
 export function listTransactions(query?: { accountId?: string; networkPk?: string }): TransactionRecord[] {
   const db = getDatabase()
   const accountId = query?.accountId

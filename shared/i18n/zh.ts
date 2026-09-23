@@ -776,7 +776,7 @@ export const zh = {
   'issue.switchNetwork': '切换网络',
 
   'activity.needNetwork': '请先选择网络',
-  'activity.hint': '只显示当前钱包在当前网络的交易',
+  'activity.hint': '只显示当前钱包在当前网络的交易。同步优先用当前 RPC 节点，从本地最后一笔的区块往后拉，不会从头扫链',
   'activity.syncing': '同步中…',
   'activity.synced': '已同步 {count} 条',
   'activity.syncedEmpty': '没有拉到交易。确认当前钱包已派生该网络账户',
