@@ -776,7 +776,7 @@ export const en = {
   'issue.switchNetwork': 'Switch network',
 
   'activity.needNetwork': 'Select a network first',
-  'activity.hint': 'Only this wallet’s transfers on the current network',
+  'activity.hint': 'Only this wallet’s transfers on the current network. Sync uses the current RPC node first and continues from the last local block, it does not rescan from genesis',
   'activity.syncing': 'Syncing…',
   'activity.synced': 'Synced {count} records',
   'activity.syncedEmpty': 'No transfers found. Make sure this wallet has an account on the network.',

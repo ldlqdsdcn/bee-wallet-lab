@@ -11,9 +11,65 @@ import {
   parseTronGridTransactions,
   parseTronGridTrc20,
 } from '../electron/main/history/parse'
+import { parseRpcNativeTxs, parseRpcTransferLog } from '../electron/main/history/evmNode'
+import {
+  addressFromTopic,
+  buildAccountTxQuery,
+  ERC20_TRANSFER_TOPIC,
+  filterHistoryFromBlock,
+  historyBlockWindow,
+  isDeprecatedV1,
+  nativeScanFrom,
+  topicAddress,
+} from '../electron/main/history/range'
 
 const ME = '0x1111111111111111111111111111111111111111'
 const OTHER = '0x2222222222222222222222222222222222222222'
+
+describe('交易同步范围', () => {
+  it('首次同步只拉最近一页，不带 startblock', () => {
+    expect(buildAccountTxQuery({ action: 'txlist', address: ME, startBlock: null })).toBe(
+      `module=account&action=txlist&address=${ME}&page=1&offset=50&sort=desc`,
+    )
+  })
+
+  it('已有记录时从最后区块往后拉', () => {
+    expect(
+      buildAccountTxQuery({ action: 'txlist', address: ME, startBlock: 38000000, chainId: '8453' }),
+    ).toBe(
+      `chainid=8453&module=account&action=txlist&address=${ME}&startblock=38000000&endblock=99999999&page=1&offset=100&sort=asc`,
+    )
+  })
+
+  it('丢掉低于已同步区块的记录，未上链的仍保留', () => {
+    const rows = filterHistoryFromBlock(
+      [
+        { txid: 'old', direction: 'send', fromAddress: ME, toAddress: OTHER, amountMinor: 1n, decimals: 18, symbol: 'ETH', contractAddress: null, feeMinor: null, status: 'confirmed', blockHeight: 10, timestampMs: 1 },
+        { txid: 'new', direction: 'send', fromAddress: ME, toAddress: OTHER, amountMinor: 1n, decimals: 18, symbol: 'ETH', contractAddress: null, feeMinor: null, status: 'confirmed', blockHeight: 20, timestampMs: 2 },
+        { txid: 'pend', direction: 'send', fromAddress: ME, toAddress: OTHER, amountMinor: 1n, decimals: 18, symbol: 'ETH', contractAddress: null, feeMinor: null, status: 'pending', blockHeight: null, timestampMs: 3 },
+      ],
+      20,
+    )
+    expect(rows.map((item) => item.txid)).toEqual(['new', 'pend'])
+  })
+
+  it('节点扫描窗口从最后区块往后，首次只扫最近一段', () => {
+    expect(historyBlockWindow(40_000, null, 8_000, 2_000)).toEqual({ from: 38_000, to: 40_000 })
+    expect(historyBlockWindow(40_000, 39_500, 8_000)).toEqual({ from: 39_500, to: 40_000 })
+    expect(historyBlockWindow(40_000, 10_000, 8_000)).toEqual({ from: 32_000, to: 40_000 })
+    expect(nativeScanFrom(32_000, 40_000, 400)).toBe(39_601)
+  })
+
+  it('识别 Basescan V1 已停用', () => {
+    expect(
+      isDeprecatedV1({
+        status: '0',
+        message: 'NOTOK',
+        result: 'You are using a deprecated V1 endpoint, switch to Etherscan API V2',
+      }),
+    ).toBe(true)
+  })
+})
 
 describe('交易历史解析', () => {
   it('Esplora 按 vin/vout 净额判断收支', () => {
@@ -50,6 +106,54 @@ describe('交易历史解析', () => {
       direction: 'receive',
       amountMinor: 5000n,
       status: 'pending',
+    })
+  })
+
+  it('节点 Transfer 日志与原生交易', () => {
+    expect(topicAddress(ME)).toBe(`0x${'0'.repeat(24)}${ME.slice(2).toLowerCase()}`)
+    expect(addressFromTopic(topicAddress(ME))).toBe(ME.toLowerCase())
+    const usdc = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
+    const token = parseRpcTransferLog(
+      {
+        address: usdc,
+        topics: [ERC20_TRANSFER_TOPIC, topicAddress(OTHER), topicAddress(ME)],
+        data: '0x' + (5000000n).toString(16).padStart(64, '0'),
+        transactionHash: '0xeee',
+        blockNumber: '0xb',
+        logIndex: '0x1',
+      },
+      ME,
+      [{ contractAddress: usdc, symbol: 'USDC', decimals: 6 } as never],
+      1_700_000_000_000,
+    )
+    expect(token).toMatchObject({
+      txid: '0xeee',
+      direction: 'receive',
+      symbol: 'USDC',
+      amountMinor: 5000000n,
+      blockHeight: 11,
+    })
+
+    const native = parseRpcNativeTxs(
+      {
+        number: '0xc',
+        timestamp: '0x6550a9c0',
+        transactions: [
+          { hash: '0xfff', from: ME, to: OTHER, value: '0xde0b6b3a7640000' },
+          { hash: '0xskip', from: ME, to: OTHER, value: '0x0' },
+        ],
+      },
+      ME,
+      'ETH',
+      18,
+    )
+    expect(native).toHaveLength(1)
+    expect(native[0]).toMatchObject({
+      txid: '0xfff',
+      direction: 'send',
+      amountMinor: 10n ** 18n,
+      symbol: 'ETH',
+      blockHeight: 12,
     })
   })
 

@@ -1,18 +1,25 @@
 /**
- * EVM 交易历史：优先 Blockscout 公开 API，其次 Etherscan 兼容接口。
+ * EVM 交易历史：当前 RPC 节点（Infura 等）优先增量同步，浏览器接口兜底。
+ * 本地已有记录时从最后一条的区块往后拉，不从头扫链。
  */
 import type { NetworkRecord } from '@shared/types'
 import { asRecord, asString } from '../backend/list'
+import { listTokens } from '../db/repos/catalogRepo'
 import { providerGet } from '../rpc/fetch'
 import { etherscanApiKey } from '../rpc/env'
 import { normalizeChainId } from '../rpc/endpoints'
+import { fetchEvmHistoryViaRpc } from './evmNode'
 import {
   parseBlockscoutTokenTransfers,
   parseBlockscoutTransactions,
   parseEtherscanTokentx,
   parseEtherscanTxlist,
 } from './parse'
+import { buildAccountTxQuery, etherscanMessage, filterHistoryFromBlock, isDeprecatedV1 } from './range'
 import type { HistoryTxDraft } from './types'
+
+const EXPLORER_TIMEOUT_MS = 8_000
+const ETHERSCAN_V2 = 'https://api.etherscan.io/v2/api'
 
 const BLOCKSCOUT: Record<string, string> = {
   '1': 'https://eth.blockscout.com',
@@ -57,91 +64,90 @@ function blockscoutBase(network: NetworkRecord): string | null {
 }
 
 async function getJson(url: string): Promise<unknown> {
-  return providerGet<unknown>(url)
+  return providerGet<unknown>(url, undefined, EXPLORER_TIMEOUT_MS)
 }
 
 function etherscanOk(payload: unknown): boolean {
   const root = asRecord(payload)
   if (!root) return false
+  if (isDeprecatedV1(payload)) return false
   const status = asString(root.status)
   const message = asString(root.message).toLowerCase()
   if (status === '1') return true
   return message.includes('no transaction') || message.includes('no record')
 }
 
-async function fromBlockscout(
-  network: NetworkRecord,
-  address: string,
-  nativeSymbol: string,
-  nativeDecimals: number,
-): Promise<HistoryTxDraft[] | null> {
-  const base = blockscoutBase(network)
-  if (!base) return null
-  try {
-    const txs = await getJson(
-      `${base}/api/v2/addresses/${encodeURIComponent(address)}/transactions?filter=to%20%7C%20from`,
-    )
-    const tokens = await getJson(
-      `${base}/api/v2/addresses/${encodeURIComponent(address)}/token-transfers?type=ERC-20`,
-    ).catch(() => ({ items: [] }))
-    return [
-      ...parseBlockscoutTransactions(txs, address, nativeSymbol, nativeDecimals),
-      ...parseBlockscoutTokenTransfers(tokens, address),
-    ]
-  } catch {
-    return null
-  }
-}
-
 async function etherscanQuery(apiBase: string, query: string): Promise<unknown> {
   const key = etherscanApiKey()
   const apikey = key ? `&apikey=${encodeURIComponent(key)}` : ''
-  return getJson(`${apiBase}?${query}${apikey}`)
+  const joiner = apiBase.includes('?') ? '&' : '?'
+  return getJson(`${apiBase}${joiner}${query}${apikey}`)
 }
 
-async function fromEtherscan(
+async function fetchEtherscanPages(
+  request: (page: number) => Promise<unknown>,
+  parse: (payload: unknown) => HistoryTxDraft[],
+  incremental: boolean,
+): Promise<HistoryTxDraft[]> {
+  const out: HistoryTxDraft[] = []
+  const maxPages = incremental ? 8 : 1
+  for (let page = 1; page <= maxPages; page += 1) {
+    const payload = await request(page)
+    if (isDeprecatedV1(payload)) throw new Error(etherscanMessage(payload))
+    if (!etherscanOk(payload)) {
+      if (page === 1) throw new Error(etherscanMessage(payload))
+      break
+    }
+    const rows = parse(payload)
+    out.push(...rows)
+    if (rows.length < (incremental ? 100 : 50)) break
+  }
+  return out
+}
+
+async function fromEtherscanCompat(
+  apiBase: string,
+  address: string,
+  nativeSymbol: string,
+  nativeDecimals: number,
+  startBlock: number | null,
+  chainId?: string,
+): Promise<HistoryTxDraft[]> {
+  const native = await fetchEtherscanPages(
+    (page) => etherscanQuery(apiBase, buildAccountTxQuery({ action: 'txlist', address, startBlock, chainId, page })),
+    (payload) => parseEtherscanTxlist(payload, address, nativeSymbol, nativeDecimals),
+    startBlock != null,
+  )
+  const tokens = await fetchEtherscanPages(
+    (page) => etherscanQuery(apiBase, buildAccountTxQuery({ action: 'tokentx', address, startBlock, chainId, page })),
+    (payload) => parseEtherscanTokentx(payload, address),
+    startBlock != null,
+  ).catch(() => [])
+  return [...native, ...tokens]
+}
+
+async function fromBlockscoutV2(
   network: NetworkRecord,
   address: string,
   nativeSymbol: string,
   nativeDecimals: number,
-): Promise<HistoryTxDraft[] | null> {
-  const chainId = normalizeChainId(network.chainId)
-  const key = etherscanApiKey()
-  try {
-    if (key) {
-      const base = 'https://api.etherscan.io/v2/api'
-      const native = await etherscanQuery(
-        base,
-        `chainid=${chainId}&module=account&action=txlist&address=${address}&page=1&offset=50&sort=desc`,
-      )
-      if (!etherscanOk(native)) return null
-      const tokens = await etherscanQuery(
-        base,
-        `chainid=${chainId}&module=account&action=tokentx&address=${address}&page=1&offset=50&sort=desc`,
-      ).catch(() => ({ status: '1', result: [] }))
-      return [
-        ...parseEtherscanTxlist(native, address, nativeSymbol, nativeDecimals),
-        ...parseEtherscanTokentx(tokens, address),
-      ]
-    }
-    const v1 = ETHERSCAN_V1[chainId]
-    if (!v1) return null
-    const native = await etherscanQuery(
-      v1,
-      `module=account&action=txlist&address=${address}&page=1&offset=50&sort=desc`,
-    )
-    if (!etherscanOk(native)) return null
-    const tokens = await etherscanQuery(
-      v1,
-      `module=account&action=tokentx&address=${address}&page=1&offset=50&sort=desc`,
-    ).catch(() => ({ status: '1', result: [] }))
-    return [
-      ...parseEtherscanTxlist(native, address, nativeSymbol, nativeDecimals),
-      ...parseEtherscanTokentx(tokens, address),
-    ]
-  } catch {
-    return null
-  }
+  startBlock: number | null,
+): Promise<HistoryTxDraft[]> {
+  const base = blockscoutBase(network)
+  if (!base) throw new Error('未配置 Blockscout 地址')
+  const txs = await getJson(
+    `${base}/api/v2/addresses/${encodeURIComponent(address)}/transactions?filter=to%20%7C%20from`,
+  )
+  const tokens = await getJson(
+    `${base}/api/v2/addresses/${encodeURIComponent(address)}/token-transfers?type=ERC-20`,
+  ).catch(() => ({ items: [] }))
+  return filterHistoryFromBlock(
+    [
+      ...parseBlockscoutTransactions(txs, address, nativeSymbol, nativeDecimals),
+      ...parseBlockscoutTokenTransfers(tokens, address),
+    ],
+    startBlock,
+  )
 }
 
 export async function fetchEvmHistory(
@@ -149,12 +155,63 @@ export async function fetchEvmHistory(
   address: string,
   nativeSymbol: string,
   nativeDecimals: number,
+  startBlock: number | null = null,
 ): Promise<HistoryTxDraft[]> {
-  const blockscout = await fromBlockscout(network, address, nativeSymbol, nativeDecimals)
-  if (blockscout) return blockscout
-  const etherscan = await fromEtherscan(network, address, nativeSymbol, nativeDecimals)
-  if (etherscan) return etherscan
-  throw new Error(
-    `无法从公开浏览器同步 ${network.networkName} 的交易。可在 .env 填写 VITE_ETHERSCAN_API_KEY，或在网络维护里填 Blockscout 浏览器地址`,
+  const chainId = normalizeChainId(network.chainId)
+  const errors: string[] = []
+  const trySource = async (label: string, run: () => Promise<HistoryTxDraft[]>): Promise<HistoryTxDraft[] | null> => {
+    try {
+      return filterHistoryFromBlock(await run(), startBlock)
+    } catch (err) {
+      errors.push(`${label}：${err instanceof Error ? err.message : String(err)}`)
+      return null
+    }
+  }
+
+  const node = await trySource('当前节点', () =>
+    fetchEvmHistoryViaRpc(network, address, nativeSymbol, nativeDecimals, startBlock, listTokens(network.id)),
   )
+  if (node) return node
+
+  const key = etherscanApiKey()
+  if (key) {
+    const v2 = await trySource('Etherscan V2', () =>
+      fromEtherscanCompat(ETHERSCAN_V2, address, nativeSymbol, nativeDecimals, startBlock, chainId),
+    )
+    if (v2) return v2
+  }
+
+  const v1Base = ETHERSCAN_V1[chainId]
+  if (v1Base) {
+    const v1 = await trySource('浏览器 V1', () =>
+      fromEtherscanCompat(v1Base, address, nativeSymbol, nativeDecimals, startBlock),
+    )
+    if (v1) return v1
+    if (errors.some((item) => /deprecated v1|api v2/i.test(item))) {
+      const v2 = await trySource('Etherscan V2', () =>
+        fromEtherscanCompat(ETHERSCAN_V2, address, nativeSymbol, nativeDecimals, startBlock, chainId),
+      )
+      if (v2) return v2
+    }
+  } else if (!key) {
+    const v2 = await trySource('Etherscan V2', () =>
+      fromEtherscanCompat(ETHERSCAN_V2, address, nativeSymbol, nativeDecimals, startBlock, chainId),
+    )
+    if (v2) return v2
+  }
+
+  const scout = blockscoutBase(network)
+  if (scout) {
+    const compat = await trySource('Blockscout', () =>
+      fromEtherscanCompat(`${scout}/api`, address, nativeSymbol, nativeDecimals, startBlock),
+    )
+    if (compat) return compat
+    const v2 = await trySource('Blockscout v2', () =>
+      fromBlockscoutV2(network, address, nativeSymbol, nativeDecimals, startBlock),
+    )
+    if (v2) return v2
+  }
+
+  const hint = errors[0] ?? '当前节点不可用'
+  throw new Error(`无法同步 ${network.networkName} 的交易（${hint}）。请检查当前 RPC 节点是否可用`)
 }

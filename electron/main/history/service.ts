@@ -6,7 +6,7 @@ import { newId } from '../security/crypto'
 import { formatMinor } from '../util/amount'
 import { getNetwork, listTokens } from '../db/repos/catalogRepo'
 import { listMatchingAccounts } from '../db/repos/accountRepo'
-import { listTransactions, upsertTransaction } from '../db/repos/transactionRepo'
+import { latestSyncedBlock, listTransactions, upsertTransaction } from '../db/repos/transactionRepo'
 import { invalidArg, notFound } from '../ipc/registry'
 import { defaultNativeDecimals } from '../catalog/map'
 import { explorerUrlForBitcoin, fetchBitcoinAddressTxs } from '../chain/bitcoin'
@@ -84,15 +84,18 @@ async function fetchForAddress(
   network: NetworkRecord,
   address: string,
   native: TokenRecord | undefined,
+  startBlock: number | null,
 ): Promise<HistoryTxDraft[]> {
   const symbol = native?.symbol || network.coinEasy || 'ETH'
   const decimals = native?.decimals ?? defaultNativeDecimals(network.walletType)
   if (network.walletType === 'bitcoin') {
     const payload = await fetchBitcoinAddressTxs(address, network.networkScope)
-    return parseEsploraAddressTxs(payload, address, symbol)
+    return parseEsploraAddressTxs(payload, address, symbol).filter(
+      (item) => startBlock == null || item.blockHeight == null || item.blockHeight >= startBlock,
+    )
   }
   if (network.walletType === 'web3') {
-    return fetchEvmHistory(network, address, symbol, decimals)
+    return fetchEvmHistory(network, address, symbol, decimals, startBlock)
   }
   if (network.walletType === 'tron') {
     const [nativeTx, trc20, internal] = await Promise.all([
@@ -100,11 +103,12 @@ async function fetchForAddress(
       fetchTronAccountTrc20(address, network.networkScope).catch(() => ({ data: [] })),
       fetchTronAccountInternal(address, network.networkScope).catch(() => ({ data: [] })),
     ])
-    return [
+    const drafts = [
       ...parseTronGridTransactions(nativeTx, address, symbol),
       ...parseTronGridInternal(internal, address, symbol),
       ...parseTronGridTrc20(trc20, address),
     ]
+    return drafts.filter((item) => startBlock == null || item.blockHeight == null || item.blockHeight >= startBlock)
   }
   const signatures = parseSolanaSignatures(await fetchSolanaSignatures(network, address, 20))
   const drafts: HistoryTxDraft[] = []
@@ -116,7 +120,7 @@ async function fetchForAddress(
     const payload = result.status === 'fulfilled' ? result.value : null
     drafts.push(...parseSolanaTransaction(payload, address, meta.signature, meta))
   })
-  return drafts
+  return drafts.filter((item) => startBlock == null || item.blockHeight == null || item.blockHeight >= startBlock)
 }
 
 export async function syncNetworkTransactions(networkPk: string): Promise<TransactionRecord[]> {
@@ -133,7 +137,12 @@ export async function syncNetworkTransactions(networkPk: string): Promise<Transa
   await Promise.all(
     accounts.map(async (account) => {
       try {
-        const drafts = await fetchForAddress(network, account.address, native)
+        const drafts = await fetchForAddress(
+          network,
+          account.address,
+          native,
+          latestSyncedBlock(network.id, account.id),
+        )
         for (const draft of drafts) persist(network, account.id, tokens, draft)
       } catch (err) {
         errors.push(err instanceof Error ? err.message : String(err))
