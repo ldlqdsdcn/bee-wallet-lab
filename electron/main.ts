@@ -1,11 +1,12 @@
 import { installWalletConnectWebSocket } from './main/walletconnect/installWs'
-import { app, BrowserWindow, protocol, session, shell } from 'electron'
-import { existsSync } from 'node:fs'
+import { app, BrowserWindow, dialog, protocol, session, shell } from 'electron'
+import { existsSync, mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { bootstrap, shutdown } from './main/bootstrap'
 import { installAppMenu } from './main/appMenu'
-import { isQuitConfirmed, requestQuit } from './main/quit'
+import { getWorkspaceDirectory, initializeWorkspace, selectWorkspace } from './main/workspace/state'
+import { isQuitConfirmed, requestQuit, restartApp } from './main/quit'
 import { ensureLinuxDevDesktopEntry, loadAppIcon, resolveAppIconPath } from './main/icon'
 import {
   attachWalletConnectCapture,
@@ -123,6 +124,10 @@ function createWindow() {
   })
 
   // 钱包窗口本身不许跳出去；https 外链交给系统浏览器
+  const workspaceTitle = `Bee Wallet Lab — ${path.basename(getWorkspaceDirectory())}`
+  win.setTitle(workspaceTitle)
+  win.on('page-title-updated', (event) => { event.preventDefault(); win?.setTitle(workspaceTitle) })
+
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (findWalletConnectDeepLink([url])) {
       void acceptWalletConnectDeepLink(url)
@@ -162,17 +167,29 @@ function createWindow() {
   }
 }
 
+let workspaceStartupError: unknown = null
+let ownsInstance = false
+
 // 单实例：多开会争抢同一个 SQLite 文件
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
+  ownsInstance = true
+  try {
+    const workspace = initializeWorkspace(app.getPath('userData'))
+    const browserData = path.join(workspace, 'browser')
+    mkdirSync(browserData, { recursive: true })
+    app.setPath('sessionData', browserData)
+  } catch (error) {
+    workspaceStartupError = error
+  }
   app.on('second-instance', (_event, argv) => {
     const link = findWalletConnectDeepLink(argv)
     if (link) void acceptWalletConnectDeepLink(link)
     if (win && !win.isDestroyed()) {
       if (win.isMinimized()) win.restore()
       win.focus()
-    } else if (app.isReady()) {
+    } else if (app.isReady() && !workspaceStartupError) {
       // macOS 关窗后进程仍在，第二次启动需要重建窗口
       createWindow()
     }
@@ -194,7 +211,7 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
-  if (BrowserWindow.getAllWindows().length === 0) {
+  if (ownsInstance && !workspaceStartupError && BrowserWindow.getAllWindows().length === 0) {
     createWindow()
   }
 })
@@ -224,6 +241,20 @@ app.on('before-quit', () => {
 })
 
 app.whenReady().then(async () => {
+  if (!ownsInstance) return
+  if (workspaceStartupError) {
+    await dialog.showMessageBox({ type: 'error', title: '工作区 / Workspace',
+      message: '无法打开工作区，请重新选择 / Cannot open workspace; select another folder',
+      detail: workspaceStartupError instanceof Error ? workspaceStartupError.message : String(workspaceStartupError) })
+    const result = await dialog.showOpenDialog({ properties: ['openDirectory'] })
+    if (!result.canceled && result.filePaths[0]) {
+      try { selectWorkspace(result.filePaths[0]); restartApp(); return } catch (error) {
+        dialog.showErrorBox('工作区 / Workspace', error instanceof Error ? error.message : String(error))
+      }
+    }
+    app.quit()
+    return
+  }
   app.setAsDefaultProtocolClient('wc')
   app.setAsDefaultProtocolClient('walletconnect')
   app.setAsDefaultProtocolClient('bee-wallet')

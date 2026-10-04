@@ -1,5 +1,5 @@
 /**
- * 替换 Electron 默认菜单。锁定时只保留退出与帮助。
+ * 替换 Electron 默认菜单。锁定时仍可创建、打开和导入工作区。
  */
 import { Menu, app, dialog, type MenuItemConstructorOptions } from 'electron'
 import { IPC_EVENT, type AppCommand } from '../../shared/ipc'
@@ -9,6 +9,7 @@ import { broadcast } from './ipc/registry'
 import { getStatus, onVaultEvent } from './security/vault'
 import { requestQuit } from './quit'
 import { t } from './i18n'
+import { workspaceMenu } from './workspace/actions'
 
 function send(command: AppCommand): void {
   broadcast(IPC_EVENT.appCommand, command)
@@ -79,6 +80,7 @@ function unlockedTemplate(): MenuItemConstructorOptions[] {
     {
       label: t('menu.file'),
       submenu: [
+        ...workspaceMenu(),
         {
           label: t('menu.openSettings'),
           accelerator: 'CommandOrControl+,',
@@ -113,7 +115,7 @@ function lockedTemplate(): MenuItemConstructorOptions[] {
   return [
     {
       label: t('menu.file'),
-      submenu: [{ label: t('menu.quit'), accelerator: 'CommandOrControl+Q', click: () => void requestQuit() }],
+      submenu: [...workspaceMenu(), { label: t('menu.quit'), accelerator: 'CommandOrControl+Q', click: () => void requestQuit() }],
     },
     {
       label: t('menu.help'),

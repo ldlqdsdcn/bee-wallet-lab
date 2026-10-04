@@ -1,10 +1,4 @@
-/**
- * 从 Vite 注入的 import.meta.env 读配置。只有 VITE_ 前缀会进包。
- */
-function read(name: keyof ImportMetaEnv): string {
-  const raw = import.meta.env[name]
-  return typeof raw === 'string' ? raw.trim() : ''
-}
+import { readEnvironment as read } from '../workspace/environment'
 
 /** 目录站 origin。兼容旧变量名 VITE_API_BASE_URL */
 export function catalogEnvUrl(): string {

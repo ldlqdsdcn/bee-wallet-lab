@@ -1,5 +1,5 @@
 /**
- * WalletConnect 会话存在 userData，主进程没有 localStorage。
+ * WalletConnect 会话保存在当前工作区，主进程没有 localStorage。
  * 写入必须串行，否则并行 setItem 会互相覆盖，密钥或历史丢一条。
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'

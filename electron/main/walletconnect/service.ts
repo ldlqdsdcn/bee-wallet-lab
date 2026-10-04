@@ -2,7 +2,8 @@
  * WalletConnect 钱包端：配对、确认、签名/发交易、断开。密钥不离开主进程。
  */
 import path from 'node:path'
-import { app, BrowserWindow } from 'electron'
+import { BrowserWindow } from 'electron'
+import { getWorkspaceDirectory } from '../workspace/state'
 import type { WalletKitTypes } from '@reown/walletkit'
 import type { AuthTypes, JsonRpcRecord, Verify } from '@walletconnect/types'
 import { installWalletConnectWebSocket } from './installWs'
@@ -210,7 +211,7 @@ export async function startWalletConnect(): Promise<Kit | null> {
       projectId,
       relayUrl: walletConnectRelayUrl(),
       customStoragePrefix: 'bee-wallet',
-      storage: createFileKeyValueStorage(path.join(app.getPath('userData'), 'walletconnect.json')),
+      storage: createFileKeyValueStorage(path.join(getWorkspaceDirectory(), 'walletconnect.json')),
     })
     guardVerifyResolution(core.verify)
     // 只记录方法和链，不把交易参数、签名内容或密钥写入日志。

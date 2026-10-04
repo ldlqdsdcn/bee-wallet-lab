@@ -12,7 +12,7 @@ A local-first multi-chain lab wallet. Keys never leave your machine.
 
 ## 中文
 
-Electron 桌面端。密钥只存在于主进程，渲染进程通过白名单 IPC 访问。第一版网络 / 代币目录打包在 `data/catalog/`，启动时写入本地 SQLite。链上请求由钱包进程直连节点，Infura 等密钥写在本机 `.env`。
+Electron 桌面端。密钥只存在于主进程，渲染进程通过白名单 IPC 访问。第一版网络 / 代币目录打包在 `data/catalog/`，启动时写入本地 SQLite。链上请求由钱包进程直连节点，Infura 等密钥保存在本机工作区配置中。
 
 完整功能说明见 [docs/功能清单.md](docs/功能清单.md)。发币步骤见 [docs/发币说明.md](docs/发币说明.md)。
 
@@ -63,11 +63,20 @@ npm run typecheck
 npm run dev
 ```
 
-在 `.env` 填写 `VITE_INFURA_API_KEY`（EVM）。可选 TronGrid key、Bitcoin Esplora、`VITE_ETHERSCAN_API_KEY`（EVM 交易记录；不填则走 Blockscout）。设置页可填目录站地址；添加网络时会请求 `GET /api/network/lookup`，没填或失败则用本地预设。改主进程或 `VITE_` 环境变量后需要重启 `npm run dev`。
+在 `.env` 填写 `VITE_INFURA_API_KEY`（EVM）。可选 TronGrid key、Bitcoin Esplora、`VITE_ETHERSCAN_API_KEY`（EVM 交易记录；不填则走 Blockscout）。设置页可填目录站地址；添加网络时会请求 `GET /api/network/lookup`，没填或失败则用本地预设。首次启动时会将这些配置保存到工作区的 `environment.json`；以后修改该文件并重启应用即可，工作区配置不会被其他电脑的 `.env` 覆盖。
 
 ### 数据位置
 
-SQLite 在 Electron `userData` 下的 `bee-wallet.db`。助记词、passphrase、导入私钥均为 AES-256-GCM 密文。忘记主密码只能用助记词重新导入。
+首次启动新版会将旧数据库（含 WAL 中已提交的数据）、钱包、全部数据库设置及 WalletConnect 会话迁入 Electron `userData/bee_wallet_workspace`，原文件保留用于恢复。本机开发版默认位置为 `~/.config/bee-wallet/bee_wallet_workspace`。当前工作区显示在窗口标题和「文件」菜单中，菜单可直接打开其文件夹。
+
+- **新建工作区**：选择一个尚不存在的文件夹，创建独立数据库和主密码；沿用当前 API 配置，钱包和应用设置从空白开始。
+- **打开工作区**：选择已有工作区文件夹，确认后自动重启并重新解锁。应用会记住上次使用的工作区。
+- **导出工作区**：解锁后生成 `.beeworkspace` 单文件备份，包含数据库全部内容、`environment.json` 和 `walletconnect.json`；SQLite 使用一致性快照，可直接导出正在使用的工作区。
+- **导入工作区**：在另一台电脑选择备份和新的目标文件夹，完成格式、完整性和数据库版本校验后恢复，再切换使用。现有目录不会被覆盖。
+
+工作区内的 `bee-wallet.db` 保存钱包、网络、代理、应用设置、地址簿及交易等记录；`environment.json` 保存 RPC/API/WalletConnect 运行配置。导入后仍使用原主密码，助记词、passphrase、导入私钥保持 AES-256-GCM 密文。API 密钥和会话信息也会随备份保存，应妥善保管备份。浏览器缓存和网站登录状态按工作区隔离，但不随备份导出。遗失主密码仍需使用助记词恢复。
+
+`userData/workspace-state.json` 只记录当前工作区的本机路径，不会导出。已选择的工作区不可用时会提示重新选择，不会自动创建空钱包替代它。
 
 ### 安全约束
 
@@ -75,7 +84,7 @@ SQLite 在 Electron `userData` 下的 `bee-wallet.db`。助记词、passphrase�
 - preload 只暴露 `shared/ipc.ts` 白名单通道
 - 导出助记词 / 揭示私钥需要再次输入主密码
 - 锁定后内存 KEK 清零
-- Infura / TronGrid 密钥只存在本机 `.env`，不进 git
+- Infura / TronGrid 密钥保存在本机工作区配置中；工作区和备份不进 git
 
 ### 下载安装
 
@@ -103,7 +112,7 @@ sudo apt install ./bee-wallet-*-linux-x64.deb
 
 ## English
 
-A desktop Electron Web3 lab wallet. Mnemonics and private keys stay in the main process; the renderer talks over a whitelisted IPC. The first catalog of networks and tokens ships in `data/catalog/` and is loaded into local SQLite. Chain calls go from the wallet process to your RPCs. API keys live in a local `.env`.
+A desktop Electron Web3 lab wallet. Mnemonics and private keys stay in the main process; the renderer talks over a whitelisted IPC. The first catalog of networks and tokens ships in `data/catalog/` and is loaded into local SQLite. Chain calls go from the wallet process to your RPCs. API keys live in local workspace configuration.
 
 Feature list (Chinese): [docs/功能清单.md](docs/功能清单.md). Token-issue steps: [docs/发币说明.md](docs/发币说明.md).
 
@@ -155,11 +164,15 @@ npm run typecheck
 npm run dev
 ```
 
-Set `VITE_INFURA_API_KEY` in `.env` for EVM. Optional: TronGrid key, Bitcoin Esplora URL, `VITE_ETHERSCAN_API_KEY` (EVM history; Blockscout is used if empty). Settings can hold a catalog URL; adding a network calls `GET /api/network/lookup` and falls back to local presets. Restart `npm run dev` after main-process or `VITE_` env changes.
+Set `VITE_INFURA_API_KEY` in `.env` for EVM. Optional: TronGrid key, Bitcoin Esplora URL, `VITE_ETHERSCAN_API_KEY` (EVM history; Blockscout is used if empty). Settings can hold a catalog URL; adding a network calls `GET /api/network/lookup` and falls back to local presets. On first launch these values are saved into the workspace’s `environment.json`. Edit that file and restart to change runtime configuration; another computer’s `.env` cannot override an imported workspace.
 
 ### Data location
 
-SQLite lives at `bee-wallet.db` under Electron `userData`. Mnemonics, passphrases, and imported keys are AES-256-GCM ciphertext. If you forget the master password, re-import from the mnemonic.
+On first launch, existing data is migrated into `userData/bee_wallet_workspace`, retaining the legacy files for recovery. The title and File menu show the active workspace.
+
+Use **File → New workspace** to create an independent vault in a new directory (with the current API configuration), **Open workspace** to switch to an existing directory, **Export workspace** to save a `.beeworkspace` backup, and **Import workspace** to restore a backup into a new directory on any computer. Switching restarts the app and requires unlocking again. Existing directories are never overwritten by import.
+
+Each workspace contains `bee-wallet.db` (all wallets, settings, networks, proxies, contacts and transaction records), `environment.json` (runtime API/RPC configuration), and `walletconnect.json` (sessions). Exports use a consistent SQLite snapshot including committed WAL data. Imported wallets retain their original master password and AES-256-GCM encryption. Backups also contain API keys and session data; keep them private. Browser caches and website logins are isolated per workspace and excluded from exports. The machine-local selection is stored in `userData/workspace-state.json`. Missing workspaces prompt for recovery instead of silently opening an empty vault.
 
 ### Security
 
@@ -167,7 +180,7 @@ SQLite lives at `bee-wallet.db` under Electron `userData`. Mnemonics, passphrase
 - Preload exposes only channels listed in `shared/ipc.ts`
 - Exporting a mnemonic or revealing a key requires the master password again
 - The in-memory KEK is wiped on lock
-- Infura / TronGrid keys stay in local `.env` and are not committed
+- Infura / TronGrid keys stay in local workspace configuration; workspaces and backups are not committed
 
 ### Downloads
 

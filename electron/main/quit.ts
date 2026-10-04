@@ -38,3 +38,10 @@ export async function requestQuit(): Promise<void> {
     asking = false
   }
 }
+
+/** Workspace switching uses the same shutdown path, without a second quit prompt. */
+export function restartApp(): void {
+  confirmed = true
+  app.relaunch()
+  app.quit()
+}
