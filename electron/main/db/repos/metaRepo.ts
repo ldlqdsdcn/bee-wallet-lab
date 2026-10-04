@@ -59,13 +59,14 @@ export function loadSettings(): AppSettings {
   const row = getDatabase()
     .prepare<[string], { value: string }>('SELECT value FROM settings WHERE key = ?')
     .get(SETTINGS_KEY)
-  if (!row) return { ...DEFAULT_SETTINGS }
+  if (!row) return { ...DEFAULT_SETTINGS, baseUrl: catalogEnvUrl() }
   try {
     const parsed = JSON.parse(row.value) as Partial<AppSettings> & { proxyUrl?: string }
-    const { proxyUrl: _legacy, ...rest } = parsed
-    return { ...DEFAULT_SETTINGS, ...rest, language: normalizeLocale(rest.language) }
+    const rest = { ...parsed }
+    delete rest.proxyUrl
+    return { ...DEFAULT_SETTINGS, baseUrl: catalogEnvUrl(), ...rest, language: normalizeLocale(rest.language) }
   } catch {
-    return { ...DEFAULT_SETTINGS }
+    return { ...DEFAULT_SETTINGS, baseUrl: catalogEnvUrl() }
   }
 }
 

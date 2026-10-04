@@ -1,7 +1,7 @@
 /**
  * 主进程启动引导：数据库 -> 迁移 -> 保险库 -> IPC。
  */
-import { app } from 'electron'
+import { getWorkspaceDirectory } from './workspace/state'
 import { runMigrations } from './db/migrations'
 import { closeDatabase, getDatabaseFilePath, openDatabase } from './db/sqlite'
 
@@ -18,7 +18,7 @@ let started = false
 export async function bootstrap(): Promise<void> {
   if (started) return
 
-  const db = openDatabase({ userDataDir: app.getPath('userData') })
+  const db = openDatabase({ userDataDir: getWorkspaceDirectory() })
   const { from, to } = runMigrations(db)
   if (from !== to) {
     console.log(`[db] migrated schema ${from} -> ${to} at ${getDatabaseFilePath()}`)

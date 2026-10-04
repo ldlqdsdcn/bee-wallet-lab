@@ -52,3 +52,9 @@ Desktop.ini
 build/*.icns
 build/*.ico
 build/icons/
+
+# Private workspace data and portable backups
+bee_wallet_workspace/
+*.beeworkspace
+*.db-wal
+*.db-shm

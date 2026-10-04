@@ -1,9 +1,4 @@
-function read(name: string): string {
-  const fromMeta = (import.meta.env as Record<string, unknown>)[name]
-  if (typeof fromMeta === 'string' && fromMeta.trim()) return fromMeta.trim()
-  const fromProc = process.env[name]
-  return typeof fromProc === 'string' ? fromProc.trim() : ''
-}
+import { readEnvironment as read } from '../workspace/environment'
 
 export function walletConnectProjectId(): string {
   return read('WALLET_CONNECT_PROJECT_ID') || read('VITE_WALLETCONNECT_PROJECT_ID')

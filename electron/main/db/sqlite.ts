@@ -16,7 +16,7 @@ let db: AppDatabase | null = null
 let dbFilePath = ''
 
 export interface OpenDatabaseOptions {
-  /** 数据目录，通常是 app.getPath('userData') */
+  /** 当前工作区的数据目录 */
   userDataDir: string
   fileName?: string
   verbose?: boolean

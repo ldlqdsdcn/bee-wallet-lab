@@ -9,6 +9,7 @@ vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/bee-wc-lifecycle-test' },
   BrowserWindow: { getAllWindows: () => [] },
 }))
+vi.mock('../electron/main/workspace/state', () => ({ getWorkspaceDirectory: () => '/tmp/bee-wc-lifecycle-test' }))
 vi.mock('../electron/main/walletconnect/installWs', () => ({ installWalletConnectWebSocket: vi.fn() }))
 vi.mock('../electron/main/walletconnect/verify', async (importOriginal) => ({
   ...await importOriginal<typeof import('../electron/main/walletconnect/verify')>(),
