@@ -82,6 +82,7 @@ export const IPC = {
   portfolioRefresh: 'portfolio:refresh',
   portfolioAccount: 'portfolio:account',
   portfolioTokenBalances: 'portfolio:tokenBalances',
+  portfolioAddresses: 'portfolio:addresses',
 
   /* 波场能量 / 带宽 */
   energyResources: 'energy:resources',

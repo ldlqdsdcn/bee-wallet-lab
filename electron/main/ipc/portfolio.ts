@@ -1,7 +1,7 @@
 import { IPC, IPC_EVENT } from '../../../shared/ipc'
-import type { AssetEntry, PortfolioSnapshot, TokenBalanceRow } from '../../../shared/types'
+import type { AddressPortfolio, AssetEntry, PortfolioSnapshot, TokenBalanceRow } from '../../../shared/types'
 import { handle, broadcast, requireString } from './registry'
-import { getAccountPortfolio, getPortfolioSnapshot, getTokenBalances } from '../portfolio/service'
+import { getAccountPortfolio, getAddressPortfolios, getPortfolioSnapshot, getTokenBalances } from '../portfolio/service'
 import { saveSettings } from '../db/repos/metaRepo'
 
 export function registerPortfolioIpc(): void {
@@ -28,5 +28,12 @@ export function registerPortfolioIpc(): void {
         tokenPk: requireString(arg?.tokenPk, 'tokenPk'),
         addresses: Array.isArray(arg?.addresses) ? arg.addresses.map(String) : [],
       }),
+  )
+
+  handle<{ networkPk: string; addresses: string[] }, AddressPortfolio[]>(IPC.portfolioAddresses, (arg) =>
+    getAddressPortfolios({
+      networkPk: requireString(arg?.networkPk, 'networkPk'),
+      addresses: Array.isArray(arg?.addresses) ? arg.addresses.map(String) : [],
+    }),
   )
 }

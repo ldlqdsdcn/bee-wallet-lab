@@ -6,6 +6,7 @@
 import { IPC, type IpcChannel, type IpcEventName } from '@shared/ipc'
 import type {
   AccountRecord,
+  AddressPortfolio,
   AddressBookEntry,
   AddressBookQuery,
   AddressBookUpsertInput,
@@ -223,6 +224,8 @@ export const portfolioApi = {
     call<AssetEntry[]>(IPC.portfolioAccount, { accountId, networkPk }),
   tokenBalances: (input: { networkPk: string; tokenPk: string; addresses: string[] }) =>
     call<TokenBalanceRow[]>(IPC.portfolioTokenBalances, input),
+  addresses: (networkPk: string, addresses: string[]) =>
+    call<AddressPortfolio[]>(IPC.portfolioAddresses, { networkPk, addresses }),
 }
 
 export const tokenApi = {
@@ -273,8 +276,8 @@ export const walletConnectApi = {
 }
 
 export const energyApi = {
-  resources: (accountId: string, networkPk: string) =>
-    call<EnergyResources>(IPC.energyResources, { accountId, networkPk }),
+  resources: (accountId: string, networkPk: string, address?: string) =>
+    call<EnergyResources>(IPC.energyResources, { accountId, networkPk, address }),
 }
 
 export const transferApi = {

@@ -479,6 +479,16 @@ export interface PortfolioSnapshot {
   priceError?: string | null
 }
 
+/** 某个分层地址在当前网络上的代币余额 + 法币合计 */
+export interface AddressPortfolio {
+  address: string
+  currencyCode: string
+  totalCurrency: string | null
+  entries: AssetEntry[]
+  offline: boolean
+  priceError?: string | null
+}
+
 /* -------------------------------- 转账签名 -------------------------------- */
 
 export type FeeLevel = 'low' | 'medium' | 'high' | 'custom'

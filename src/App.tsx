@@ -7,6 +7,7 @@ import AddressBookPage from './pages/AddressBookPage'
 import HomePage from './pages/HomePage'
 import WalletsPage from './pages/WalletsPage'
 import HdDerivePage from './pages/HdDerivePage'
+import HdAssetsPage, { HdAssetDetailPage } from './pages/HdAssetsPage'
 import TransferPage from './pages/TransferPage'
 import SwapPage from './pages/SwapPage'
 import BridgePage from './pages/BridgePage'
@@ -86,6 +87,8 @@ export default function App() {
             <Route index element={<HomePage />} />
             <Route path="wallets" element={<WalletsPage />} />
             <Route path="hd" element={<HdDerivePage />} />
+            <Route path="hd-assets/:keyId" element={<HdAssetDetailPage />} />
+            <Route path="hd-assets" element={<HdAssetsPage />} />
             <Route path="transfer" element={<TransferPage />} />
             <Route path="swap" element={<SwapPage />} />
             <Route path="bridge" element={<BridgePage />} />

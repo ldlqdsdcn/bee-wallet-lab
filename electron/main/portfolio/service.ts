@@ -2,12 +2,14 @@
  * 资产总览：按当前网络用本地 RPC 拉余额。法币折算不再打公司 tokenInfo。
  */
 import type {
+  AddressPortfolio,
   AssetEntry,
   BitcoinAddressType,
   NetworkRecord,
   PortfolioSnapshot,
   TokenRecord,
 } from '@shared/types'
+import { totalCurrencyOf } from './total'
 import { loadBalances, upsertBalance } from '../db/repos/balanceRepo'
 import { getNetwork, getToken, listTokens } from '../db/repos/catalogRepo'
 import { loadSettings } from '../db/repos/metaRepo'
@@ -278,16 +280,10 @@ export async function getPortfolioSnapshot(networkPk?: string): Promise<Portfoli
 
   const priceError = await applyFiatPrices(entries, tokens, network, settings.currencyCode)
 
-  const priced = entries.filter((item) => item.currencyBalance != null)
-  const total = priced.reduce((sum, item) => {
-    const value = Number(item.currencyBalance ?? 0)
-    return Number.isFinite(value) ? sum + value : sum
-  }, 0)
-
   return {
     networkPk: pk,
     currencyCode: settings.currencyCode,
-    totalCurrency: priced.length ? total.toFixed(2) : null,
+    totalCurrency: totalCurrencyOf(entries),
     entries,
     offline: entries.some((item) => item.stale),
     priceError,
@@ -342,6 +338,71 @@ export async function getTokenBalances(input: {
       return { address, balance: null }
     }
   })
+}
+
+const ADDRESS_MAX = 20
+
+async function loadAddressEntries(
+  network: NetworkRecord,
+  tokens: TokenRecord[],
+  address: string,
+  currencyCode: string,
+): Promise<AssetEntry[]> {
+  const tokenList = network.walletType === 'bitcoin' ? (nativeToken(tokens) ? [nativeToken(tokens)!] : []) : tokens
+  return mapPool(tokenList, BALANCE_CHUNK, (token) =>
+    loadEntry({
+      network,
+      token,
+      key: `${token.id}:hd:${address.toLowerCase()}`,
+      addressType: null,
+      address,
+      accountId: null,
+      displayName: token.name ?? token.symbol,
+      currencyCode,
+    }),
+  )
+}
+
+/** 分层地址在当前网络的代币余额，并折成当前法币合计。 */
+export async function getAddressPortfolios(input: {
+  networkPk: string
+  addresses: string[]
+}): Promise<AddressPortfolio[]> {
+  const settings = loadSettings()
+  const network = getNetwork(input.networkPk)
+  if (!network) throw notFound('网络不存在，请先同步目录')
+  const tokens = listTokens(network.id)
+  const seen = new Set<string>()
+  const addresses: string[] = []
+  for (const raw of input.addresses ?? []) {
+    const address = raw.trim()
+    if (!address) continue
+    const key = address.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    addresses.push(address)
+    if (addresses.length >= ADDRESS_MAX) break
+  }
+  const rows = await mapPool(addresses, 3, async (address) => ({
+    address,
+    entries: tokens.length === 0 ? [] : await loadAddressEntries(network, tokens, address, settings.currencyCode),
+  }))
+  const priceError = tokens.length
+    ? await applyFiatPrices(
+        rows.flatMap((row) => row.entries),
+        tokens,
+        network,
+        settings.currencyCode,
+      )
+    : null
+  return rows.map((row) => ({
+    address: row.address,
+    currencyCode: settings.currencyCode,
+    totalCurrency: totalCurrencyOf(row.entries),
+    entries: row.entries,
+    offline: row.entries.some((item) => item.stale),
+    priceError,
+  }))
 }
 
 /** 指定账户在某条网上的代币余额，供兑换 / 跨链桥展示。 */

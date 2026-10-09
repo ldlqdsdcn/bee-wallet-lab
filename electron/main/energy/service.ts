@@ -23,8 +23,9 @@ import {
   signTronTx,
 } from '../chain/tron'
 import { invalidArg, notFound } from '../ipc/registry'
+import { isTronAddress } from '../derive/tron'
 import { explorerUrlForNetwork, persistBroadcastedTx } from '../txLab/service'
-import { getAccount, withAccountPrivateKey } from '../wallets/service'
+import { getAccount, withAccountPrivateKey, withHdPrivateKey } from '../wallets/service'
 import { createEnergyOrder, estimateEnergyOrder, fetchEnergyOrderStatus } from './api'
 import {
   ENERGY_CATALOG_HINT,
@@ -68,25 +69,40 @@ function nativeTokenPk(networkPk: string): string | null {
   return native?.id ?? null
 }
 
-export async function loadEnergyResources(accountId: string, networkPk: string): Promise<EnergyResources> {
+export async function loadEnergyResourcesForAddress(
+  address: string,
+  networkPk: string,
+): Promise<EnergyResources> {
   const network = requireTronNetwork(networkPk)
-  const { record } = requireTronAccount(accountId)
+  if (!isTronAddress(address)) throw invalidArg('请填写有效的波场地址')
   const [account, resource] = await Promise.all([
-    getTronAccount(record.address, network.networkScope),
-    getTronAccountResource(record.address, network.networkScope).catch(() => ({})),
+    getTronAccount(address, network.networkScope),
+    getTronAccountResource(address, network.networkScope).catch(() => ({})),
   ])
-  return parseResourcePayload(resource, record.address, account.balanceSun)
+  return parseResourcePayload(resource, address, account.balanceSun)
 }
 
-export async function estimateEnergyRent(input: EnergyEstimateInput): Promise<EnergyQuote> {
+export async function loadEnergyResources(
+  accountId: string,
+  networkPk: string,
+  address?: string,
+): Promise<EnergyResources> {
+  const { record } = requireTronAccount(accountId)
+  return loadEnergyResourcesForAddress(address?.trim() || record.address, networkPk)
+}
+
+export async function estimateEnergyRent(
+  input: EnergyEstimateInput & { fromAddress?: string },
+): Promise<EnergyQuote> {
   requireCatalogUrl()
   const network = requireTronMainnet(input.networkPk)
   const { record } = requireTronAccount(input.accountId)
+  const payAccount = input.fromAddress?.trim() || record.address
   const quantity = parseEnergyQuantity(input.quantity)
   const duration = parseEnergyDuration(input.duration)
   const [quote, resources] = await Promise.all([
     estimateEnergyOrder(quantity, duration),
-    loadEnergyResources(record.id, network.id),
+    loadEnergyResourcesForAddress(payAccount, network.id),
   ])
   if (quote.quantity !== quantity) {
     throw invalidArg('询价返回的能量数量与请求不一致，请重新询价')
@@ -98,12 +114,14 @@ export async function estimateEnergyRent(input: EnergyEstimateInput): Promise<En
     priceSun: quote.priceSun.toString(),
     priceTrx: sunToTrx(quote.priceSun),
     targetAddress: quote.targetAddress,
-    payAccount: record.address,
+    payAccount,
     resources,
   }
 }
 
-async function payEnergyQuote(input: EnergyRentInput): Promise<{
+async function payEnergyQuote(
+  input: EnergyRentInput & { fromAddress?: string; hdKeyId?: string | null },
+): Promise<{
   network: NetworkRecord
   from: string
   payTxHash: string
@@ -111,6 +129,7 @@ async function payEnergyQuote(input: EnergyRentInput): Promise<{
 }> {
   const network = requireTronMainnet(input.networkPk)
   const { record, row } = requireTronAccount(input.accountId)
+  const from = input.fromAddress?.trim() || record.address
   const quantity = parseEnergyQuantity(input.quantity)
   const duration = parseEnergyDuration(input.duration)
   const priceSun = parsePriceSun(input.priceSun)
@@ -121,17 +140,20 @@ async function payEnergyQuote(input: EnergyRentInput): Promise<{
   if (quantity !== input.quantity) throw invalidArg('能量数量无效')
 
   const unsigned = await createTronNativeTx({
-    from: record.address,
+    from,
     to: targetAddress,
     amountSun: priceSun,
     networkScope: network.networkScope,
   })
-  const signed = withAccountPrivateKey(row, (privateKey) => signTronTx(unsigned, privateKey))
+  if (input.hdKeyId && !record.walletId) throw invalidArg('分层地址无法签名，请重新选择付款账户')
+  const signed = input.hdKeyId
+    ? withHdPrivateKey(record.walletId!, input.hdKeyId, (privateKey) => signTronTx(unsigned, privateKey))
+    : withAccountPrivateKey(row, (privateKey) => signTronTx(unsigned, privateKey))
   const payTxHash = await broadcastTronTx(signed, network.networkScope)
   persistBroadcastedTx({
     network,
     accountId: record.id,
-    from: record.address,
+    from,
     to: targetAddress,
     tokenPk: nativeTokenPk(network.id),
     symbol: 'TRX',
@@ -140,7 +162,7 @@ async function payEnergyQuote(input: EnergyRentInput): Promise<{
     txid: payTxHash,
     raw: JSON.stringify(signed),
   })
-  return { network, from: record.address, payTxHash, raw: JSON.stringify(signed) }
+  return { network, from, payTxHash, raw: JSON.stringify(signed) }
 }
 
 async function registerPaidOrder(input: {
@@ -181,7 +203,9 @@ async function registerPaidOrder(input: {
   }
 }
 
-export async function submitEnergyRent(input: EnergyRentInput): Promise<EnergyRentResult> {
+export async function submitEnergyRent(
+  input: EnergyRentInput & { fromAddress?: string; hdKeyId?: string | null },
+): Promise<EnergyRentResult> {
   requireCatalogUrl()
   const paid = await payEnergyQuote(input)
   return registerPaidOrder({
@@ -235,12 +259,15 @@ export async function rentEnergyAndWait(input: {
   networkPk: string
   quantity: number
   duration?: EnergyEstimateInput['duration']
+  fromAddress?: string
+  hdKeyId?: string | null
 }): Promise<EnergyRentResult> {
   const quote = await estimateEnergyRent({
     accountId: input.accountId,
     networkPk: input.networkPk,
     quantity: input.quantity,
     duration: input.duration ?? '1h',
+    fromAddress: input.fromAddress,
   })
   const result = await submitEnergyRent({
     accountId: input.accountId,
@@ -250,6 +277,8 @@ export async function rentEnergyAndWait(input: {
     duration: quote.duration,
     priceSun: quote.priceSun,
     targetAddress: quote.targetAddress,
+    fromAddress: input.fromAddress ?? quote.payAccount,
+    hdKeyId: input.hdKeyId,
   })
   if (!result.orderNo) throw invalidArg(result.description)
   await waitForEnergyOrder(result.orderNo)
