@@ -90,7 +90,12 @@ export default function TransferPage() {
   const openExplorer = useBrowserStore((s) => s.open)
   const balances = useAccountBalances(accountId, networkPk)
   const isTron = network?.walletType === 'tron'
-  const tronResources = useTronResources(accountId, networkPk, Boolean(isTron && accountId))
+  const tronResources = useTronResources(
+    accountId,
+    networkPk,
+    Boolean(isTron && accountId),
+    payer?.address,
+  )
   const resultRef = useRef<HTMLDivElement>(null)
   const [copied, setCopied] = useState(false)
   const copiedTimer = useRef(0)

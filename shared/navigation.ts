@@ -1,7 +1,7 @@
 import type { MessageKey } from './i18n'
 
 export interface NavigationGroup {
-  id: 'assets' | 'wallet' | 'apps' | 'developer' | 'network'
+  id: 'assets' | 'wallet' | 'hd' | 'apps' | 'developer' | 'network'
   key: MessageKey
   menuKey: MessageKey
   items: { to: string; key: MessageKey }[]
@@ -24,8 +24,14 @@ export const navigationGroups: NavigationGroup[] = [
     id: 'wallet', key: 'nav.group.wallet', menuKey: 'menu.wallet',
     items: [
       { to: '/wallets', key: 'nav.wallets' },
-      { to: '/hd', key: 'nav.hd' },
       { to: '/address-book', key: 'nav.addressBook' },
+    ],
+  },
+  {
+    id: 'hd', key: 'nav.group.hd', menuKey: 'menu.hd',
+    items: [
+      { to: '/hd-assets', key: 'nav.hdAssets' },
+      { to: '/hd', key: 'nav.hd' },
     ],
   },
   {

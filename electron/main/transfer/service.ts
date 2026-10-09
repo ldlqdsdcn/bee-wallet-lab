@@ -380,7 +380,7 @@ async function resolveTrc20Energy(input: {
   preferredMode?: TronEnergyFeeMode
 }): Promise<TransferEnergyInfo> {
   const [resources, estimated, energyFeeSun] = await Promise.all([
-    loadEnergyResources(input.accountId, input.network.id).catch(() => null),
+    loadEnergyResources(input.accountId, input.network.id, input.from).catch(() => null),
     estimateTrc20Energy({
       from: input.from,
       to: input.to,
@@ -638,6 +638,8 @@ export async function submitTransfer(draftId: string, energyFeeMode?: TronEnergy
       networkPk: draft.network.id,
       quantity,
       duration: '1h',
+      fromAddress: draft.fromAddress,
+      hdKeyId: draft.hdKeyId,
     })
   }
 

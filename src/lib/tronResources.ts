@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { EnergyResources } from '@shared/types'
 import { energyApi } from './bridge'
 
-export function useTronResources(accountId: string, networkPk: string, enabled: boolean) {
+export function useTronResources(accountId: string, networkPk: string, enabled: boolean, address?: string) {
   const [resources, setResources] = useState<EnergyResources | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -19,7 +19,7 @@ export function useTronResources(accountId: string, networkPk: string, enabled: 
     setLoading(true)
     setError(null)
     void energyApi
-      .resources(accountId, networkPk)
+      .resources(accountId, networkPk, address)
       .then((next) => {
         if (alive) setResources(next)
       })
@@ -35,7 +35,7 @@ export function useTronResources(accountId: string, networkPk: string, enabled: 
     return () => {
       alive = false
     }
-  }, [accountId, networkPk, enabled, tick])
+  }, [accountId, networkPk, address, enabled, tick])
 
   return {
     resources,
