@@ -10,6 +10,7 @@ import type {
   TokenRecord,
   WalletType,
 } from '../../../../shared/types'
+import { resolveNetworkBrowser } from '../../../../shared/explorers'
 import { getDatabase } from '../sqlite'
 
 interface NetworkRow {
@@ -85,7 +86,12 @@ export function toNetworkRecord(row: NetworkRow): NetworkRecord {
     coinId: row.coin_id,
     coinEasy: row.coin_easy,
     rpcUrl: row.rpc_url,
-    browser: row.browser,
+    browser: resolveNetworkBrowser({
+      browser: row.browser,
+      walletType: row.wallet_type as WalletType,
+      chainId: row.chain_id,
+      networkScope: row.network_scope as NetworkScope,
+    }) || row.browser,
     icon: row.icon,
     webAddress: row.web_address,
     supportGasTime: row.support_gas_time,

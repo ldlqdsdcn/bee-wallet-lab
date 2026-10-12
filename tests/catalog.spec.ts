@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { defaultExplorerOrigin, resolveNetworkBrowser } from '../shared/explorers'
 import { defaultNativeDecimals, defaultNativeSymbol, inferNetworkScope, inferWalletType, mapCurrency, mapNetwork, mapToken } from '../electron/main/catalog/map'
 import { bundleFromPreset, parseLookupPayload } from '../electron/main/catalog/lookup'
 import { matchNetworkPreset } from '../shared/networkPresets'
@@ -15,6 +16,19 @@ describe('目录映射', () => {
     expect(inferNetworkScope('Mainnet', '比特币主网络')).toBe('mainnet')
     expect(inferNetworkScope('11155111', 'Sepolia')).toBe('testnet')
     expect(inferNetworkScope('1029', 'Nile')).toBe('testnet')
+  })
+
+  it('常见链补默认区块链浏览器', () => {
+    expect(defaultExplorerOrigin({ walletType: 'web3', chainId: '1', networkScope: 'mainnet' })).toBe('https://etherscan.io')
+    expect(defaultExplorerOrigin({ walletType: 'tron', chainId: '195', networkScope: 'mainnet' })).toBe('https://tronscan.org')
+    expect(
+      resolveNetworkBrowser({
+        browser: null,
+        walletType: 'web3',
+        chainId: '42161',
+        networkScope: 'mainnet',
+      }),
+    ).toBe('https://arbiscan.io')
   })
 
   it('mapNetwork 产出本地 NetworkRecord', () => {
@@ -36,9 +50,22 @@ describe('目录映射', () => {
       walletType: 'web3',
       networkScope: 'mainnet',
       coinEasy: 'ETH',
+      browser: 'https://etherscan.io',
       source: 'builtin',
       syncedAt: 123,
     })
+    expect(
+      mapNetwork(
+        {
+          id: 'x',
+          networkName: 'Custom',
+          chainId: '999',
+          type: 'web3',
+          blockchainExplorer: 'https://scan.example.com',
+        },
+        1,
+      )?.browser,
+    ).toBe('https://scan.example.com')
   })
 
   it('mapToken 把 isToken=N 且合约为 0 视为原生币', () => {
@@ -92,6 +119,8 @@ describe('内置目录 JSON', () => {
     expect(catalog.networks.some((item) => item.walletType === 'tron')).toBe(true)
     expect(catalog.networks.some((item) => item.walletType === 'solana')).toBe(true)
     expect(catalog.tokens.some((item) => item.symbol === 'USDT' && item.isToken)).toBe(true)
+    expect(catalog.networks.some((item) => item.chainId === '1' && item.browser === 'https://etherscan.io')).toBe(true)
+    expect(catalog.networks.some((item) => item.chainId === '195' && item.browser === 'https://tronscan.org')).toBe(true)
     expect(catalog.networks.some((item) => item.chainId === '8453' && item.networkName === 'Base')).toBe(true)
     expect(catalog.networks.some((item) => item.chainId === '84532' && item.networkScope === 'testnet')).toBe(true)
     expect(catalog.tokens.some((item) => item.networkPk === '31' && item.symbol === 'ETH' && !item.isToken)).toBe(true)

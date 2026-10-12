@@ -83,13 +83,13 @@ function quoteNetworkFee(
   selected: BridgeQuote['options'][number] | undefined,
   energyFeeMode: TronEnergyFeeMode,
 ): string {
-  if (selected?.networkFeeText) return selected.networkFeeText
-  if (quote.networkFeeText) return quote.networkFeeText
   if (quote.energy?.needed) {
     const trx =
       energyFeeMode === 'rent' && quote.energy.rentTrx ? quote.energy.rentTrx : quote.energy.burnTrx || quote.energy.rentTrx
     return trx ? `${trx} TRX` : ''
   }
+  if (selected?.networkFeeText) return selected.networkFeeText
+  if (quote.networkFeeText) return quote.networkFeeText
   return ''
 }
 

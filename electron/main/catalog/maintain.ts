@@ -11,6 +11,7 @@ import type {
   TokenUpsertInput,
   WalletType,
 } from '@shared/types'
+import { defaultExplorerOrigin } from '@shared/explorers'
 import { defaultNativeDecimals, defaultNativeSymbol } from './map'
 import { lookupCatalogNetwork } from './lookup'
 import { newId } from '../security/crypto'
@@ -228,8 +229,13 @@ function toNetworkRecord(
     walletType,
     coinId: trimOrNull(input.coinId) ?? existing?.coinId ?? trimOrNull(catalog?.coinId) ?? bundle?.native?.tokenId ?? null,
     coinEasy,
-    rpcUrl: trimOrNull(input.rpcUrl) ?? trimOrNull(catalog?.rpcUrl) ?? null,
-    browser: trimOrNull(input.browser) ?? trimOrNull(catalog?.browser) ?? null,
+    rpcUrl: trimOrNull(input.rpcUrl) ?? existing?.rpcUrl ?? trimOrNull(catalog?.rpcUrl) ?? null,
+    browser:
+      trimOrNull(input.browser) ??
+      existing?.browser ??
+      trimOrNull(catalog?.browser) ??
+      defaultExplorerOrigin({ walletType, chainId, networkScope }) ??
+      null,
     icon: trimOrNull(input.icon) ?? existing?.icon ?? trimOrNull(catalog?.icon) ?? null,
     webAddress: existing?.webAddress ?? null,
     supportGasTime: existing?.supportGasTime ?? (walletType === 'web3' ? 'Y' : 'N'),

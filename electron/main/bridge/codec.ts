@@ -95,8 +95,13 @@ function tokenSymbolOf(value: unknown, fallback = ''): string {
 
 function tokenDecimalsOf(value: unknown, fallback: number): number {
   const record = asRecord(value)
-  const n = asNumber(record?.decimals, fallback)
-  return Number.isInteger(n) && n >= 0 && n <= 36 ? n : fallback
+  const n = asNumber(record?.decimals, Number.NaN)
+  if (Number.isInteger(n) && n >= 0 && n <= 36) return n
+  const symbol = tokenSymbolOf(value, asString(record?.symbol)).toUpperCase()
+  if (symbol === 'ETH' || symbol === 'BNB') return 18
+  if (symbol === 'TRX') return 6
+  if (symbol === 'BTC') return 8
+  return fallback
 }
 
 function formatBridgeFeeAmount(amount: string, symbol: string, decimals: number | null): string {

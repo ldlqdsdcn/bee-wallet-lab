@@ -98,6 +98,29 @@ describe('跨链桥 codec', () => {
     expect(formatGasLimitFee('250000', '20000000000', 'ETH', 18)).toBe('0.005 ETH')
     expect(
       parseBridgeNetworkFeeText(
+        { gasCosts: [{ amount: '1650670000000000', token: { symbol: 'ETH' } }] },
+        'TRX',
+        6,
+      ),
+    ).toBe('0.00165067 ETH')
+    expect(
+      parsePriceResponse(
+        {
+          originChainId: 195,
+          destinationChainId: 1,
+          quotes: [
+            {
+              sellAmount: '100000000',
+              buyAmount: '99837866',
+              gasCosts: [{ amount: '1650670000000000', token: { symbol: 'ETH' } }],
+            },
+          ],
+        },
+        { symbol: 'TRX', decimals: 6 },
+      ).options[0]?.networkFeeText,
+    ).toBe('0.00165067 ETH')
+    expect(
+      parseBridgeNetworkFeeText(
         { transaction: { gas: '250000', gasPrice: '20000000000' } },
         'ETH',
         18,
