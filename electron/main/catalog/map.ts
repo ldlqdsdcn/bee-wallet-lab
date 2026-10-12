@@ -9,6 +9,7 @@ import type {
   TokenRecord,
   WalletType,
 } from '@shared/types'
+import { defaultExplorerOrigin } from '@shared/explorers'
 import { asBooleanFlag, asNumber, asString } from '../backend/list'
 
 const WALLET_TYPES: WalletType[] = ['bitcoin', 'web3', 'tron', 'solana']
@@ -51,6 +52,15 @@ export function mapNetwork(dto: Record<string, unknown>, syncedAt: number): Netw
   if (!id) return null
   const chainId = asString(dto.chainId, asString(dto.chain_id, '0'))
   const chainName = asString(dto.chainName, asString(dto.chain_name))
+  const networkScope = inferNetworkScope(chainId, chainName)
+  const browser =
+    asString(dto.browser) ||
+    asString(dto.blockchainExplorer) ||
+    asString(dto.explorer) ||
+    asString(dto.blockExplorer) ||
+    asString(dto.explorerUrl) ||
+    defaultExplorerOrigin({ walletType, chainId, networkScope }) ||
+    null
   return {
     id,
     networkId: asString(dto.networkId, id),
@@ -62,12 +72,12 @@ export function mapNetwork(dto: Record<string, unknown>, syncedAt: number): Netw
     coinId: asString(dto.coinId) || null,
     coinEasy: asString(dto.coinEasy) || null,
     rpcUrl: asString(dto.rpcUrl) || null,
-    browser: asString(dto.browser) || null,
+    browser,
     icon: asString(dto.icon) || null,
     webAddress: asString(dto.webAddress) || null,
     supportGasTime: asString(dto.supportGasTime) || null,
     remark: asString(dto.remark) || null,
-    networkScope: inferNetworkScope(chainId, chainName),
+    networkScope,
     source: 'builtin',
     syncedAt,
   }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { NetworkRecord, NetworkScope, NetworkUpsertInput, WalletType } from '@shared/types'
+import { resolveNetworkBrowser } from '@shared/explorers'
 import { featuredNetworkPresets, matchNetworkPreset } from '@shared/networkPresets'
 import { IPC_EVENT } from '@shared/ipc'
 import { catalogApi, on } from '../lib/bridge'
@@ -49,7 +50,7 @@ function fromRecord(item: NetworkRecord): NetworkUpsertInput {
     chainId: item.chainId,
     chainName: item.chainName,
     rpcUrl: item.rpcUrl ?? '',
-    browser: item.browser ?? '',
+    browser: resolveNetworkBrowser(item),
     coinId: item.coinId ?? '',
     coinEasy: item.coinEasy ?? '',
     remark: item.remark ?? '',
@@ -147,6 +148,8 @@ export default function NetworksPage() {
       networkName: typedName || result.network?.networkName || prev.networkName,
       coinEasy: result.network?.coinEasy || result.native?.symbol || prev.coinEasy,
       coinId: result.network?.coinId || result.native?.tokenId || prev.coinId,
+      rpcUrl: prev.rpcUrl?.trim() || result.network?.rpcUrl || '',
+      browser: prev.browser?.trim() || result.network?.browser || '',
     }))
     const hot = result.tokens.map((item) => item.symbol).join(' / ')
     const origin = result.source === 'remote' ? t('networks.lookupRemote') : t('networks.lookupLocal')
@@ -309,7 +312,8 @@ export default function NetworksPage() {
           <Field
             label={t('networks.browser')}
             value={form.browser ?? ''}
-            placeholder="https://..."
+            placeholder="https://etherscan.io"
+            hint={t('networks.browserHint')}
             onChange={(e) => patch({ browser: e.target.value })}
           />
           <Field
@@ -358,10 +362,15 @@ export default function NetworksPage() {
                           <span className="text-[10px] text-ink-600">{t('common.testShort')}</span>
                         ) : null}
                       </div>
-                      <p className="mt-0.5 font-mono text-xs text-ink-500">
+                      <p className="mt-0.5 break-all font-mono text-xs text-ink-500">
                         {item.coinEasy || '—'} · chainId {item.chainId}
                         {item.rpcUrl ? ` · ${item.rpcUrl}` : ''}
                       </p>
+                      {resolveNetworkBrowser(item) ? (
+                        <p className="mt-0.5 break-all font-mono text-[11px] text-ink-500">
+                          {t('networks.browser')}: {resolveNetworkBrowser(item)}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="flex shrink-0 gap-2">
                       <Button variant="ghost" className="px-2 py-1 text-xs" disabled={busy} onClick={() => startEdit(item)}>

@@ -125,7 +125,7 @@ async function estimateOriginNetworkFee(input: {
           ? `${input.energy.burnTrx} TRX`
           : null
     }
-    return null
+    return '0 TRX'
   }
   if (input.family === 'utxo') {
     try {
@@ -406,12 +406,12 @@ export async function quoteBridge(input: BridgeQuoteInput): Promise<BridgeQuote>
       minBuyAmount: formatMinor(BigInt(item.minBuyAmount || item.buyAmount || '0'), ctx.buyToken.decimals),
       estimatedTimeSeconds: item.estimatedTimeSeconds,
       feeText: item.feeText,
-      networkFeeText: item.networkFeeText || estimated,
+      networkFeeText: ctx.origin.family === 'tvm' ? estimated : item.networkFeeText || estimated,
       allowanceNeeded: item.allowanceNeeded,
       allowanceTarget: item.allowanceTarget,
     })),
     energy,
-    networkFeeText: priced.options[0]?.networkFeeText || estimated,
+    networkFeeText: ctx.origin.family === 'tvm' ? estimated : priced.options[0]?.networkFeeText || estimated,
     warnings,
     provider: priced.provider || (involvesBtc(ctx.origin.chainId, ctx.dest.chainId) ? 'swapkit' : null),
     liquidityAvailable: priced.liquidityAvailable,
