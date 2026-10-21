@@ -41,7 +41,32 @@ function usdt(address: string): PresetToken {
   return { symbol: 'USDT', name: 'Tether USD', decimals: 6, contractAddress: address, tokenId: 'tether' }
 }
 
+function sol(address: string): PresetToken {
+  return { symbol: 'SOL', name: 'Solana', decimals: 9, contractAddress: address, tokenId: 'solana' }
+}
+
 export const NETWORK_PRESETS: NetworkPreset[] = [
+  {
+    aliases: ['eth', 'ethereum', 'ethereum mainnet'],
+    networkName: 'Ethereum',
+    walletType: 'web3',
+    networkScope: 'mainnet',
+    chainId: '1',
+    chainName: 'Mainnet',
+    coinEasy: 'ETH',
+    nativeName: 'Ether',
+    coinId: 'ethereum',
+    decimals: 18,
+    rpcUrl: 'https://ethereum.publicnode.com',
+    browser: 'https://etherscan.io',
+    featured: true,
+    supported: true,
+    tokens: [
+      usdc('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'),
+      usdt('0xdAC17F958D2ee523a2206206994597C13D831ec7'),
+      sol('0xD31a59c85aE9D8edEFeC411D448f90841571b89c'),
+    ],
+  },
   {
     aliases: ['base'],
     networkName: 'Base',
@@ -78,6 +103,26 @@ export const NETWORK_PRESETS: NetworkPreset[] = [
     featured: true,
     supported: true,
     tokens: [usdc('0x036CbD53842c5426634e7929541eC2318f3dCF7e')],
+  },
+  {
+    aliases: ['arb', 'arbitrum', 'arbitrum one'],
+    networkName: 'Arbitrum One',
+    walletType: 'web3',
+    networkScope: 'mainnet',
+    chainId: '42161',
+    chainName: 'Mainnet',
+    coinEasy: 'ETH',
+    nativeName: 'Ether',
+    coinId: 'ethereum',
+    decimals: 18,
+    rpcUrl: 'https://arb1.arbitrum.io/rpc',
+    browser: 'https://arbiscan.io',
+    featured: true,
+    supported: true,
+    tokens: [
+      usdc('0xaf88d065e77c8cC2239327C5EDb3A432268e5831'),
+      usdt('0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9'),
+    ],
   },
   {
     aliases: ['xoc', 'xone', 'xone chain'],

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { defaultExplorerOrigin, resolveNetworkBrowser } from '../shared/explorers'
 import { defaultNativeDecimals, defaultNativeSymbol, inferNetworkScope, inferWalletType, mapCurrency, mapNetwork, mapToken } from '../electron/main/catalog/map'
+import { loadBuiltinCatalog } from '../electron/main/catalog/builtin'
 import { bundleFromPreset, parseLookupPayload } from '../electron/main/catalog/lookup'
 import { matchNetworkPreset } from '../shared/networkPresets'
 
@@ -146,6 +147,10 @@ describe('自定义网络原生币默认值', () => {
     expect(matchNetworkPreset('xoc')).toMatchObject({ chainId: '3721', coinEasy: 'XOC', supported: true })
     expect(matchNetworkPreset('xone')).toMatchObject({ coinEasy: 'XOC' })
     expect(matchNetworkPreset('sui')).toMatchObject({ supported: false, coinEasy: 'SUI' })
+    expect(matchNetworkPreset('ethereum')).toMatchObject({ chainId: '1', coinEasy: 'ETH', supported: true })
+    expect(matchNetworkPreset('1')).toMatchObject({ networkName: 'Ethereum' })
+    expect(matchNetworkPreset('arbitrum')).toMatchObject({ chainId: '42161', coinEasy: 'ETH', supported: true })
+    expect(matchNetworkPreset('42161')).toMatchObject({ networkName: 'Arbitrum One' })
   })
 
   it('本地 Base 预设带主币 ETH 和热门 USDC/USDT', () => {
@@ -154,6 +159,86 @@ describe('自定义网络原生币默认值', () => {
     const bundle = bundleFromPreset(preset!)
     expect(bundle.native?.symbol).toBe('ETH')
     expect(bundle.tokens.map((item) => item.symbol)).toEqual(['USDC', 'USDT'])
+  })
+
+  it('本地 Arbitrum One 预设带官方 USDC/USDT', () => {
+    const preset = matchNetworkPreset('arbitrum one')
+    expect(preset).toBeTruthy()
+    const bundle = bundleFromPreset(preset!)
+    expect(bundle.native?.symbol).toBe('ETH')
+    expect(bundle.tokens).toEqual([
+      expect.objectContaining({
+        symbol: 'USDC',
+        contractAddress: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+      }),
+      expect.objectContaining({
+        symbol: 'USDT',
+        contractAddress: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9',
+      }),
+    ])
+  })
+
+  it('本地 Ethereum 预设带官方 USDC/USDT/SOL', () => {
+    const preset = matchNetworkPreset('ethereum')
+    expect(preset).toBeTruthy()
+    const bundle = bundleFromPreset(preset!)
+    expect(bundle.native?.symbol).toBe('ETH')
+    expect(bundle.tokens).toEqual([
+      expect.objectContaining({
+        symbol: 'USDC',
+        contractAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+      }),
+      expect.objectContaining({
+        symbol: 'USDT',
+        contractAddress: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+      }),
+      expect.objectContaining({
+        symbol: 'SOL',
+        contractAddress: '0xD31a59c85aE9D8edEFeC411D448f90841571b89c',
+      }),
+    ])
+  })
+
+  it('内置目录给 Ethereum 带上 USDC/SOL，兑换和跨链桥都能选', () => {
+    const ethTokens = loadBuiltinCatalog(1).tokens.filter((item) => item.networkPk === '5')
+    expect(ethTokens).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          symbol: 'USDC',
+          isToken: true,
+          contractAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+        }),
+        expect.objectContaining({
+          symbol: 'USDT',
+          isToken: true,
+          contractAddress: '0xdac17f958d2ee523a2206206994597c13d831ec7',
+        }),
+        expect.objectContaining({
+          symbol: 'SOL',
+          isToken: true,
+          decimals: 9,
+          contractAddress: '0xD31a59c85aE9D8edEFeC411D448f90841571b89c',
+        }),
+      ]),
+    )
+  })
+
+  it('内置目录给 Arbitrum One 带上 USDC/USDT', () => {
+    const arbTokens = loadBuiltinCatalog(1).tokens.filter((item) => item.networkPk === '7')
+    expect(arbTokens).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          symbol: 'USDC',
+          isToken: true,
+          contractAddress: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+        }),
+        expect.objectContaining({
+          symbol: 'USDT',
+          isToken: true,
+          contractAddress: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9',
+        }),
+      ]),
+    )
   })
 
   it('解析目录站 lookup 响应', () => {

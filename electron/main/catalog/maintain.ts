@@ -12,6 +12,7 @@ import type {
   WalletType,
 } from '@shared/types'
 import { defaultExplorerOrigin } from '@shared/explorers'
+import { presetByChainId } from '@shared/networkPresets'
 import { defaultNativeDecimals, defaultNativeSymbol } from './map'
 import { lookupCatalogNetwork } from './lookup'
 import { newId } from '../security/crypto'
@@ -266,6 +267,24 @@ export async function upsertCatalogNetwork(input: NetworkUpsertInput): Promise<N
 
 export function ensureMissingNativeTokens(): void {
   for (const network of listNetworks()) seedNativeToken(network)
+}
+
+/** 已有网络补上预设里的热门币，例如 Arbitrum One 的 USDC / USDT。 */
+export function ensureMissingPresetTokens(): void {
+  for (const network of listNetworks()) {
+    const preset = presetByChainId(network.walletType, network.chainId)
+    for (const token of preset?.tokens ?? []) {
+      seedCatalogToken(network, {
+        name: token.name,
+        symbol: token.symbol,
+        decimals: token.decimals,
+        contractAddress: token.contractAddress,
+        tokenId: token.tokenId ?? null,
+        tokenIcon: null,
+        isToken: true,
+      })
+    }
+  }
 }
 
 export function removeCatalogNetwork(id: string): true {
