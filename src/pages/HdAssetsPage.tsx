@@ -4,6 +4,7 @@ import type { AddressPortfolio, BitcoinAddressType, HdKeyRecord, NetworkRecord }
 import { accountApi, portfolioApi } from '../lib/bridge'
 import { Alert, Button, Card } from '../components/ui'
 import { AccountAddress } from '../components/AccountAddress'
+import { NetworkIcon } from '../components/NetworkSelect'
 import { addressExplorerUrl } from '../lib/explorer'
 import { bitcoinAddressLabel, formatAmount } from '../lib/format'
 import { useT } from '../i18n'
@@ -356,13 +357,7 @@ export function HdAssetDetailPage() {
           <ul className="divide-y divide-ink-700">
             {portfolio.entries.map((entry) => (
               <li key={entry.key} className="flex items-center gap-3 py-3">
-                {entry.iconUrl ? (
-                  <img src={entry.iconUrl} alt="" className="h-8 w-8 rounded-full" />
-                ) : (
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-ink-700 text-xs text-honey-400">
-                    {entry.symbol.slice(0, 3)}
-                  </span>
-                )}
+                <NetworkIcon src={entry.iconUrl} name={entry.symbol} size={32} />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-ink-200">{entry.name}</p>
                   {entry.error ? <p className="truncate text-[11px] text-ink-500">{entry.error}</p> : null}

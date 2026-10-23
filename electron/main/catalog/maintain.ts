@@ -237,7 +237,9 @@ function toNetworkRecord(
       trimOrNull(catalog?.browser) ??
       defaultExplorerOrigin({ walletType, chainId, networkScope }) ??
       null,
-    icon: trimOrNull(input.icon) ?? existing?.icon ?? trimOrNull(catalog?.icon) ?? null,
+    icon:
+      trimOrNull(input.icon) ??
+      (existing && input.icon !== undefined ? null : existing?.icon ?? trimOrNull(catalog?.icon) ?? null),
     webAddress: existing?.webAddress ?? null,
     supportGasTime: existing?.supportGasTime ?? (walletType === 'web3' ? 'Y' : 'N'),
     remark: trimOrNull(input.remark),
@@ -337,7 +339,7 @@ export function upsertCatalogToken(input: TokenUpsertInput): TokenRecord {
     isToken,
     gasLimit: typeof input.gasLimit === 'number' ? input.gasLimit : (existing?.gasLimit ?? null),
     networkPk: network.id,
-    tokenIcon: trimOrNull(input.tokenIcon) ?? existing?.tokenIcon ?? null,
+    tokenIcon: input.tokenIcon !== undefined ? trimOrNull(input.tokenIcon) : (existing?.tokenIcon ?? null),
     blockchainExplorer: existing?.blockchainExplorer ?? network.browser,
     isDefaultSelected: input.isDefaultSelected ?? existing?.isDefaultSelected ?? false,
     source: existing?.source ?? 'custom',

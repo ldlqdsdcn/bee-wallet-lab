@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { NetworkRecord, TokenRecord, TokenUpsertInput, WalletType } from '@shared/types'
 import { IPC_EVENT } from '@shared/ipc'
 import { catalogApi, on, settingsApi } from '../lib/bridge'
-import { Alert, Button, Card, Field } from '../components/ui'
+import { Alert, Button, Card, Field, Modal } from '../components/ui'
 import { NetworkIcon } from '../components/NetworkSelect'
 import { useT } from '../i18n'
 
@@ -21,6 +21,7 @@ type TokenForm = {
   decimals: string
   contractAddress: string
   tokenId: string
+  tokenIcon: string
 }
 
 const EMPTY: TokenForm = {
@@ -29,6 +30,7 @@ const EMPTY: TokenForm = {
   decimals: '',
   contractAddress: '',
   tokenId: '',
+  tokenIcon: '',
 }
 
 function networkLabel(network: NetworkRecord): string {
@@ -50,6 +52,7 @@ function fromRecord(item: TokenRecord): TokenForm {
     decimals: String(item.decimals),
     contractAddress: item.contractAddress ?? '',
     tokenId: item.tokenId ?? '',
+    tokenIcon: item.tokenIcon ?? '',
   }
 }
 
@@ -63,6 +66,7 @@ export default function TokensPage() {
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [restoreOpen, setRestoreOpen] = useState(false)
 
   const current = networks.find((item) => item.id === networkPk)
   const grouped = useMemo(() => {
@@ -171,6 +175,7 @@ export default function TokensPage() {
         decimals,
         contractAddress: form.contractAddress,
         tokenId: form.tokenId,
+        tokenIcon: form.tokenIcon,
       }
       await catalogApi.upsertToken(input)
       setMessage(editingId ? t('tokens.saved') : t('tokens.added'))
@@ -184,13 +189,15 @@ export default function TokensPage() {
     setMessage(null)
   }
 
-  const restore = () =>
-    run(async () => {
+  const restore = () => {
+    setRestoreOpen(false)
+    void run(async () => {
       const result = await catalogApi.sync(true)
       setMessage(t('tokens.restored', { networks: result.networks, tokens: result.tokens }))
       const list = await catalogApi.networks()
       setNetworks(list)
     })
+  }
 
   return (
     <div className="mx-auto flex max-w-6xl gap-5">
@@ -242,13 +249,27 @@ export default function TokensPage() {
               {t('tokens.hint')}
             </p>
           </div>
-          <Button variant="ghost" disabled={busy} onClick={() => void restore()}>
+          <Button variant="ghost" disabled={busy} onClick={() => setRestoreOpen(true)}>
             {t('common.restore')}
           </Button>
         </div>
 
         {error ? <Alert>{error}</Alert> : null}
         {message ? <p className="text-xs text-honey-400">{message}</p> : null}
+
+        {restoreOpen ? (
+          <Modal title={t('tokens.restoreTitle')} onClose={() => !busy && setRestoreOpen(false)}>
+            <p className="mt-2 text-sm text-ink-400">{t('tokens.restoreBody')}</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="ghost" disabled={busy} onClick={() => setRestoreOpen(false)}>
+                {t('common.cancel')}
+              </Button>
+              <Button disabled={busy} onClick={restore}>
+                {t('common.restore')}
+              </Button>
+            </div>
+          </Modal>
+        ) : null}
 
         <Card title={editingId ? t('tokens.edit') : t('tokens.add')}>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -287,6 +308,32 @@ export default function TokensPage() {
                 onChange={(e) => patch({ contractAddress: e.target.value })}
               />
             </div>
+            <div className="sm:col-span-2 flex items-start gap-3">
+              <div className="mt-6">
+                <NetworkIcon src={form.tokenIcon} name={form.symbol || form.name} size={36} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <Field
+                  label={t('common.icon')}
+                  value={form.tokenIcon}
+                  placeholder="https:// 或 icon:…"
+                  hint={t('common.iconHint')}
+                  onChange={(e) => patch({ tokenIcon: e.target.value })}
+                />
+                <Button
+                  variant="ghost"
+                  className="mt-2 px-2 py-1 text-xs"
+                  disabled={busy}
+                  onClick={() =>
+                    void catalogApi.uploadIcon().then((ref) => {
+                      if (ref) patch({ tokenIcon: ref })
+                    })
+                  }
+                >
+                  {t('common.iconUpload')}
+                </Button>
+              </div>
+            </div>
           </div>
           <div className="mt-4 flex gap-2">
             <Button disabled={busy || !networkPk || !form.symbol.trim()} onClick={() => void save()}>
@@ -307,6 +354,7 @@ export default function TokensPage() {
             <ul className="divide-y divide-ink-700">
               {tokens.map((item) => (
                 <li key={item.id} className="flex items-start gap-4 py-3">
+                  <NetworkIcon src={item.tokenIcon} name={item.symbol} size={28} />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="truncate text-sm font-medium text-ink-200">

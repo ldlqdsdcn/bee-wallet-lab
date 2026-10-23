@@ -860,6 +860,9 @@ export const en = {
   'common.latency': 'Latency {value}',
   'common.optionalMemo': 'Note (optional)',
   'common.testShort': 'Test',
+  'common.icon': 'Icon',
+  'common.iconHint': 'http(s) URLs are cached locally. You can also upload a file. Empty shows the first letter.',
+  'common.iconUpload': 'Upload image',
 
   'nodes.title': 'Nodes',
   'tokens.title': 'Tokens',
@@ -943,6 +946,8 @@ export const en = {
   'tokens.saved': 'Token saved',
   'tokens.added': 'Token added',
   'tokens.restored': 'Restored built-in catalog: {networks} networks / {tokens} tokens',
+  'tokens.restoreTitle': 'Restore built-in tokens',
+  'tokens.restoreBody': 'This overwrites built-in tokens from the packaged catalog. Tokens you added stay. Restore?',
   'tokens.deleteConfirm': 'Delete {symbol}?',
   'tokens.hintNative': 'Empty means the native coin',
   'tokens.hintBtc': 'Bitcoin only supports the native coin. Leave this empty.',

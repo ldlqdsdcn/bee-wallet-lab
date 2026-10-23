@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { coinGeckoId, fiatValue } from '../electron/main/price/coingecko'
 import { gatePair, quoteFromUsdt } from '../electron/main/price/fallback'
+import { pickMarketPrice } from '../electron/main/price/pick'
 import type { NetworkRecord, TokenRecord } from '../shared/types'
 
 function token(partial: Partial<TokenRecord> & Pick<TokenRecord, 'symbol'>): TokenRecord {
@@ -76,5 +77,19 @@ describe('备用行情', () => {
     expect(quoteFromUsdt(2500, 'usd', {})).toBe(2500)
     expect(quoteFromUsdt(2500, 'CNY', { cny: 7.2 })).toBe(18000)
     expect(quoteFromUsdt(2500, 'cny', {})).toBeNull()
+  })
+})
+
+describe('行情交叉校验', () => {
+  it('USDC / USDT 单价偏离 1 美元时按 1 美元计', () => {
+    expect(pickMarketPrice('usd-coin', 'usd', 0.1001, 0.1)).toBe(1)
+    expect(pickMarketPrice('usd-coin', 'USD', 0.999, 1.001)).toBe(0.999)
+    expect(pickMarketPrice('tether', 'usd', undefined, undefined)).toBe(1)
+  })
+
+  it('ETH 单价差出 10 倍时用 Gate 现货', () => {
+    expect(pickMarketPrice('ethereum', 'usd', 24643, 2445)).toBe(2445)
+    expect(pickMarketPrice('ethereum', 'usd', 2445, 2460)).toBe(2445)
+    expect(pickMarketPrice('solana', 'usd', 106.68, 105.9)).toBe(106.68)
   })
 })

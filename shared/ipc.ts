@@ -76,6 +76,8 @@ export const IPC = {
   catalogTokenUpsert: 'catalog:token:upsert',
   catalogTokenRemove: 'catalog:token:remove',
   catalogLookup: 'catalog:lookup',
+  catalogIconResolve: 'catalog:icon:resolve',
+  catalogIconUpload: 'catalog:icon:upload',
 
   /* 资产 */
   portfolioSnapshot: 'portfolio:snapshot',

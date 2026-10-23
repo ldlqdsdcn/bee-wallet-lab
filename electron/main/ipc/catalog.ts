@@ -17,6 +17,8 @@ import {
   syncCatalog,
 } from '../catalog/sync'
 import { lookupCatalogNetwork } from '../catalog/lookup'
+import { ensureCatalogIcon, importIconFile } from '../catalog/icons'
+import { dialog } from 'electron'
 import { refreshAppMenu } from '../appMenu'
 import {
   removeCatalogNetwork,
@@ -66,4 +68,19 @@ export function registerCatalogIpc(): void {
   handle<CatalogLookupQuery, CatalogLookupResult>(IPC.catalogLookup, (arg) =>
     lookupCatalogNetwork(requireObject<CatalogLookupQuery>(arg ?? {})),
   )
+
+  handle<{ src?: string }, string | null>(IPC.catalogIconResolve, (arg) =>
+    ensureCatalogIcon(typeof arg?.src === 'string' ? arg.src : ''),
+  )
+
+  handle<void, string | null>(IPC.catalogIconUpload, async () => {
+    const picked = await dialog.showOpenDialog({
+      title: '选择图标',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico'] }],
+    })
+    const file = picked.filePaths[0]
+    if (picked.canceled || !file) return null
+    return importIconFile(file)
+  })
 }

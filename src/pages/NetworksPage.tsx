@@ -27,6 +27,7 @@ const EMPTY: NetworkUpsertInput = {
   browser: '',
   coinId: '',
   coinEasy: '',
+  icon: '',
   remark: '',
 }
 
@@ -53,6 +54,7 @@ function fromRecord(item: NetworkRecord): NetworkUpsertInput {
     browser: resolveNetworkBrowser(item),
     coinId: item.coinId ?? '',
     coinEasy: item.coinEasy ?? '',
+    icon: item.icon ?? '',
     remark: item.remark ?? '',
   }
 }
@@ -150,6 +152,7 @@ export default function NetworksPage() {
       coinId: result.network?.coinId || result.native?.tokenId || prev.coinId,
       rpcUrl: prev.rpcUrl?.trim() || result.network?.rpcUrl || '',
       browser: prev.browser?.trim() || result.network?.browser || '',
+      icon: prev.icon?.trim() || result.network?.icon || '',
     }))
     const hot = result.tokens.map((item) => item.symbol).join(' / ')
     const origin = result.source === 'remote' ? t('networks.lookupRemote') : t('networks.lookupLocal')
@@ -328,6 +331,32 @@ export default function NetworksPage() {
             value={form.remark ?? ''}
             onChange={(e) => patch({ remark: e.target.value })}
           />
+          <div className="sm:col-span-2 flex items-start gap-3">
+            <div className="mt-6">
+              <NetworkIcon src={form.icon} name={form.networkName} size={36} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <Field
+                label={t('common.icon')}
+                value={form.icon ?? ''}
+                placeholder="https:// 或 icon:…"
+                hint={t('common.iconHint')}
+                onChange={(e) => patch({ icon: e.target.value })}
+              />
+              <Button
+                variant="ghost"
+                className="mt-2 px-2 py-1 text-xs"
+                disabled={busy}
+                onClick={() =>
+                  void catalogApi.uploadIcon().then((ref) => {
+                    if (ref) patch({ icon: ref })
+                  })
+                }
+              >
+                {t('common.iconUpload')}
+              </Button>
+            </div>
+          </div>
         </div>
         <div className="mt-4 flex gap-2">
           <Button disabled={busy || !form.networkName.trim() || !form.chainId.trim()} onClick={() => void save()}>

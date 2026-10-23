@@ -14,11 +14,12 @@ import {
   installWalletConnectProtocol,
 } from './main/walletconnect/browser'
 import { acceptWalletConnectDeepLink } from './main/walletconnect/service'
+import { installCatalogIconProtocol } from './main/catalog/iconProtocol'
 
 protocol.registerSchemesAsPrivileged(
-  ['wc', 'walletconnect', 'bee-wallet'].map((scheme) => ({
+  ['wc', 'walletconnect', 'bee-wallet', 'bee-icon'].map((scheme) => ({
     scheme,
-    privileges: { secure: true, supportFetchAPI: true, corsEnabled: true },
+    privileges: { secure: true, supportFetchAPI: true, corsEnabled: true, stream: true },
   })),
 )
 
@@ -228,7 +229,7 @@ function applyContentSecurityPolicy() {
         ...details.responseHeaders,
         'Content-Security-Policy': [
           "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-            "img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; " +
+            "img-src 'self' data: https: bee-icon:; font-src 'self' data:; connect-src 'self'; " +
             "object-src 'none'; base-uri 'none'; frame-src 'none'",
         ],
       },
@@ -260,6 +261,7 @@ app.whenReady().then(async () => {
   app.setAsDefaultProtocolClient('bee-wallet')
   installWalletConnectProtocol()
   await bootstrap()
+  installCatalogIconProtocol()
   applyContentSecurityPolicy()
   hardenWebviewGuests()
   ensureLinuxDevDesktopEntry()

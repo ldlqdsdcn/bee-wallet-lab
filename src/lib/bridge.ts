@@ -215,6 +215,8 @@ export const catalogApi = {
   removeNetwork: (id: string) => call<true>(IPC.catalogNetworkRemove, { id }),
   upsertToken: (input: TokenUpsertInput) => call<TokenRecord>(IPC.catalogTokenUpsert, input),
   removeToken: (id: string) => call<true>(IPC.catalogTokenRemove, { id }),
+  resolveIcon: (src: string) => call<string | null>(IPC.catalogIconResolve, { src }),
+  uploadIcon: () => call<string | null>(IPC.catalogIconUpload),
 }
 
 export const portfolioApi = {

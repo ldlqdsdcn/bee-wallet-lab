@@ -39,5 +39,6 @@ describe('分层钱包资产', () => {
     expect(totalCurrencyOf([])).toBeNull()
     expect(totalCurrencyOf([entry(null), entry('1.20'), entry('3.80')])).toBe('5.00')
     expect(totalCurrencyOf([entry('not-a-number')])).toBeNull()
+    expect(totalCurrencyOf([entry('26551.74'), entry('32.47'), entry('3500.35'), entry('533.40')])).toBe('30617.96')
   })
 })

@@ -1,12 +1,40 @@
 import { useEffect, useRef, useState } from 'react'
 import type { NetworkRecord } from '@shared/types'
+import { catalogApi } from '../lib/bridge'
 import { networkLabel } from '../lib/format'
 import { useT } from '../i18n'
 
 export function NetworkIcon({ src, name, size = 20 }: { src?: string | null; name?: string | null; size?: number }) {
   const [failed, setFailed] = useState(false)
+  const [resolved, setResolved] = useState<string | null>(null)
+  useEffect(() => {
+    setFailed(false)
+    const raw = src?.trim() ?? ''
+    if (!raw) {
+      setResolved(null)
+      return
+    }
+    if (raw.startsWith('bee-icon:') || raw.startsWith('data:')) {
+      setResolved(raw)
+      return
+    }
+    let alive = true
+    setResolved(raw.startsWith('http://') || raw.startsWith('https://') ? raw : null)
+    void catalogApi
+      .resolveIcon(raw)
+      .then((next) => {
+        if (alive && next) {
+          setResolved(next)
+          setFailed(false)
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [src])
   const letter = (name ?? '?').trim().slice(0, 1).toUpperCase()
-  if (!src || failed) {
+  if (!resolved || failed) {
     return (
       <span
         className="inline-flex shrink-0 items-center justify-center rounded-full bg-ink-700 text-[10px] font-semibold text-honey-400"
@@ -18,7 +46,7 @@ export function NetworkIcon({ src, name, size = 20 }: { src?: string | null; nam
   }
   return (
     <img
-      src={src}
+      src={resolved}
       alt=""
       className="shrink-0 rounded-full bg-ink-700 object-cover"
       style={{ width: size, height: size }}

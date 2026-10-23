@@ -13,6 +13,10 @@ export const DB_FILE = 'bee-wallet.db'
 export const MANIFEST_FILE = 'workspace.json'
 export const ENV_FILE = 'environment.json'
 const FILES = [MANIFEST_FILE, DB_FILE, ENV_FILE, 'walletconnect.json'] as const
+const ICONS_DIR = 'icons'
+const ICON_ENTRY_RE = /^icons\/(index\.json|[a-f0-9]{16,64}\.(png|jpe?g|gif|webp|svg|ico))$/i
+const MAX_ICON_ENTRIES = 2_000
+const MAX_ICON_FILE_BYTES = 1_500_000
 const MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 
 export interface WorkspaceManifest {
@@ -125,6 +129,7 @@ export function createWorkspace(destination: string, environment: Record<string,
     if (legacyDir && fs.existsSync(path.join(legacyDir, 'walletconnect.json'))) {
       fs.writeFileSync(path.join(stage, 'walletconnect.json'), readFile(legacyDir, 'walletconnect.json'), { mode: 0o600 })
     }
+    copyIconFiles(legacyDir, stage)
   })
 }
 
@@ -147,6 +152,7 @@ export function exportWorkspace(source: string, destination: string): void {
       const data = readFile(name === DB_FILE ? stage : source, name)
       return { name, data: data.toString('base64'), sha256: checksum(data) }
     })
+    entries.push(...listIconEntries(source))
     const payload = Buffer.from(JSON.stringify({ format: 'bee-wallet-workspace-archive', version: 1, entries }))
     if (payload.length > MAX_ARCHIVE_BYTES) throw new Error('Workspace archive exceeds 512 MiB')
     fs.writeFileSync(temp, gzipSync(payload), { mode: 0o600, flag: 'wx' })
@@ -161,14 +167,19 @@ export function importWorkspace(archiveFile: string, destination: string): strin
   if (fs.statSync(archiveFile).size > MAX_ARCHIVE_BYTES) throw new Error('Workspace archive exceeds 512 MiB')
   const archive = JSON.parse(gunzipSync(fs.readFileSync(archiveFile), { maxOutputLength: MAX_ARCHIVE_BYTES }).toString())
   if (archive?.format !== 'bee-wallet-workspace-archive' || archive.version !== 1 || !Array.isArray(archive.entries) ||
-      archive.entries.length < 3 || archive.entries.length > FILES.length) throw new Error('Invalid workspace archive')
+      archive.entries.length < 3 || archive.entries.length > FILES.length + MAX_ICON_ENTRIES) {
+    throw new Error('Invalid workspace archive')
+  }
   const entries: ArchiveEntry[] = archive.entries
   const seen = new Set<string>()
   const decoded = entries.map((entry) => {
-    if (!entry || !(FILES as readonly string[]).includes(entry.name) || seen.has(entry.name) ||
+    if (!entry || !isAllowedArchiveName(entry.name) || seen.has(entry.name) ||
         typeof entry.data !== 'string' || typeof entry.sha256 !== 'string') throw new Error('Invalid archive entry')
     seen.add(entry.name)
     const data = Buffer.from(entry.data, 'base64')
+    if (data.length > MAX_ARCHIVE_BYTES || (entry.name.startsWith(`${ICONS_DIR}/`) && data.length > MAX_ICON_FILE_BYTES)) {
+      throw new Error('Invalid archive entry')
+    }
     if (checksum(data) !== entry.sha256) throw new Error('备份校验失败 / Archive checksum mismatch')
     return { name: entry.name, data }
   })
@@ -176,6 +187,44 @@ export function importWorkspace(archiveFile: string, destination: string): strin
     if (!seen.has(name)) throw new Error(`Missing archive entry: ${name}`)
   }
   return publishWorkspace(destination, (stage) => {
-    for (const entry of decoded) fs.writeFileSync(path.join(stage, entry.name), entry.data, { flag: 'wx', mode: 0o600 })
+    for (const entry of decoded) writeArchiveFile(stage, entry.name, entry.data)
   })
+}
+
+function isAllowedArchiveName(name: string): boolean {
+  return (FILES as readonly string[]).includes(name) || ICON_ENTRY_RE.test(name)
+}
+
+function listIconEntries(source: string): ArchiveEntry[] {
+  const dir = path.join(source, ICONS_DIR)
+  if (!fs.existsSync(dir)) return []
+  const stat = fs.lstatSync(dir)
+  if (!stat.isDirectory()) return []
+  const out: ArchiveEntry[] = []
+  for (const name of fs.readdirSync(dir)) {
+    const rel = `${ICONS_DIR}/${name}`
+    if (!ICON_ENTRY_RE.test(rel)) continue
+    const file = path.join(dir, name)
+    const info = fs.lstatSync(file)
+    if (!info.isFile() || info.size > MAX_ICON_FILE_BYTES) continue
+    const data = fs.readFileSync(file)
+    out.push({ name: rel, data: data.toString('base64'), sha256: checksum(data) })
+    if (out.length >= MAX_ICON_ENTRIES) break
+  }
+  return out
+}
+
+function copyIconFiles(legacyDir: string | undefined, stage: string): void {
+  if (!legacyDir) return
+  for (const entry of listIconEntries(legacyDir)) {
+    writeArchiveFile(stage, entry.name, Buffer.from(entry.data, 'base64'))
+  }
+}
+
+function writeArchiveFile(stage: string, name: string, data: Buffer): void {
+  const dest = path.resolve(stage, name)
+  const root = path.resolve(stage)
+  if (dest !== root && !dest.startsWith(`${root}${path.sep}`)) throw new Error('Invalid archive entry')
+  fs.mkdirSync(path.dirname(dest), { recursive: true })
+  fs.writeFileSync(dest, data, { flag: 'wx', mode: 0o600 })
 }

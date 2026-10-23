@@ -860,6 +860,9 @@ export const zh = {
   'common.latency': '延迟 {value}',
   'common.optionalMemo': '备注（可选）',
   'common.testShort': '测试',
+  'common.icon': '图标',
+  'common.iconHint': 'http(s) 会缓存到本地；也可上传图片。留空显示首字母',
+  'common.iconUpload': '上传本地图片',
 
   'nodes.title': '节点维护',
   'tokens.title': '代币维护',
@@ -943,6 +946,8 @@ export const zh = {
   'tokens.saved': '代币已保存',
   'tokens.added': '代币已添加',
   'tokens.restored': '已恢复内置目录：{networks} 个网络 / {tokens} 个代币',
+  'tokens.restoreTitle': '恢复内置代币',
+  'tokens.restoreBody': '将用打包目录覆盖内置代币。你自己添加的代币会保留。确定恢复？',
   'tokens.deleteConfirm': '确定删除 {symbol}？',
   'tokens.hintNative': '留空表示原生币',
   'tokens.hintBtc': 'Bitcoin 只支持原生币，请留空',

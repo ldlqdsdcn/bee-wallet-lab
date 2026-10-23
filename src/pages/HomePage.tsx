@@ -7,6 +7,7 @@ import { Alert, Button, Card } from '../components/ui'
 import { TronResourcesCard } from '../components/TronResourcesCard'
 import { useTronResources } from '../lib/tronResources'
 import { AccountAddress } from '../components/AccountAddress'
+import { NetworkIcon } from '../components/NetworkSelect'
 import { addressExplorerUrl, explorerTabTitle } from '../lib/explorer'
 import { bitcoinAddressLabel, formatAmount } from '../lib/format'
 import { useBrowserStore } from '../store/browserStore'
@@ -215,13 +216,7 @@ export default function HomePage() {
             {snapshot.entries.map((entry) => (
               <li key={entry.key} className="py-3">
                 <div className="flex items-center gap-3">
-                  {entry.iconUrl ? (
-                    <img src={entry.iconUrl} alt="" className="h-8 w-8 rounded-full" />
-                  ) : (
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-ink-700 text-xs text-honey-400">
-                      {entry.symbol.slice(0, 3)}
-                    </span>
-                  )}
+                  <NetworkIcon src={entry.iconUrl} name={entry.symbol} size={32} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-ink-200">{entry.name}</span>

@@ -1,12 +1,12 @@
 /**
- * 资产折算：优先 CoinGecko；本机连不上时并行改用 Gate.io。
+ * 资产折算：CoinGecko 与 Gate 并行，交叉校验后再折算。
  */
 import { fetchCoinGeckoPrices } from './coingecko'
 import { fetchFallbackPrices } from './fallback'
+import { pickMarketPrice } from './pick'
 
 const CACHE_MS = 60_000
 const GECKO_TIMEOUT_MS = 3_000
-const GECKO_WAIT_MS = 400
 const GECKO_COOLDOWN_MS = 10 * 60_000
 
 interface CacheEntry {
@@ -19,6 +19,7 @@ let cache: CacheEntry | null = null
 let geckoDownUntil = 0
 
 export { coinGeckoId, fiatValue } from './coingecko'
+export { pickMarketPrice } from './pick'
 
 export function resetPriceBackoff(): void {
   cache = null
@@ -43,13 +44,11 @@ export async function fetchMarketPrices(ids: string[], currencyCode: string): Pr
 
   const geckoP =
     Date.now() >= geckoDownUntil
-      ? fetchCoinGeckoPrices(unique, currencyCode, GECKO_TIMEOUT_MS)
-          .then((prices) => prices)
-          .catch((err: unknown) => {
-            geckoDownUntil = Date.now() + GECKO_COOLDOWN_MS
-            console.warn('[price] CoinGecko 不可用，改用备用行情', err instanceof Error ? err.message : err)
-            return null
-          })
+      ? fetchCoinGeckoPrices(unique, currencyCode, GECKO_TIMEOUT_MS).catch((err: unknown) => {
+          geckoDownUntil = Date.now() + GECKO_COOLDOWN_MS
+          console.warn('[price] CoinGecko 不可用，改用备用行情', err instanceof Error ? err.message : err)
+          return null
+        })
       : Promise.resolve(null)
 
   const fallbackP = fetchFallbackPrices(unique, vs).catch((err: unknown) => {
@@ -57,32 +56,19 @@ export async function fetchMarketPrices(ids: string[], currencyCode: string): Pr
     return null
   })
 
-  const geckoQuick = await Promise.race([geckoP, sleep(GECKO_WAIT_MS).then(() => 'slow' as const)])
-  if (geckoQuick && geckoQuick !== 'slow' && geckoQuick.size > 0) {
-    cache = mergeCache(vs, geckoQuick)
-    return geckoQuick
+  const [gecko, fallback] = await Promise.all([geckoP, fallbackP])
+  const prices = new Map<string, number>()
+  for (const id of unique) {
+    const price = pickMarketPrice(id, vs, gecko?.get(id), fallback?.get(id))
+    if (price != null) prices.set(id, price)
   }
-
-  const fallback = await fallbackP
-  if (fallback && fallback.size > 0) {
-    cache = mergeCache(vs, fallback)
-    return fallback
-  }
-
-  const geckoLate = geckoQuick === 'slow' ? await geckoP : geckoQuick
-  if (geckoLate && geckoLate.size > 0) {
-    cache = mergeCache(vs, geckoLate)
-    return geckoLate
-  }
-  throw new Error('行情源不可达，仅显示链上余额')
+  if (prices.size === 0) throw new Error('行情源不可达，仅显示链上余额')
+  cache = mergeCache(vs, prices)
+  return prices
 }
 
 function mergeCache(vs: string, prices: Map<string, number>): CacheEntry {
   const next = new Map(cache?.vs === vs ? cache.prices : [])
   for (const [id, price] of prices) next.set(id, price)
   return { at: Date.now(), vs, prices: next }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }

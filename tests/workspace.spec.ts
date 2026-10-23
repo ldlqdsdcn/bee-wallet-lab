@@ -113,6 +113,7 @@ describe('portable workspace backup', () => {
         expect(copy.prepare('SELECT value FROM settings').get()).toEqual(db.prepare('SELECT value FROM settings').get())
         expect(fs.readFileSync(path.join(imported, ENV_FILE))).toEqual(fs.readFileSync(path.join(source, ENV_FILE)))
         expect(JSON.parse(fs.readFileSync(path.join(imported, 'walletconnect.json'), 'utf8'))).toEqual({ key: 'session-key' })
+      expect(fs.existsSync(path.join(imported, 'icons'))).toBe(false)
       } finally { copy.close() }
       expect(fs.readdirSync(source).some((f) => f.startsWith('.export-'))).toBe(false)
     } finally { db.close(); kek.fill(0) }
@@ -137,6 +138,26 @@ describe('portable workspace backup', () => {
     alterArchive(archive, (data) => { data.entries = data.entries.filter((entry) => entry.name !== DB_FILE) })
     expect(() => importWorkspace(archive, dir('imported'))).toThrow('Invalid workspace archive')
     expect(fs.existsSync(dir('imported'))).toBe(false)
+  })
+
+  it('exports and imports cached catalog icons', () => {
+    const source = create()
+    const png = Buffer.from(
+      '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c63000100000500010d0a2db40000000049454e44ae426082',
+      'hex',
+    )
+    fs.mkdirSync(path.join(source, 'icons'))
+    fs.writeFileSync(path.join(source, 'icons', `${'a'.repeat(32)}.png`), png)
+    fs.writeFileSync(path.join(source, 'icons', 'index.json'), JSON.stringify({ [`${'a'.repeat(32)}`]: { url: 'https://example.com/a.png', ext: 'png' } }))
+    fs.writeFileSync(path.join(source, 'icons', 'notes.txt'), 'skip me')
+    const archive = dir('icons.beeworkspace')
+    exportWorkspace(source, archive)
+    const imported = importWorkspace(archive, dir('imported-icons'))
+    expect(fs.readFileSync(path.join(imported, 'icons', `${'a'.repeat(32)}.png`))).toEqual(png)
+    expect(JSON.parse(fs.readFileSync(path.join(imported, 'icons', 'index.json'), 'utf8'))).toEqual({
+      [`${'a'.repeat(32)}`]: { url: 'https://example.com/a.png', ext: 'png' },
+    })
+    expect(fs.existsSync(path.join(imported, 'icons', 'notes.txt'))).toBe(false)
   })
 
   it('refuses an export over active data and refuses import over existing data', () => {
